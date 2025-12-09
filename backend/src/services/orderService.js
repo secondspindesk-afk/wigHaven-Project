@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import * as orderRepository from '../db/repositories/orderRepository.js';
 import { initiateMobileMoneyCharge } from './mobileMoneyService.js';
 import { refundPayment } from './paystackService.js';
@@ -40,9 +41,11 @@ export const createOrder = async (cart, orderData) => {
             throw error;
         }
 
-        // 2. Generate order number & reference
-        const orderNumber = `ORD-${new Date().getFullYear()}${new Date().getMonth() + 1}${new Date().getDate()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
-        const paystackReference = `ref_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        // 2. Generate order number & reference (cryptographically secure)
+        const now = new Date();
+        const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+        const orderNumber = `ORD-${dateStr}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
+        const paystackReference = `ref_${Date.now()}_${crypto.randomUUID().slice(0, 9)}`;
 
         // 3. Determine user context
         const cartContext = cart.userId ? { type: 'user', userId: cart.userId } : { type: 'guest', guestId: cart.guestId };
