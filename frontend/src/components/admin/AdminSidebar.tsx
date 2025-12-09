@@ -179,12 +179,16 @@ export function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
                 <div className="p-4 border-t border-[#27272a]">
                     <div className={`flex items-center gap-3 p-2 border border-[#27272a] bg-[#0A0A0A] ${collapsed ? 'justify-center' : ''}`}>
                         <div className="w-8 h-8 bg-zinc-800 flex items-center justify-center text-xs font-bold text-white font-mono flex-shrink-0">
-                            AD
+                            {user?.firstName?.[0]?.toUpperCase() || 'A'}{user?.lastName?.[0]?.toUpperCase() || 'D'}
                         </div>
                         {!collapsed && (
                             <div className="overflow-hidden">
-                                <p className="text-[10px] text-white font-medium uppercase tracking-wider truncate">Admin User</p>
-                                <p className="text-[9px] text-zinc-500 font-mono truncate">ID: 8829-X</p>
+                                <p className="text-[10px] text-white font-medium uppercase tracking-wider truncate">
+                                    {user?.firstName || 'Admin'} {user?.lastName || 'User'}
+                                </p>
+                                <p className="text-[9px] text-zinc-500 font-mono truncate">
+                                    ID: {user?.id?.slice(-6).toUpperCase() || '------'}
+                                </p>
                             </div>
                         )}
                     </div>
