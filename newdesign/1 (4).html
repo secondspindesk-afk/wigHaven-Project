@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WigHaven / Collection</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #050505; color: #e4e4e7; }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #050505; }
+        ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
+
+        /* Custom Checkbox Styling */
+        .industrial-checkbox {
+            appearance: none;
+            background-color: #0A0A0A;
+            border: 1px solid #3f3f46;
+            width: 14px;
+            height: 14px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .industrial-checkbox:checked {
+            background-color: white;
+            border-color: white;
+        }
+        .industrial-checkbox:checked::after {
+            content: '';
+            width: 8px;
+            height: 8px;
+            background-color: black;
+        }
+
+        /* Toast Animations */
+        @keyframes slideIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fadeOut { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-10px); } }
+        .toast-enter { animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        .toast-exit { animation: fadeOut 0.2s ease-in forwards; }
+    </style>
+</head>
+<body class="selection:bg-white selection:text-black flex flex-col min-h-screen">
+
+    <!-- ========================= -->
+    <!-- NAVIGATION                -->
+    <!-- ========================= -->
+    <nav class="fixed top-0 w-full z-40 bg-[#050505]/90 backdrop-blur-md border-b border-[#27272a]">
+        <div class="max-w-[1600px] mx-auto px-6 h-16 flex items-center justify-between">
+            <a href="#" class="flex items-center gap-3 group">
+                <div class="w-8 h-8 relative">
+                    <svg class="w-full h-full text-white group-hover:text-zinc-300 transition-colors" viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M30 20 C 15 30, 15 70, 45 90" />
+                        <path d="M38 25 C 28 35, 28 60, 40 75" />
+                        <path d="M55 35 C 55 35, 65 38, 70 50 C 72 55, 70 65, 60 75" />
+                    </svg>
+                </div>
+                <span class="font-bold text-sm tracking-widest uppercase">WigHaven</span>
+            </a>
+            
+            <div class="flex items-center gap-6">
+                 <!-- Simple text search input -->
+                <div class="hidden md:flex items-center border border-[#27272a] bg-[#0A0A0A] px-3 py-1.5 rounded-sm">
+                    <svg class="w-3 h-3 text-zinc-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                    <input type="text" placeholder="SEARCH ID..." class="bg-transparent border-none outline-none text-[10px] font-mono text-white placeholder-zinc-600 w-32">
+                </div>
+
+                <button onclick="notify('Cart is empty', 'info')" class="text-zinc-400 hover:text-white transition-colors relative">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
+                    <span id="cart-count" class="absolute -top-1 -right-1 w-2 h-2 bg-white rounded-full hidden"></span>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- ========================= -->
+    <!-- MAIN LAYOUT               -->
+    <!-- ========================= -->
+    <main class="flex-grow pt-16">
+        
+        <!-- Header Banner -->
+        <div class="px-6 py-12 border-b border-[#27272a] bg-[#050505]">
+            <div class="max-w-[1600px] mx-auto">
+                <p class="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2">Index / 2024 Collection</p>
+                <h1 class="text-3xl font-medium tracking-tight text-white">System Archive</h1>
+            </div>
+        </div>
+
+        <div class="max-w-[1600px] mx-auto grid grid-cols-1 lg:grid-cols-12 min-h-screen">
+            
+            <!-- SIDEBAR FILTERS (Sticky) -->
+            <aside class="hidden lg:block lg:col-span-2 border-r border-[#27272a] p-6 sticky top-16 h-[calc(100vh-64px)] overflow-y-auto">
+                
+                <div class="space-y-10">
+                    <!-- Filter Group: Texture -->
+                    <div>
+                        <h3 class="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-4">Texture</h3>
+                        <div class="space-y-3">
+                            <label class="flex items-center gap-3 group cursor-pointer">
+                                <input type="checkbox" class="industrial-checkbox" checked>
+                                <span class="text-xs text-zinc-400 group-hover:text-white transition-colors font-mono">Straight</span>
+                            </label>
+                            <label class="flex items-center gap-3 group cursor-pointer">
+                                <input type="checkbox" class="industrial-checkbox">
+                                <span class="text-xs text-zinc-400 group-hover:text-white transition-colors font-mono">Body Wave</span>
+                            </label>
+                            <label class="flex items-center gap-3 group cursor-pointer">
+                                <input type="checkbox" class="industrial-checkbox">
+                                <span class="text-xs text-zinc-400 group-hover:text-white transition-colors font-mono">Deep Curl</span>
+                            </label>
+                            <label class="flex items-center gap-3 group cursor-pointer">
+                                <input type="checkbox" class="industrial-checkbox">
+                                <span class="text-xs text-zinc-400 group-hover:text-white transition-colors font-mono">Kinky Straight</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Filter Group: Length -->
+                    <div>
+                        <h3 class="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-4">Length (Inches)</h3>
+                        <div class="grid grid-cols-2 gap-2">
+                            <button class="border border-[#27272a] bg-[#0A0A0A] text-zinc-400 hover:border-zinc-500 hover:text-white py-2 text-[10px] font-mono transition-all">10-14"</button>
+                            <button class="border border-white bg-white text-black py-2 text-[10px] font-mono transition-all">16-20"</button>
+                            <button class="border border-[#27272a] bg-[#0A0A0A] text-zinc-400 hover:border-zinc-500 hover:text-white py-2 text-[10px] font-mono transition-all">22-26"</button>
+                            <button class="border border-[#27272a] bg-[#0A0A0A] text-zinc-400 hover:border-zinc-500 hover:text-white py-2 text-[10px] font-mono transition-all">28"+</button>
+                        </div>
+                    </div>
+
+                     <!-- Filter Group: Price -->
+                     <div>
+                        <h3 class="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-4">Price Range</h3>
+                        <div class="space-y-4">
+                            <input type="range" class="w-full h-1 bg-[#27272a] rounded-lg appearance-none cursor-pointer accent-white">
+                            <div class="flex justify-between text-[10px] font-mono text-zinc-400">
+                                <span>$100</span>
+                                <span>$800</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Reset Filters -->
+                <div class="mt-12 pt-6 border-t border-[#27272a]">
+                    <button class="text-[10px] uppercase tracking-widest text-zinc-600 hover:text-red-400 transition-colors w-full text-left">
+                        [x] Reset Parameters
+                    </button>
+                </div>
+            </aside>
+
+            <!-- PRODUCT GRID -->
+            <div class="lg:col-span-10">
+                
+                <!-- Toolbar -->
+                <div class="h-12 border-b border-[#27272a] flex items-center justify-between px-6 bg-[#050505]">
+                    <span class="text-[10px] font-mono text-zinc-500">DISPLAYING 6 OF 24 SYSTEMS</span>
+                    
+                    <div class="flex items-center gap-4">
+                        <span class="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Sort By:</span>
+                        <select class="bg-transparent text-xs text-white border-none outline-none cursor-pointer uppercase font-mono">
+                            <option>Newest Arrivals</option>
+                            <option>Price: Low to High</option>
+                            <option>Price: High to Low</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-px bg-[#27272a] border-b border-[#27272a]">
+
+                    <!-- Product 1 -->
+                    <div class="bg-[#050505] p-6 group relative hover:bg-[#0A0A0A] transition-colors h-full flex flex-col">
+                        <div class="aspect-[4/5] bg-zinc-900 mb-6 overflow-hidden relative">
+                            <img src="https://images.unsplash.com/photo-1595476108010-b4d1f102b1b1?q=80&w=600&auto=format&fit=crop" 
+                                 class="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-all duration-500 grayscale group-hover:grayscale-0" alt="Wig">
+                            <!-- Quick Action Overlay -->
+                            <div class="absolute bottom-0 left-0 w-full p-4 translate-y-full group-hover:translate-y-0 transition-transform duration-300">
+                                <button onclick="addToCart('Obsidian Straight')" class="w-full bg-white text-black py-3 text-[10px] font-bold uppercase tracking-widest shadow-lg">
+                                    Quick Add +
+                                </button>
+                            </div>
+                        </div>
+                        <div class="mt-auto">
+                            <div class="flex justify-between items-start mb-2">
+                                <h3 class="text-sm font-medium text-white tracking-wide">OBSIDIAN STRAIGHT</h3>
+                                <span class="text-sm font-mono text-zinc-300">$340</span>
+                            </div>
+                            <p class="text-[10px] text-zinc-500 font-mono uppercase">Virgin Brazilian / 18"</p>
+                        </div>
+                    </div>
+
+                    <!-- Product 2 -->
+                    <div class="bg-[#050505] p-6 group relative hover:bg-[#0A0A0A] transition-colors h-full flex flex-col">
+                        <div class="aspect-[4/5] bg-zinc-900 mb-6 overflow-hidden relative">
+                            <img src="https://images.unsplash.com/photo-1560869713-7d0a29430803?q=80&w=600&auto=format&fit=crop" 
+                                 class="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-all duration-500 grayscale group-hover:grayscale-0" alt="Wig">
+                             <div class="absolute bottom-0 left-0 w-full p-4 translate-y-full group-hover:translate-y-0 transition-transform duration-300">
+                                <button onclick="addToCart('Platinum Wave')" class="w-full bg-white text-black py-3 text-[10px] font-bold uppercase tracking-widest shadow-lg">
+                                    Quick Add +
+                                </button>
+                            </div>
+                        </div>
+                        <div class="mt-auto">
+                            <div class="flex justify-between items-start mb-2">
+                                <h3 class="text-sm font-medium text-white tracking-wide">PLATINUM WAVE</h3>
+                                <span class="text-sm font-mono text-zinc-300">$420</span>
+                            </div>
+                            <p class="text-[10px] text-zinc-500 font-mono uppercase">Raw Indian / 22"</p>
+                        </div>
+                    </div>
+
+                    <!-- Product 3 (Sold Out) -->
+                    <div class="bg-[#050505] p-6 group relative hover:bg-[#0A0A0A] transition-colors h-full flex flex-col opacity-60 hover:opacity-100">
+                        <div class="aspect-[4/5] bg-zinc-900 mb-6 overflow-hidden relative">
+                            <img src="https://images.unsplash.com/photo-1596462502278-27bfdd403348?q=80&w=600&auto=format&fit=crop" 
+                                 class="w-full h-full object-cover opacity-60 grayscale" alt="Wig">
+                            <div class="absolute top-3 left-3">
+                                <span class="px-2 py-1 bg-[#27272a] border border-white/10 text-white text-[9px] font-bold uppercase tracking-wider">Out of Stock</span>
+                            </div>
+                        </div>
+                        <div class="mt-auto">
+                            <div class="flex justify-between items-start mb-2">
+                                <h3 class="text-sm font-medium text-white tracking-wide">MIDNIGHT BOB</h3>
+                                <span class="text-sm font-mono text-zinc-500 line-through">$280</span>
+                            </div>
+                            <p class="text-[10px] text-zinc-500 font-mono uppercase">Blunt Cut / 10"</p>
+                        </div>
+                    </div>
+
+                    <!-- Product 4 -->
+                    <div class="bg-[#050505] p-6 group relative hover:bg-[#0A0A0A] transition-colors h-full flex flex-col">
+                        <div class="aspect-[4/5] bg-zinc-900 mb-6 overflow-hidden relative">
+                            <img src="https://images.unsplash.com/photo-1522337660859-02fbefca4702?q=80&w=600&auto=format&fit=crop" 
+                                 class="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-all duration-500 grayscale group-hover:grayscale-0" alt="Wig">
+                             <div class="absolute bottom-0 left-0 w-full p-4 translate-y-full group-hover:translate-y-0 transition-transform duration-300">
+                                <button onclick="addToCart('Honey Blonde Layer')" class="w-full bg-white text-black py-3 text-[10px] font-bold uppercase tracking-widest shadow-lg">
+                                    Quick Add +
+                                </button>
+                            </div>
+                        </div>
+                        <div class="mt-auto">
+                            <div class="flex justify-between items-start mb-2">
+                                <h3 class="text-sm font-medium text-white tracking-wide">HONEY LAYER</h3>
+                                <span class="text-sm font-mono text-zinc-300">$380</span>
+                            </div>
+                            <p class="text-[10px] text-zinc-500 font-mono uppercase">Custom Color / 20"</p>
+                        </div>
+                    </div>
+
+                    <!-- Product 5 -->
+                    <div class="bg-[#050505] p-6 group relative hover:bg-[#0A0A0A] transition-colors h-full flex flex-col">
+                        <div class="aspect-[4/5] bg-zinc-900 mb-6 overflow-hidden relative">
+                            <img src="https://images.unsplash.com/photo-1580618672591-eb180b1a973f?q=80&w=600&auto=format&fit=crop" 
+                                 class="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-all duration-500 grayscale group-hover:grayscale-0" alt="Wig">
+                             <div class="absolute bottom-0 left-0 w-full p-4 translate-y-full group-hover:translate-y-0 transition-transform duration-300">
+                                <button onclick="addToCart('Deep Wave 30')" class="w-full bg-white text-black py-3 text-[10px] font-bold uppercase tracking-widest shadow-lg">
+                                    Quick Add +
+                                </button>
+                            </div>
+                        </div>
+                        <div class="mt-auto">
+                            <div class="flex justify-between items-start mb-2">
+                                <h3 class="text-sm font-medium text-white tracking-wide">DEEP WAVE MAX</h3>
+                                <span class="text-sm font-mono text-zinc-300">$550</span>
+                            </div>
+                            <p class="text-[10px] text-zinc-500 font-mono uppercase">HD Lace / 30"</p>
+                        </div>
+                    </div>
+
+                    <!-- Product 6 -->
+                    <div class="bg-[#050505] p-6 group relative hover:bg-[#0A0A0A] transition-colors h-full flex flex-col">
+                        <div class="aspect-[4/5] bg-zinc-900 mb-6 overflow-hidden relative">
+                            <img src="https://images.unsplash.com/photo-1519699047748-de8e457a634e?q=80&w=600&auto=format&fit=crop" 
+                                 class="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-all duration-500 grayscale group-hover:grayscale-0" alt="Wig">
+                             <div class="absolute bottom-0 left-0 w-full p-4 translate-y-full group-hover:translate-y-0 transition-transform duration-300">
+                                <button onclick="addToCart('Silk Press Unit')" class="w-full bg-white text-black py-3 text-[10px] font-bold uppercase tracking-widest shadow-lg">
+                                    Quick Add +
+                                </button>
+                            </div>
+                        </div>
+                        <div class="mt-auto">
+                            <div class="flex justify-between items-start mb-2">
+                                <h3 class="text-sm font-medium text-white tracking-wide">SILK PRESS UNIT</h3>
+                                <span class="text-sm font-mono text-zinc-300">$310</span>
+                            </div>
+                            <p class="text-[10px] text-zinc-500 font-mono uppercase">Light Yaki / 16"</p>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- Load More / Pagination -->
+                <div class="p-12 flex justify-center border-b border-[#27272a]">
+                    <button class="border border-zinc-700 text-zinc-400 hover:border-white hover:text-white px-8 py-3 text-[10px] font-bold uppercase tracking-widest transition-all">
+                        Load More Systems
+                    </button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- ========================= -->
+    <!-- NOTIFICATION SYSTEM       -->
+    <!-- ========================= -->
+    <div id="notification-area" class="fixed top-20 right-6 z-50 flex flex-col gap-3 pointer-events-none"></div>
+
+    <script>
+        const notificationArea = document.getElementById('notification-area');
+        const cartCount = document.getElementById('cart-count');
+        let itemCount = 0;
+
+        const icons = {
+            success: `<div class="w-6 h-6 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500 border border-emerald-500/20"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"></path></svg></div>`,
+            info: `<div class="w-6 h-6 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-500 border border-blue-500/20"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"></path></svg></div>`
+        };
+
+        function addToCart(item) {
+            notify(`${item} added to cart`, 'success');
+            itemCount++;
+            cartCount.classList.remove('hidden');
+        }
+
+        function notify(message, type = 'success') {
+            const toast = document.createElement('div');
+            toast.className = `toast-enter pointer-events-auto flex items-center justify-between gap-4 bg-[#0F0F0F] border border-[#27272a] pl-3 pr-2 py-3 rounded shadow-2xl min-w-[320px] max-w-sm backdrop-blur-md`;
+            
+            toast.innerHTML = `
+                <div class="flex items-center gap-3">
+                    ${icons[type] || icons.info}
+                    <span class="text-[13px] font-medium text-zinc-200 tracking-wide">${message}</span>
+                </div>
+                <button onclick="removeToast(this.parentElement)" class="text-zinc-600 hover:text-zinc-300 transition-colors p-1 hover:bg-white/5 rounded"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+            `;
+
+            notificationArea.appendChild(toast);
+            setTimeout(() => { if (toast.parentElement) removeToast(toast); }, 4000);
+        }
+
+        function removeToast(toast) {
+            toast.classList.remove('toast-enter');
+            toast.classList.add('toast-exit');
+            toast.addEventListener('animationend', () => toast.remove());
+        }
+    </script>
+</body>
+</html>

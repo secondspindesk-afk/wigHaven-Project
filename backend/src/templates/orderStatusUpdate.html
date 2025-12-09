@@ -1,0 +1,22 @@
+<h1>STATUS UPDATE</h1>
+
+<p>
+    Order Ref: #{{order_number}}<br>
+    System has logged a status change.
+</p>
+
+<div style="background-color: #0A0A0A; border: 1px solid #27272a; padding: 24px; margin: 32px 0;">
+    <p style="margin-bottom: 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: #71717a;">
+        // CURRENT STATUS
+    </p>
+    <div class="mono-text"
+        style="font-size: 24px; color: #ffffff; letter-spacing: 0.05em; font-weight: 700; text-transform: uppercase;">
+        {{new_status}}
+    </div>
+</div>
+
+<div style="text-align: center;">
+    <a href="{{order_link}}" class="button">VIEW ORDER DETAILS</a>
+</div>
+
+<!-- SUBJECT: STATUS UPDATE: Order #{{order_number}} is {{new_status}} -->

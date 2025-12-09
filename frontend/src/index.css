@@ -1,0 +1,195 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@layer base {
+  :root {
+    color-scheme: dark;
+    --background: 0 0% 7%;
+    /* #121212 */
+    --foreground: 0 0% 98%;
+    --card: 0 0% 12%;
+    /* #1E1E1E */
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 7%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 100%;
+    /* White - Clean minimalist accent */
+    --primary-foreground: 0 0% 0%;
+    --secondary: 0 0% 14.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 14.9%;
+    --muted-foreground: 0 0% 63.9%;
+    --accent: 0 0% 14.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 14.9%;
+    --input: 0 0% 14.9%;
+    --ring: 0 0% 100%;
+    /* White ring on focus */
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  /* Custom Scrollbar - Industrial Style */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #050505;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #27272a;
+    border-radius: 0px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #3f3f46;
+  }
+
+  /* Firefox scrollbar */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #27272a #050505;
+  }
+
+  body {
+    @apply bg-[#050505] text-zinc-300 font-sans;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-medium tracking-tight;
+  }
+}
+
+/* Monospace utility for technical labels */
+.font-mono {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Glassmorphism Utilities */
+.glass-panel {
+  background: rgba(20, 20, 20, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-input {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(4px);
+  caret-color: #ffffff;
+  /* White cursor */
+}
+
+/* White cursor for all inputs */
+input {
+  caret-color: #ffffff;
+}
+
+/* Make input backgrounds slightly lighter for better visibility */
+input.bg-\[#1a1a1a\] {
+  background-color: #1a1a1a !important;
+}
+
+input.focus\:bg-\[#202020\]:focus {
+  background-color: #242424 !important;
+}
+
+/* Override browser autofill styles */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 30px #121212 inset !important;
+  -webkit-text-fill-color: #ffffff !important;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+/* Firefox autofill */
+input:-moz-autofill,
+input:-moz-autofill-preview {
+  filter: none;
+}
+
+/* Toast and Modal Animations - Minimalist */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-toast-in {
+  animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.2s ease-out;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out forwards;
+}
+
+/* NProgress Custom Styling - Match Dark Theme */
+#nprogress {
+  pointer-events: none;
+}
+
+#nprogress .bar {
+  background: #fff !important;
+  /* White progress bar */
+  height: 2px !important;
+  position: fixed;
+  z-index: 9999;
+  top: 0;
+  left: 0;
+  width: 100%;
+}
+
+#nprogress .peg {
+  box-shadow: 0 0 10px #fff, 0 0 5px #fff !important;
+  /* White glow */
+}

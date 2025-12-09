@@ -1,0 +1,91 @@
+<h1>ORDER CONFIRMED</h1>
+
+<p>
+    Ref: #{{order_number}}<br>
+    Status: Processing
+</p>
+
+<p>
+    We have received your order request. Logistics systems are preparing your inventory.<br>
+    Date: {{formatDate created_at}}
+</p>
+
+<div class="divider"></div>
+
+<table width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-bottom: 24px;">
+    <tr>
+        <th align="left"
+            style="color: #ffffff; font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; padding-bottom: 12px; border-bottom: 1px solid #27272a;">
+            Item</th>
+        <th align="right"
+            style="color: #ffffff; font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; padding-bottom: 12px; border-bottom: 1px solid #27272a;">
+            Total</th>
+    </tr>
+    {{#each items}}
+    <tr>
+        <td style="padding: 16px 0; border-bottom: 1px solid #27272a; color: #d4d4d8; font-size: 14px;">
+            <div style="color: #ffffff; font-weight: 600; text-transform: uppercase; margin-bottom: 4px;">
+                {{this.productName}}</div>
+            <div style="font-size: 12px; color: #71717a;">
+                {{#if this.variantName}}{{this.variantName}} • {{/if}}QTY: {{this.quantity}}
+            </div>
+        </td>
+        <td align="right"
+            style="padding: 16px 0; border-bottom: 1px solid #27272a; color: #ffffff; font-size: 14px; font-weight: 500;">
+            {{formatCurrency this.total}}
+        </td>
+    </tr>
+    {{/each}}
+</table>
+
+<table width="100%" cellspacing="0" cellpadding="0" border="0">
+    <tr>
+        <td style="padding: 4px 0; font-size: 14px; color: #a1a1aa;">Subtotal</td>
+        <td align="right" style="padding: 4px 0; font-size: 14px; color: #ffffff;">{{formatCurrency subtotal}}</td>
+    </tr>
+    {{#if tax}}
+    <tr>
+        <td style="padding: 4px 0; font-size: 14px; color: #a1a1aa;">Tax</td>
+        <td align="right" style="padding: 4px 0; font-size: 14px; color: #ffffff;">{{formatCurrency tax}}</td>
+    </tr>
+    {{/if}}
+    <tr>
+        <td style="padding: 4px 0; font-size: 14px; color: #a1a1aa;">Shipping</td>
+        <td align="right" style="padding: 4px 0; font-size: 14px; color: #ffffff;">{{#if shipping}}{{formatCurrency
+            shipping}}{{else}}FREE{{/if}}</td>
+    </tr>
+    {{#if discount}}
+    <tr>
+        <td style="padding: 4px 0; font-size: 14px; color: #10b981;">Discount {{#if coupon_code}}<span class="mono-text"
+                style="font-size: 10px; color: #10b981;">[{{coupon_code}}]</span>{{/if}}</td>
+        <td align="right" style="padding: 4px 0; font-size: 14px; color: #10b981;">-{{formatCurrency discount}}</td>
+    </tr>
+    {{/if}}
+    <tr>
+        <td
+            style="padding-top: 16px; font-size: 14px; font-weight: 700; color: #ffffff; text-transform: uppercase; letter-spacing: 0.05em;">
+            Total</td>
+        <td align="right" style="padding-top: 16px; font-size: 18px; font-weight: 700; color: #ffffff;">{{formatCurrency
+            total}}</td>
+    </tr>
+</table>
+
+<div class="divider"></div>
+
+{{#if shipping_address}}
+<p style="margin-bottom: 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: #71717a;">
+    // SHIPPING DESTINATION
+</p>
+<p style="color: #d4d4d8; font-size: 14px; line-height: 1.6;">
+    {{shipping_address.name}}<br>
+    {{shipping_address.address}}<br>
+    {{shipping_address.city}}, {{shipping_address.state}} {{shipping_address.zip}}<br>
+    {{shipping_address.country}}
+</p>
+{{/if}}
+
+<div style="text-align: center;">
+    <a href="{{tracking_link}}" class="button">VIEW ORDER STATUS</a>
+</div>
+
+<!-- SUBJECT: ORDER CONFIRMED (#{{order_number}}) -->

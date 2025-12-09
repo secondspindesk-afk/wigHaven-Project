@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WigHaven / System Control</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #050505; color: #e4e4e7; }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #050505; }
+        ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 0px; }
+        ::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
+
+        /* Chart.js Customization */
+        canvas { filter: grayscale(100%) contrast(120%); }
+
+        /* Grid Background Pattern */
+        .bg-grid {
+            background-size: 40px 40px;
+            background-image: linear-gradient(to right, #1a1a1a 1px, transparent 1px),
+                              linear-gradient(to bottom, #1a1a1a 1px, transparent 1px);
+        }
+
+        /* Status Indicators */
+        .status-dot {
+            width: 6px; height: 6px; border-radius: 50%;
+            box-shadow: 0 0 8px currentColor;
+        }
+    </style>
+</head>
+<body class="flex h-screen overflow-hidden selection:bg-white selection:text-black">
+
+    <!-- ========================= -->
+    <!-- SIDEBAR (Fixed)           -->
+    <!-- ========================= -->
+    <aside class="w-64 flex-shrink-0 border-r border-[#27272a] bg-[#050505] flex flex-col z-20">
+        <!-- Brand -->
+        <div class="h-16 flex items-center px-6 border-b border-[#27272a]">
+            <div class="flex items-center gap-3">
+                <svg class="w-6 h-6 text-white" viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="5">
+                    <path d="M30 20 C 15 30, 15 70, 45 90" />
+                    <path d="M38 25 C 28 35, 28 60, 40 75" />
+                    <path d="M55 35 C 55 35, 65 38, 70 50 C 72 55, 70 65, 60 75" />
+                </svg>
+                <div class="flex flex-col">
+                    <span class="font-bold text-xs tracking-widest uppercase text-white">WigHaven</span>
+                    <span class="font-mono text-[9px] text-zinc-500">SYS_ADMIN v2.4</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Navigation -->
+        <nav class="flex-1 overflow-y-auto py-6 px-3 space-y-1">
+            
+            <p class="px-3 text-[9px] font-bold text-zinc-600 uppercase tracking-widest mb-2 font-mono">Main Module</p>
+            
+            <a href="#" class="flex items-center gap-3 px-3 py-2 bg-white text-black text-[11px] font-medium uppercase tracking-wide rounded-sm">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>
+                Dashboard
+            </a>
+
+            <a href="#" class="group flex items-center gap-3 px-3 py-2 text-zinc-400 hover:text-white hover:bg-[#0A0A0A] border border-transparent hover:border-[#27272a] text-[11px] font-medium uppercase tracking-wide rounded-sm transition-all">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
+                Products <span class="ml-auto font-mono text-[9px] text-zinc-600 group-hover:text-zinc-400">24</span>
+            </a>
+
+            <a href="#" class="group flex items-center gap-3 px-3 py-2 text-zinc-400 hover:text-white hover:bg-[#0A0A0A] border border-transparent hover:border-[#27272a] text-[11px] font-medium uppercase tracking-wide rounded-sm transition-all">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                Orders <span class="ml-auto flex items-center justify-center w-5 h-5 bg-zinc-800 text-white text-[9px] font-mono rounded-full">4</span>
+            </a>
+
+            <a href="#" class="group flex items-center gap-3 px-3 py-2 text-zinc-400 hover:text-white hover:bg-[#0A0A0A] border border-transparent hover:border-[#27272a] text-[11px] font-medium uppercase tracking-wide rounded-sm transition-all">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+                Customers
+            </a>
+
+            <div class="pt-6 pb-2">
+                <p class="px-3 text-[9px] font-bold text-zinc-600 uppercase tracking-widest font-mono">System Config</p>
+            </div>
+
+            <a href="#" class="group flex items-center gap-3 px-3 py-2 text-zinc-400 hover:text-white hover:bg-[#0A0A0A] border border-transparent hover:border-[#27272a] text-[11px] font-medium uppercase tracking-wide rounded-sm transition-all">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+                Analytics
+            </a>
+            
+            <a href="#" class="group flex items-center gap-3 px-3 py-2 text-zinc-400 hover:text-white hover:bg-[#0A0A0A] border border-transparent hover:border-[#27272a] text-[11px] font-medium uppercase tracking-wide rounded-sm transition-all">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" /></svg>
+                Inventory
+                <span class="ml-auto text-red-500 font-mono text-[9px] animate-pulse">(! 22)</span>
+            </a>
+        </nav>
+
+        <!-- User Profile (Bottom) -->
+        <div class="p-4 border-t border-[#27272a]">
+            <div class="flex items-center gap-3 p-2 border border-[#27272a] bg-[#0A0A0A] rounded-sm">
+                <div class="w-8 h-8 bg-zinc-800 flex items-center justify-center text-xs font-bold text-white font-mono">AD</div>
+                <div class="overflow-hidden">
+                    <p class="text-[10px] text-white font-medium uppercase tracking-wider truncate">Admin User</p>
+                    <p class="text-[9px] text-zinc-500 font-mono truncate">ID: 8829-X</p>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- ========================= -->
+    <!-- MAIN CONTENT              -->
+    <!-- ========================= -->
+    <main class="flex-1 flex flex-col h-full relative bg-grid">
+        
+        <!-- Header -->
+        <header class="h-16 flex items-center justify-between px-8 border-b border-[#27272a] bg-[#050505]/95 backdrop-blur z-10">
+            <!-- Search -->
+            <div class="flex items-center gap-4 w-96">
+                <span class="text-zinc-600 font-mono text-xs">>_</span>
+                <input type="text" placeholder="SEARCH DATABASE..." class="bg-transparent border-none outline-none text-xs font-mono text-white placeholder-zinc-700 w-full uppercase">
+            </div>
+
+            <!-- Header Actions -->
+            <div class="flex items-center gap-6">
+                <!-- System Status -->
+                <div class="flex items-center gap-2 border border-[#27272a] bg-[#0A0A0A] px-3 py-1.5 rounded-sm">
+                    <div class="status-dot text-emerald-500"></div>
+                    <span class="text-[9px] font-mono text-zinc-400 uppercase">System Operational</span>
+                </div>
+
+                <button class="text-zinc-500 hover:text-white transition-colors relative">
+                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
+                    <span class="absolute top-0 right-0 w-1.5 h-1.5 bg-white rounded-full"></span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Content Scrollable Area -->
+        <div class="flex-1 overflow-y-auto p-8">
+            
+            <div class="flex justify-between items-end mb-8">
+                <div>
+                    <h1 class="text-xl text-white font-medium uppercase tracking-tight">Overview</h1>
+                    <p class="text-[10px] text-zinc-500 font-mono mt-1">LAST SYNC: 2025-12-04 12:33:01</p>
+                </div>
+                <div class="flex gap-2">
+                    <button class="px-4 py-2 border border-[#27272a] bg-[#0A0A0A] text-zinc-400 hover:text-white hover:border-zinc-500 text-[10px] font-mono uppercase transition-all">
+                        Refresh
+                    </button>
+                    <button class="px-4 py-2 bg-white text-black border border-white hover:bg-zinc-200 text-[10px] font-bold font-mono uppercase transition-all">
+                        Export_Data
+                    </button>
+                </div>
+            </div>
+
+            <!-- STATS GRID -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+                
+                <!-- Stat Card 1 -->
+                <div class="p-5 bg-[#0A0A0A] border border-[#27272a] hover:border-zinc-600 transition-colors group">
+                    <div class="flex justify-between items-start mb-4">
+                        <span class="text-[10px] text-zinc-500 uppercase tracking-widest font-bold">Total Revenue</span>
+                        <span class="text-[10px] font-mono text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 border border-emerald-500/20">+12.5%</span>
+                    </div>
+                    <div class="flex items-baseline gap-1">
+                        <span class="text-sm text-zinc-500 font-mono">GHS</span>
+                        <span class="text-2xl text-white font-mono font-medium">8,818.75</span>
+                    </div>
+                </div>
+
+                <!-- Stat Card 2 -->
+                <div class="p-5 bg-[#0A0A0A] border border-[#27272a] hover:border-zinc-600 transition-colors group">
+                    <div class="flex justify-between items-start mb-4">
+                        <span class="text-[10px] text-zinc-500 uppercase tracking-widest font-bold">Daily Orders</span>
+                        <svg class="w-4 h-4 text-zinc-600 group-hover:text-white transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
+                    </div>
+                    <div class="flex items-baseline gap-1">
+                        <span class="text-2xl text-white font-mono font-medium">08</span>
+                        <span class="text-[10px] text-zinc-600 font-mono">/ TODAY</span>
+                    </div>
+                </div>
+
+                <!-- Stat Card 3 -->
+                <div class="p-5 bg-[#0A0A0A] border border-[#27272a] hover:border-zinc-600 transition-colors group">
+                    <div class="flex justify-between items-start mb-4">
+                        <span class="text-[10px] text-zinc-500 uppercase tracking-widest font-bold">Pending</span>
+                        <svg class="w-4 h-4 text-zinc-600 group-hover:text-white transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    </div>
+                    <div class="flex items-baseline gap-1">
+                        <span class="text-2xl text-white font-mono font-medium">04</span>
+                        <span class="text-[10px] text-zinc-600 font-mono">REQ_ACTION</span>
+                    </div>
+                </div>
+
+                <!-- Stat Card 4 -->
+                <div class="p-5 bg-[#0A0A0A] border border-[#27272a] hover:border-zinc-600 transition-colors group">
+                    <div class="flex justify-between items-start mb-4">
+                        <span class="text-[10px] text-zinc-500 uppercase tracking-widest font-bold">Low Stock</span>
+                        <span class="text-[10px] font-mono text-red-500 bg-red-500/10 px-1.5 py-0.5 border border-red-500/20">ALERT</span>
+                    </div>
+                    <div class="flex items-baseline gap-1">
+                        <span class="text-2xl text-white font-mono font-medium">22</span>
+                        <span class="text-[10px] text-zinc-600 font-mono">ITEMS</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MAIN DASHBOARD SPLIT -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
+                
+                <!-- Chart Area -->
+                <div class="lg:col-span-2 p-6 bg-[#0A0A0A] border border-[#27272a]">
+                    <div class="flex justify-between items-center mb-6">
+                        <h3 class="text-xs font-bold text-white uppercase tracking-widest">Revenue Analytics</h3>
+                        <div class="flex gap-2">
+                            <button class="text-[9px] font-mono text-white bg-zinc-800 px-2 py-1">30D</button>
+                            <button class="text-[9px] font-mono text-zinc-500 hover:text-white px-2 py-1">90D</button>
+                        </div>
+                    </div>
+                    <!-- Chart Container -->
+                    <div class="relative h-64 w-full">
+                        <canvas id="revenueChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Order Status / Circular Chart -->
+                <div class="p-6 bg-[#0A0A0A] border border-[#27272a] flex flex-col">
+                    <h3 class="text-xs font-bold text-white uppercase tracking-widest mb-6">Fulfillment Ratio</h3>
+                    <div class="relative flex-1 flex items-center justify-center">
+                        <canvas id="doughnutChart"></canvas>
+                        <!-- Center Text Overlay -->
+                        <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                            <span class="text-2xl font-mono text-white">85%</span>
+                            <span class="text-[9px] text-zinc-500 uppercase">Efficiency</span>
+                        </div>
+                    </div>
+                    <div class="mt-6 space-y-2">
+                        <div class="flex justify-between text-[10px] font-mono">
+                            <span class="text-zinc-400">Processing</span>
+                            <span class="text-white">12</span>
+                        </div>
+                        <div class="w-full bg-zinc-800 h-1"><div class="bg-purple-500 h-1" style="width: 30%"></div></div>
+                        
+                        <div class="flex justify-between text-[10px] font-mono pt-2">
+                            <span class="text-zinc-400">Completed</span>
+                            <span class="text-white">45</span>
+                        </div>
+                        <div class="w-full bg-zinc-800 h-1"><div class="bg-emerald-500 h-1" style="width: 70%"></div></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RECENT ORDERS TABLE -->
+            <div class="border border-[#27272a] bg-[#0A0A0A] mb-8">
+                <div class="px-6 py-4 border-b border-[#27272a] flex justify-between items-center">
+                    <h3 class="text-xs font-bold text-white uppercase tracking-widest">Incoming Transmission (Orders)</h3>
+                    <a href="#" class="text-[10px] font-mono text-zinc-500 hover:text-white transition-colors">VIEW_ALL_LOGS -></a>
+                </div>
+                
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-[#0f0f0f] border-b border-[#27272a]">
+                                <th class="px-6 py-4 text-[9px] font-bold text-zinc-500 uppercase tracking-widest">Order ID</th>
+                                <th class="px-6 py-4 text-[9px] font-bold text-zinc-500 uppercase tracking-widest">Customer</th>
+                                <th class="px-6 py-4 text-[9px] font-bold text-zinc-500 uppercase tracking-widest">Timestamp</th>
+                                <th class="px-6 py-4 text-[9px] font-bold text-zinc-500 uppercase tracking-widest">Status</th>
+                                <th class="px-6 py-4 text-[9px] font-bold text-zinc-500 uppercase tracking-widest text-right">Value</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-[#27272a]">
+                            <tr class="group hover:bg-zinc-900/50 transition-colors">
+                                <td class="px-6 py-4 font-mono text-xs text-white">#ORD-2025124-CHQKT5</td>
+                                <td class="px-6 py-4 text-xs text-zinc-300">Admin User</td>
+                                <td class="px-6 py-4 font-mono text-xs text-zinc-500">04 DEC 12:30</td>
+                                <td class="px-6 py-4">
+                                    <span class="inline-flex items-center px-2 py-1 rounded-sm text-[9px] font-bold uppercase bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 tracking-wider">
+                                        Processing
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 font-mono text-xs text-white text-right">GHS 8,818.75</td>
+                            </tr>
+                            <tr class="group hover:bg-zinc-900/50 transition-colors">
+                                <td class="px-6 py-4 font-mono text-xs text-white">#ORD-2025124-X992A</td>
+                                <td class="px-6 py-4 text-xs text-zinc-300">Sarah Jenkins</td>
+                                <td class="px-6 py-4 font-mono text-xs text-zinc-500">04 DEC 11:15</td>
+                                <td class="px-6 py-4">
+                                    <span class="inline-flex items-center px-2 py-1 rounded-sm text-[9px] font-bold uppercase bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 tracking-wider">
+                                        Completed
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 font-mono text-xs text-white text-right">GHS 1,240.00</td>
+                            </tr>
+                            <tr class="group hover:bg-zinc-900/50 transition-colors">
+                                <td class="px-6 py-4 font-mono text-xs text-white">#ORD-2025123-B2210</td>
+                                <td class="px-6 py-4 text-xs text-zinc-300">Michael Ross</td>
+                                <td class="px-6 py-4 font-mono text-xs text-zinc-500">03 DEC 09:42</td>
+                                <td class="px-6 py-4">
+                                    <span class="inline-flex items-center px-2 py-1 rounded-sm text-[9px] font-bold uppercase bg-red-500/10 text-red-500 border border-red-500/20 tracking-wider">
+                                        Failed
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 font-mono text-xs text-white text-right">GHS 420.00</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- LOW STOCK ALERT (Compact) -->
+            <div class="border border-red-900/30 bg-red-900/5 p-6 rounded-sm mb-12">
+                <div class="flex justify-between items-center mb-4">
+                    <div class="flex items-center gap-3">
+                        <div class="w-2 h-2 bg-red-500 animate-pulse rounded-full"></div>
+                        <h3 class="text-xs font-bold text-red-500 uppercase tracking-widest">Inventory Critical (22 Items)</h3>
+                    </div>
+                    <button class="text-[9px] font-bold uppercase text-red-400 hover:text-white border border-red-900 hover:border-red-500 px-3 py-1 transition-colors">Resolve All</button>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <!-- Item 1 -->
+                    <div class="bg-[#050505] border border-red-900/20 p-3 flex justify-between items-center">
+                        <div>
+                            <p class="text-[10px] text-zinc-300 font-medium truncate w-40">Silky Straight 4x4 Closure</p>
+                            <p class="text-[9px] text-zinc-600 font-mono">SKU: WIG-ybasl1-16</p>
+                        </div>
+                        <span class="font-mono text-xs text-red-500">08 LEFT</span>
+                    </div>
+                    <!-- Item 2 -->
+                    <div class="bg-[#050505] border border-red-900/20 p-3 flex justify-between items-center">
+                        <div>
+                            <p class="text-[10px] text-zinc-300 font-medium truncate w-40">Deep Wave Lace Front</p>
+                            <p class="text-[9px] text-zinc-600 font-mono">SKU: WIG-4idowt-12</p>
+                        </div>
+                        <span class="font-mono text-xs text-red-500">10 LEFT</span>
+                    </div>
+                    <!-- Item 3 -->
+                    <div class="bg-[#050505] border border-red-900/20 p-3 flex justify-between items-center">
+                        <div>
+                            <p class="text-[10px] text-zinc-300 font-medium truncate w-40">Honey Blonde Highlight</p>
+                            <p class="text-[9px] text-zinc-600 font-mono">SKU: WIG-1dfzk2-20</p>
+                        </div>
+                        <span class="font-mono text-xs text-red-500">08 LEFT</span>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <script>
+        // --- CHARTS CONFIGURATION ---
+        // Using Chart.js with custom "Industrial" Styling
+
+        const commonOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: {
+                    grid: { color: '#1f1f22' },
+                    ticks: { color: '#52525b', font: { family: 'JetBrains Mono', size: 9 } }
+                },
+                y: {
+                    grid: { color: '#1f1f22' },
+                    ticks: { color: '#52525b', font: { family: 'JetBrains Mono', size: 9 } }
+                }
+            }
+        };
+
+        // Revenue Chart (Line)
+        const ctxRev = document.getElementById('revenueChart').getContext('2d');
+        new Chart(ctxRev, {
+            type: 'line',
+            data: {
+                labels: ['01', '05', '10', '15', '20', '25', '30'],
+                datasets: [{
+                    label: 'Revenue',
+                    data: [1200, 1900, 3000, 5000, 4200, 6800, 8818],
+                    borderColor: '#ffffff',
+                    borderWidth: 1.5,
+                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                    fill: true,
+                    tension: 0, // Sharp lines for industrial look
+                    pointRadius: 0,
+                    pointHoverRadius: 4
+                }]
+            },
+            options: commonOptions
+        });
+
+        // Doughnut Chart
+        const ctxDonut = document.getElementById('doughnutChart').getContext('2d');
+        new Chart(ctxDonut, {
+            type: 'doughnut',
+            data: {
+                labels: ['Processing', 'Shipped', 'Delivered'],
+                datasets: [{
+                    data: [15, 30, 55],
+                    backgroundColor: ['#a855f7', '#3b82f6', '#10b981'], // Purple, Blue, Emerald
+                    borderWidth: 0,
+                    hoverOffset: 4
+                }]
+            },
+            options: {
+                cutout: '85%',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } }
+            }
+        });
+    </script>
+</body>
+</html>

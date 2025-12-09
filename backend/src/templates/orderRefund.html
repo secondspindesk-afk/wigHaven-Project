@@ -1,0 +1,31 @@
+<h1>REFUND PROCESSED</h1>
+
+<p>
+    Order Ref: #{{order_number}}<br>
+    Transaction Type: Reversal
+</p>
+
+<div style="background-color: #0A0A0A; border: 1px solid #27272a; padding: 24px; margin: 32px 0; text-align: center;">
+    <p style="margin-bottom: 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: #71717a;">
+        // AMOUNT REFUNDED
+    </p>
+    <div class="mono-text" style="font-size: 32px; color: #ffffff; letter-spacing: 0.05em; font-weight: 700;">
+        {{formatCurrency refund_amount}}
+    </div>
+    <div class="divider"></div>
+    <p style="margin-bottom: 4px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: #71717a;">
+        DESTINATION
+    </p>
+    <p style="color: #d4d4d8; font-size: 14px; margin: 0;">
+        {{original_payment_method}}
+    </p>
+    <p style="color: #52525b; font-size: 11px; margin-top: 8px; margin-bottom: 0;">
+        Latency: 5-10 business days for bank processing.
+    </p>
+</div>
+
+<div style="text-align: center;">
+    <a href="{{support_link}}" class="button">REPORT ISSUE</a>
+</div>
+
+<!-- SUBJECT: NOTIFICATION: Refund Processed for Order #{{order_number}} -->

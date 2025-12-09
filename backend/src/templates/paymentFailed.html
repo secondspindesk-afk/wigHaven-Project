@@ -1,0 +1,31 @@
+<h1 style="color: #ef4444;">TRANSACTION FAILED</h1>
+
+<p>
+    Error Code: PAYMENT_DECLINED<br>
+    Order Ref: #{{order_number}}
+</p>
+
+<div style="background-color: #0A0A0A; border: 1px solid #7f1d1d; padding: 24px; margin: 32px 0; text-align: center;">
+    <p style="margin-bottom: 12px; font-size: 24px;">⚠️</p>
+    <p style="color: #ffffff; margin-bottom: 8px; font-weight: 600;">Processing Error Detected</p>
+    <p style="color: #a1a1aa; font-size: 13px; margin: 0;">
+        The payment gateway rejected the transaction.<br>
+        No charges were applied to your account.
+    </p>
+</div>
+
+<p style="text-align: center;">
+    To secure your inventory, please attempt the transaction again.
+</p>
+
+<div style="text-align: center;">
+    <a href="{{retry_link}}" class="button">RETRY TRANSACTION</a>
+</div>
+
+<div class="divider"></div>
+
+<p style="font-size: 12px; color: #52525b; text-align: center;">
+    If this error persists, contact your financial institution.
+</p>
+
+<!-- SUBJECT: ALERT: Payment Failed for Order #{{order_number}} -->

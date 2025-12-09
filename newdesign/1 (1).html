@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WigHaven - Industrial Login</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        
+        /* Smooth fade for the logo */
+        .logo-stroke {
+            stroke-dasharray: 100;
+            stroke-dashoffset: 100;
+            animation: draw 1.5s ease-out forwards 0.5s;
+        }
+        
+        @keyframes draw {
+            to { stroke-dashoffset: 0; }
+        }
+
+        /* Autofill override */
+        input:-webkit-autofill,
+        input:-webkit-autofill:hover, 
+        input:-webkit-autofill:focus, 
+        input:-webkit-autofill:active{
+            -webkit-box-shadow: 0 0 0 30px #121212 inset !important;
+            -webkit-text-fill-color: white !important;
+        }
+    </style>
+</head>
+<body class="bg-[#050505] text-zinc-300 h-screen w-full flex flex-col items-center justify-center p-4">
+
+    <!-- LOGIN CONTAINER -->
+    <div class="w-full max-w-[360px]">
+        
+        <!-- LOGO & HEADER -->
+        <div class="mb-10 text-center">
+            
+            <!-- THE CUSTOM LOGO (Based on your image) -->
+            <div class="w-20 h-20 mx-auto mb-6 relative group cursor-pointer">
+                <!-- Outer Circle (Optional, adds structure) -->
+                <div class="absolute inset-0 rounded-full border border-zinc-800 group-hover:border-zinc-600 transition-colors"></div>
+                
+                <!-- The Face/Hair Vector -->
+                <svg class="w-full h-full p-4 text-white" viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <!-- The Hair Swoop (Left) -->
+                    <path class="logo-stroke" d="M30 20 C 15 30, 15 70, 45 90" />
+                    <path class="logo-stroke" d="M38 25 C 28 35, 28 60, 40 75" />
+                    
+                    <!-- The Face Profile (Right) -->
+                    <path class="logo-stroke" d="M55 35 C 55 35, 65 38, 70 50 C 72 55, 70 65, 60 75" />
+                    
+                    <!-- The Lips/Chin Detail -->
+                    <path class="logo-stroke" opacity="0.8" d="M68 58 L 62 62" />
+                </svg>
+            </div>
+
+            <h1 class="text-white font-semibold text-lg tracking-[0.2em] uppercase">WigHaven</h1>
+            <p class="text-zinc-600 text-xs mt-2 font-mono">EST. 2024 // SYSTEM ACCESS</p>
+        </div>
+
+        <!-- FORM -->
+        <form onsubmit="event.preventDefault(); alert('Login logic here');" class="space-y-4">
+            
+            <div class="space-y-1.5">
+                <label class="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Identity</label>
+                <input type="email" placeholder="user@wighaven.com" class="w-full bg-[#0A0A0A] border border-[#27272a] text-sm text-white rounded-sm px-3 py-3 outline-none focus:border-zinc-500 transition-colors placeholder:text-zinc-800 font-mono">
+            </div>
+
+            <div class="space-y-1.5">
+                <div class="flex justify-between items-center">
+                    <label class="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Key</label>
+                </div>
+                <input type="password" class="w-full bg-[#0A0A0A] border border-[#27272a] text-sm text-white rounded-sm px-3 py-3 outline-none focus:border-zinc-500 transition-colors font-mono">
+            </div>
+
+            <button class="w-full bg-white text-black font-bold text-xs uppercase tracking-widest py-3 rounded-sm hover:bg-zinc-200 transition-colors mt-4">
+                Authenticate
+            </button>
+
+        </form>
+    </div>
+
+</body>
+</html>

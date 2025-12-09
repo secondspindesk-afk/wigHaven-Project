@@ -1,0 +1,139 @@
+import { useParams, Link } from 'react-router-dom';
+import { useSupportTicket, useReplyTicket } from '@/lib/hooks/useSupport';
+import { useUser } from '@/lib/hooks/useUser';
+import { Loader2, ArrowLeft, Send, User as UserIcon, Shield, AlertCircle } from 'lucide-react';
+import { formatDistanceToNow } from 'date-fns';
+import { useState, useRef, useEffect } from 'react';
+
+export default function SupportTicket() {
+    const { id } = useParams<{ id: string }>();
+    const { data: ticket, isLoading, isError, refetch } = useSupportTicket(id!);
+    const replyTicket = useReplyTicket(id!);
+    const { data: user } = useUser();
+    const [message, setMessage] = useState('');
+    const messagesEndRef = useRef<HTMLDivElement>(null);
+
+    const scrollToBottom = () => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    };
+
+    useEffect(() => {
+        scrollToBottom();
+    }, [ticket?.messages]);
+
+    const handleReply = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!message.trim()) return;
+
+        replyTicket.mutate({ message }, {
+            onSuccess: () => {
+                setMessage('');
+            }
+        });
+    };
+
+    if (isLoading) {
+        return (
+            <div className="flex items-center justify-center min-h-[400px]">
+                <Loader2 className="w-8 h-8 animate-spin text-zinc-500" />
+            </div>
+        );
+    }
+
+    if (isError) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-[400px]">
+                <AlertCircle size={48} className="text-red-500 mb-4" />
+                <p className="text-red-400 font-medium mb-4">Failed to load ticket</p>
+                <div className="flex gap-3">
+                    <Link to="/account/support" className="px-4 py-2 bg-zinc-800 text-white text-sm hover:bg-zinc-700">
+                        Go Back
+                    </Link>
+                    <button onClick={() => refetch()} className="px-4 py-2 bg-red-500/20 text-red-400 text-sm hover:bg-red-500/30">
+                        Try Again
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
+    if (!ticket) return null;
+
+    return (
+        <div className="h-[calc(100vh-200px)] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center gap-4 mb-6 flex-shrink-0">
+                <Link to="/account/support" className="text-zinc-500 hover:text-white transition-colors">
+                    <ArrowLeft size={20} />
+                </Link>
+                <div className="flex-1">
+                    <div className="flex items-center gap-3">
+                        <h1 className="text-xl font-bold text-white uppercase tracking-wider">{ticket.subject}</h1>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${ticket.status === 'open' ? 'bg-green-500/10 text-green-400' :
+                            ticket.status === 'pending' ? 'bg-yellow-500/10 text-yellow-400' :
+                                'bg-zinc-800 text-zinc-400'
+                            }`}>
+                            {ticket.status}
+                        </span>
+                    </div>
+                    <p className="text-zinc-500 text-xs font-mono mt-1">
+                        Ticket #{ticket.id.slice(0, 8)} • Created {formatDistanceToNow(new Date(ticket.createdAt), { addSuffix: true })}
+                    </p>
+                </div>
+            </div>
+
+            {/* Chat Area */}
+            <div className="flex-1 bg-[#0A0A0A] border border-[#27272a] rounded-lg overflow-hidden flex flex-col">
+                <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                    {ticket.messages.map((msg) => {
+                        const isMe = msg.senderId === user?.id;
+                        return (
+                            <div key={msg.id} className={`flex gap-4 ${isMe ? 'flex-row-reverse' : ''}`}>
+                                <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${msg.isAdmin ? 'bg-white text-black' : 'bg-zinc-800 text-zinc-400'
+                                    }`}>
+                                    {msg.isAdmin ? <Shield size={14} /> : <UserIcon size={14} />}
+                                </div>
+                                <div className={`max-w-[80%] space-y-1 ${isMe ? 'items-end' : 'items-start'} flex flex-col`}>
+                                    <div className={`p-4 rounded-lg text-sm leading-relaxed ${isMe
+                                        ? 'bg-zinc-800 text-white rounded-tr-none'
+                                        : 'bg-zinc-900 border border-[#27272a] text-zinc-300 rounded-tl-none'
+                                        }`}>
+                                        {msg.message}
+                                    </div>
+                                    <span className="text-[10px] text-zinc-600 font-mono">
+                                        {formatDistanceToNow(new Date(msg.createdAt), { addSuffix: true })}
+                                    </span>
+                                </div>
+                            </div>
+                        );
+                    })}
+                    <div ref={messagesEndRef} />
+                </div>
+
+                {/* Reply Input */}
+                <div className="p-4 border-t border-[#27272a] bg-[#050505]">
+                    <form onSubmit={handleReply} className="flex gap-4">
+                        <input
+                            type="text"
+                            value={message}
+                            onChange={(e) => setMessage(e.target.value)}
+                            placeholder="Type your reply..."
+                            className="flex-1 bg-zinc-900 border border-[#27272a] rounded-sm px-4 py-3 text-sm text-white focus:outline-none focus:border-zinc-500 transition-colors"
+                            disabled={ticket.status === 'closed'}
+                        />
+                        <button
+                            type="submit"
+                            disabled={!message.trim() || replyTicket.isPending || ticket.status === 'closed'}
+                            className="bg-white text-black px-6 font-bold uppercase tracking-widest hover:bg-zinc-200 transition-colors disabled:opacity-50 rounded-sm flex items-center gap-2"
+                        >
+                            {replyTicket.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send size={16} />}
+                        </button>
+                    </form>
+                    {ticket.status === 'closed' && (
+                        <p className="text-center text-xs text-zinc-500 mt-2">This ticket is closed. Please create a new ticket for further assistance.</p>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}

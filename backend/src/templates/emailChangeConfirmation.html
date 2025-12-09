@@ -1,0 +1,31 @@
+<h1>IDENTITY MODIFICATION</h1>
+
+<p>
+    Request: Update Contact Vector<br>
+    Status: Pending Verification
+</p>
+
+<div style="background-color: #0A0A0A; border: 1px solid #27272a; padding: 24px; margin: 32px 0;">
+    <p style="margin-bottom: 4px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: #71717a;">
+        CURRENT ADDRESS</p>
+    <p style="margin: 0 0 16px; color: #d4d4d8; font-family: monospace; font-size: 13px;">{{old_email}}</p>
+
+    <div class="divider" style="margin: 12px 0;"></div>
+
+    <p style="margin-bottom: 4px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: #71717a;">
+        NEW ADDRESS</p>
+    <p style="margin: 0; color: #ffffff; font-family: monospace; font-size: 14px; font-weight: 700;">{{new_email}}</p>
+</div>
+
+<div style="text-align: center;">
+    <a href="{{confirmation_link}}" class="button">AUTHORIZE CHANGE</a>
+</div>
+
+<div style="margin-top: 24px; border: 1px solid #27272a; padding: 12px; text-align: center;">
+    <p style="margin: 0; font-size: 11px; color: #a1a1aa;">
+        <span style="color: #ffffff; font-weight: 700;">TTL:</span> {{expiry_time}} expiration. Link self-destructs
+        after use.
+    </p>
+</div>
+
+<!-- SUBJECT: VERIFY: New Email Address Request -->

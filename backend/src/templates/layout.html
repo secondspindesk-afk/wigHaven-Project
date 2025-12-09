@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>WigHaven</title>
+    <style>
+        /* CSS Reset */
+        body,
+        table,
+        td,
+        a {
+            -webkit-text-size-adjust: 100%;
+            -ms-text-size-adjust: 100%;
+        }
+
+        table,
+        td {
+            mso-table-lspace: 0pt;
+            mso-table-rspace: 0pt;
+        }
+
+        img {
+            -ms-interpolation-mode: bicubic;
+            border: 0;
+            height: auto;
+            line-height: 100%;
+            outline: none;
+            text-decoration: none;
+        }
+
+        table {
+            border-collapse: collapse !important;
+        }
+
+        body {
+            height: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 100% !important;
+        }
+
+        /* Global Styles */
+        body {
+            background-color: #050505;
+            font-family: 'Inter', Helvetica, Arial, sans-serif;
+            color: #d4d4d8;
+            /* zinc-300 */
+        }
+
+        /* Typography */
+        h1,
+        h2,
+        h3 {
+            color: #ffffff;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            /* tracking-widest */
+            margin-top: 0;
+            margin-bottom: 24px;
+        }
+
+        h1 {
+            font-size: 24px;
+        }
+
+        h2 {
+            font-size: 20px;
+        }
+
+        p {
+            margin-bottom: 24px;
+            font-size: 16px;
+            line-height: 1.6;
+            color: #a1a1aa;
+            /* zinc-400 */
+        }
+
+        .mono-text {
+            font-family: 'Courier New', Courier, monospace;
+            /* JetBrains Mono fallback */
+            text-transform: uppercase;
+            font-size: 12px;
+            letter-spacing: 0.05em;
+        }
+
+        /* Layout - Full Width Feel */
+        .wrapper {
+            background-color: #050505;
+            width: 100%;
+            table-layout: fixed;
+        }
+
+        .content-width {
+            max-width: 100%;
+            /* Default to full width */
+            margin: 0 auto;
+        }
+
+        /* Inner container for readability on desktop, but seamless on mobile */
+        .inner-container {
+            background-color: #050505;
+            /* seamless */
+            width: 100%;
+            max-width: 600px;
+            /* legible text width */
+            margin: 0 auto;
+            padding: 0;
+        }
+
+        /* Header */
+        .header {
+            padding: 40px 20px 20px;
+            text-align: center;
+            border-bottom: 1px solid #27272a;
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: 800;
+            color: #ffffff;
+            text-decoration: none;
+            text-transform: uppercase;
+            letter-spacing: 0.2em;
+        }
+
+        /* Content Body */
+        .content {
+            padding: 40px 20px;
+            background-color: #050505;
+        }
+
+        /* Footer */
+        .footer {
+            padding: 40px 20px;
+            background-color: #050505;
+            border-top: 1px solid #27272a;
+            text-align: center;
+        }
+
+        .footer-links {
+            margin-bottom: 24px;
+        }
+
+        .footer-link {
+            color: #71717a;
+            /* zinc-500 */
+            text-decoration: none;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            font-weight: 600;
+            margin: 0 12px;
+        }
+
+        .footer-link:hover {
+            color: #ffffff;
+        }
+
+        .footer p {
+            font-size: 12px;
+            color: #52525b;
+            /* zinc-600 */
+            margin-bottom: 12px;
+        }
+
+        /* Buttons */
+        .button {
+            display: inline-block;
+            padding: 16px 32px;
+            background-color: #ffffff;
+            color: #000000 !important;
+            text-decoration: none;
+            font-weight: 700;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            border-radius: 2px;
+            margin: 24px 0;
+            text-align: center;
+        }
+
+        .button:hover {
+            background-color: #e4e4e7;
+            /* zinc-200 */
+        }
+
+        /* Links in body */
+        a {
+            color: #ffffff;
+            text-decoration: underline;
+        }
+
+        /* Utilities */
+        .text-center {
+            text-align: center;
+        }
+
+        .text-right {
+            text-align: right;
+        }
+
+        .divider {
+            border-top: 1px solid #27272a;
+            margin: 20px 0;
+        }
+
+        /* Dark Mode Support (Native) */
+        @media (prefers-color-scheme: dark) {
+            body {
+                background-color: #050505 !important;
+            }
+
+            h1,
+            h2,
+            h3,
+            a {
+                color: #ffffff !important;
+            }
+
+            p {
+                color: #a1a1aa !important;
+            }
+        }
+    </style>
+    <!-- Import Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <center class="wrapper">
+        <table role="presentation" class="content-width" cellspacing="0" cellpadding="0" border="0" align="center">
+            <tr>
+                <td align="center">
+                    <!-- Max Width Container for Readability -->
+                    <table role="presentation" class="inner-container" cellspacing="0" cellpadding="0" border="0">
+                        <!-- Header -->
+                        <tr>
+                            <td class="header">
+                                <a href="{{app_url}}" class="logo">WigHaven</a>
+                            </td>
+                        </tr>
+
+                        <!-- Main Content -->
+                        <tr>
+                            <td class="content" align="left">
+                                {{{body}}}
+                            </td>
+                        </tr>
+
+                        <!-- Footer -->
+                        <tr>
+                            <td class="footer">
+                                <div class="footer-links">
+                                    <a href="{{app_url}}/shop" class="footer-link">Shop</a>
+                                    <a href="{{app_url}}/account" class="footer-link">Account</a>
+                                    <a href="{{app_url}}/support" class="footer-link">Support</a>
+                                </div>
+
+                                <p class="mono-text" style="color: #71717a;">
+                                    &copy; {{current_year}} WigHaven Systems.<br>
+                                    Premium Inventory // Automated Dispatch
+                                </p>
+
+                                <p style="font-size: 11px;">
+                                    <a href="{{unsubscribe_url}}"
+                                        style="color: #52525b; text-decoration: underline;">UNSUBSCRIBE</a>
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
+    </center>
+</body>
+
+</html>
