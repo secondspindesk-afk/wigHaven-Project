@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
     LayoutGrid,
@@ -37,9 +37,16 @@ interface AdminSidebarProps {
 export function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
     const location = useLocation();
     const [collapsed, setCollapsed] = useState(false);
-    const { data: stats } = useSidebarStats(true);
+    const { data: stats, isLoading: statsLoading, error: statsError } = useSidebarStats(true);
     const { data: user } = useUser();
     const isSuperAdmin = user?.role === 'super_admin';
+
+    // Debug: Log stats to help identify issues
+    useEffect(() => {
+        if (import.meta.env.DEV) {
+            console.log('[AdminSidebar] Stats:', { stats, statsLoading, statsError });
+        }
+    }, [stats, statsLoading, statsError]);
 
     const mainNavItems: NavItem[] = [
         { label: 'Dashboard', path: '/admin', icon: <LayoutGrid size={16} strokeWidth={1.5} /> },
@@ -90,11 +97,17 @@ export function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
                 {!collapsed && (
                     <>
                         <span className="flex-1">{item.label}</span>
-                        {item.badge !== undefined && item.badge !== 0 && !item.alert && (
-                            <span className="font-mono text-[9px] text-zinc-600 group-hover:text-zinc-400">{item.badge}</span>
+                        {/* Show alert badge (red, pulsing) when alert is true and badge > 0 */}
+                        {item.alert && typeof item.badge === 'number' && item.badge > 0 && (
+                            <span className="text-red-500 font-mono text-[9px] animate-pulse">
+                                (! {item.badge})
+                            </span>
                         )}
-                        {item.alert && (
-                            <span className="text-red-500 font-mono text-[9px] animate-pulse">(! {item.badge})</span>
+                        {/* Show normal badge when NOT alert and badge > 0 */}
+                        {!item.alert && typeof item.badge === 'number' && item.badge > 0 && (
+                            <span className={`font-mono text-[9px] ${active ? 'text-zinc-600' : 'text-zinc-600 group-hover:text-zinc-400'}`}>
+                                {item.badge}
+                            </span>
                         )}
                     </>
                 )}

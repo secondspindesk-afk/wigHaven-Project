@@ -1,8 +1,8 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 @layer base {
   :root {
@@ -101,12 +101,12 @@ input {
   caret-color: #ffffff;
 }
 
-/* Make input backgrounds slightly lighter for better visibility */
-input.bg-\[#1a1a1a\] {
+/* Custom input background utilities */
+.input-dark {
   background-color: #1a1a1a !important;
 }
 
-input.focus\:bg-\[#202020\]:focus {
+.input-dark:focus {
   background-color: #242424 !important;
 }
 

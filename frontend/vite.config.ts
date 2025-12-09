@@ -20,4 +20,20 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Core React vendor chunk
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          // UI libraries
+          'vendor-ui': ['framer-motion', 'lucide-react', 'recharts'],
+          // Data fetching
+          'vendor-query': ['@tanstack/react-query', 'axios'],
+          // Form handling
+          'vendor-form': ['react-hook-form', '@hookform/resolvers', 'zod'],
+        },
+      },
+    },
+  },
 });

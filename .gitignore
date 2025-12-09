@@ -24,7 +24,6 @@ yarn-debug.log*
 yarn-error.log*
 logs
 *.log
-npm-debug.log*
 
 # Editor
 .vscode/
@@ -36,5 +35,16 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 
-# Optional: Ignore verifying files if you don't want them in repo
-# src/tests/
+# Redis
+dump.rdb
+*.rdb
+
+# TypeScript build cache (auto-generated)
+*.tsbuildinfo
+
+# Design prototypes (not needed in production)
+newdesign/
+
+# Vite
+*.local
+

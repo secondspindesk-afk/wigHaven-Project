@@ -1,17 +1,33 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Outlet, Link, Navigate } from 'react-router-dom';
-import { Bell, LogOut, User, Settings, Menu } from 'lucide-react';
+import { LogOut, User, Settings, Menu, Search, Command } from 'lucide-react';
 import { useUser } from '@/lib/hooks/useUser';
 import { useLogout } from '@/lib/hooks/useLogout';
 import { useSystemHealth } from '@/lib/hooks/useAdminDashboard';
 import AdminSidebar from '@/components/admin/AdminSidebar';
+import AdminSearchModal from '@/components/admin/AdminSearchModal';
+import NotificationDropdown from '@/components/admin/NotificationDropdown';
 
 export function AdminLayout() {
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [userMenuOpen, setUserMenuOpen] = useState(false);
+    const [searchOpen, setSearchOpen] = useState(false);
     const { data: user, isLoading } = useUser();
     const { data: systemHealth } = useSystemHealth(!!user && (user.role === 'admin' || user.role === 'super_admin'));
     const logoutMutation = useLogout();
+
+    // Global keyboard shortcut for search (Cmd/Ctrl + K)
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+                e.preventDefault();
+                setSearchOpen(true);
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, []);
 
     // Loading state
     if (isLoading) {
@@ -59,15 +75,20 @@ export function AdminLayout() {
                         <Menu size={20} />
                     </button>
 
-                    {/* Search */}
-                    <div className="flex items-center gap-4 flex-1 max-w-md">
-                        <span className="text-zinc-600 font-mono text-xs hidden sm:block">&gt;_</span>
-                        <input
-                            type="text"
-                            placeholder="SEARCH DATABASE..."
-                            className="bg-transparent border-none outline-none text-xs font-mono text-white placeholder-zinc-700 w-full uppercase"
-                        />
-                    </div>
+                    {/* Search Button - Opens Modal */}
+                    <button
+                        onClick={() => setSearchOpen(true)}
+                        className="flex items-center gap-3 flex-1 max-w-md px-3 py-2 border border-[#27272a] bg-[#0A0A0A] hover:border-zinc-600 transition-colors group"
+                    >
+                        <Search size={14} className="text-zinc-600 group-hover:text-zinc-400" />
+                        <span className="text-xs font-mono text-zinc-600 group-hover:text-zinc-400 uppercase flex-1 text-left">
+                            Search everything...
+                        </span>
+                        <kbd className="hidden sm:flex items-center gap-1 px-1.5 py-0.5 bg-zinc-800 rounded text-[10px] text-zinc-500">
+                            <Command size={10} />
+                            <span>K</span>
+                        </kbd>
+                    </button>
 
                     {/* Header Actions */}
                     <div className="flex items-center gap-6">
@@ -85,11 +106,8 @@ export function AdminLayout() {
                             </span>
                         </div>
 
-                        {/* Notifications */}
-                        <button className="relative text-zinc-500 hover:text-white transition-colors">
-                            <Bell size={18} strokeWidth={1.5} />
-                            <span className="absolute top-0 right-0 w-1.5 h-1.5 bg-white rounded-full" />
-                        </button>
+                        {/* Notifications - Now functional! */}
+                        <NotificationDropdown />
 
                         {/* User Menu */}
                         <div className="relative">
@@ -155,6 +173,12 @@ export function AdminLayout() {
                     <Outlet />
                 </div>
             </main>
+
+            {/* Search Modal */}
+            <AdminSearchModal
+                open={searchOpen}
+                onClose={() => setSearchOpen(false)}
+            />
         </div>
     );
 }

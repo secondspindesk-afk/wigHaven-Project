@@ -251,7 +251,44 @@ export const adminApi = {
     }> => {
         const response = await api.get('/admin/dashboard/sidebar-stats');
         return extractData(response);
+    },
+
+    // Unified Admin Search
+    search: async (query: string, limit: number = 5): Promise<AdminSearchResponse> => {
+        const response = await api.get(`/admin/dashboard/search?q=${encodeURIComponent(query)}&limit=${limit}`);
+        return extractData(response);
     }
 };
 
+// Search Result Types
+export interface AdminSearchResult {
+    id: string;
+    type: 'product' | 'order' | 'user' | 'review' | 'category' | 'discount' | 'banner' | 'support';
+    title: string;
+    subtitle: string;
+    meta?: string;
+    image?: string | null;
+    status?: string;
+    role?: string;
+    paymentStatus?: string;
+    url: string;
+}
+
+export interface AdminSearchResponse {
+    query: string;
+    results: {
+        products: AdminSearchResult[];
+        orders: AdminSearchResult[];
+        users: AdminSearchResult[];
+        reviews: AdminSearchResult[];
+        categories: AdminSearchResult[];
+        discounts: AdminSearchResult[];
+        banners: AdminSearchResult[];
+        support: AdminSearchResult[];
+    };
+    total: number;
+    limit: number;
+}
+
 export default adminApi;
+

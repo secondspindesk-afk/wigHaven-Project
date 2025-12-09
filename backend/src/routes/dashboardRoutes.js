@@ -1,12 +1,37 @@
 import express from 'express';
 import dashboardController from '../controllers/dashboardController.js';
+import adminSearchService from '../services/adminSearchService.js';
 import { authenticateToken, requireAdmin } from '../middleware/auth.js';
+import logger from '../utils/logger.js';
 
 const router = express.Router();
 
 // All routes require authentication and admin role
 router.use(authenticateToken);
 router.use(requireAdmin);
+
+// Unified Admin Search
+router.get('/search', async (req, res) => {
+    try {
+        const { q, limit = 5 } = req.query;
+
+        if (!q || typeof q !== 'string' || q.trim().length < 2) {
+            return res.status(400).json({
+                success: false,
+                error: 'Search query must be at least 2 characters'
+            });
+        }
+
+        const results = await adminSearchService.unifiedSearch(q, {
+            limit: Math.min(parseInt(limit) || 5, 20)
+        });
+
+        res.json({ success: true, data: results });
+    } catch (error) {
+        logger.error('Admin search error:', error);
+        res.status(500).json({ success: false, error: 'Search failed' });
+    }
+});
 
 // Summary & Trends
 router.get('/summary', dashboardController.getSummary);
