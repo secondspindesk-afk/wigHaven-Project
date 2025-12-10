@@ -306,6 +306,27 @@ export const getSidebarStats = async (req, res) => {
     }
 };
 
+/**
+ * Get Cache Statistics (for monitoring)
+ * @super_admin only
+ */
+export const getCacheStats = async (req, res) => {
+    try {
+        const { getCacheStats: getStats } = await import('../config/analyticsCache.js');
+        const stats = getStats();
+        res.json({
+            success: true,
+            data: {
+                ...stats,
+                description: 'Server-side analytics cache for reducing DB load'
+            }
+        });
+    } catch (error) {
+        logger.error('Cache Stats Error:', error);
+        res.status(500).json({ success: false, error: 'Failed to fetch cache stats' });
+    }
+};
+
 export default {
     getSummary,
     getSalesTrends,
@@ -322,5 +343,6 @@ export default {
     getPaymentMethods,
     getCartAbandonment,
     exportReports,
-    getSidebarStats
+    getSidebarStats,
+    getCacheStats
 };

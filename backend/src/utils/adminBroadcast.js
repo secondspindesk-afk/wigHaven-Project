@@ -3,9 +3,13 @@
  * 
  * Broadcasts data changes to all connected admin/super_admin users
  * via WebSocket for instant dashboard updates without polling.
+ * 
+ * Also invalidates server-side analytics cache to ensure fresh data
+ * is fetched on next request.
  */
 
 import { broadcastToAdmins } from '../config/websocket.js';
+import { invalidateForEntity } from '../config/analyticsCache.js';
 import logger from './logger.js';
 
 // Query key constants for React Query invalidation
@@ -40,6 +44,10 @@ const QUERY_KEYS = {
  */
 export const notifyOrdersChanged = (metadata = {}) => {
     try {
+        // Step 1: Invalidate server-side cache
+        invalidateForEntity('orders');
+
+        // Step 2: Notify frontend clients to invalidate React Query cache
         broadcastToAdmins('orders', [
             QUERY_KEYS.DASHBOARD_SUMMARY,
             QUERY_KEYS.RECENT_ORDERS,
@@ -58,6 +66,7 @@ export const notifyOrdersChanged = (metadata = {}) => {
  */
 export const notifyProductsChanged = (metadata = {}) => {
     try {
+        invalidateForEntity('products');
         broadcastToAdmins('products', [
             QUERY_KEYS.DASHBOARD_SUMMARY,
             QUERY_KEYS.TOP_PRODUCTS,
@@ -74,6 +83,7 @@ export const notifyProductsChanged = (metadata = {}) => {
  */
 export const notifyStockChanged = (metadata = {}) => {
     try {
+        invalidateForEntity('stock');
         broadcastToAdmins('stock', [
             QUERY_KEYS.INVENTORY_STATUS,
             QUERY_KEYS.LOW_STOCK,
@@ -90,6 +100,7 @@ export const notifyStockChanged = (metadata = {}) => {
  */
 export const notifyUsersChanged = (metadata = {}) => {
     try {
+        invalidateForEntity('users');
         broadcastToAdmins('users', [
             QUERY_KEYS.DASHBOARD_SUMMARY,
             QUERY_KEYS.CUSTOMER_ANALYTICS,
@@ -106,6 +117,7 @@ export const notifyUsersChanged = (metadata = {}) => {
  */
 export const notifyReviewsChanged = (metadata = {}) => {
     try {
+        invalidateForEntity('reviews');
         broadcastToAdmins('reviews', [
             QUERY_KEYS.ADMIN_REVIEWS,
             QUERY_KEYS.SIDEBAR_STATS,

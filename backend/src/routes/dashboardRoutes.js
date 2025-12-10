@@ -59,4 +59,7 @@ router.get('/payment-methods', dashboardController.getPaymentMethods);
 router.get('/export', dashboardController.exportReports);
 router.get('/sidebar-stats', dashboardController.getSidebarStats);
 
+// Cache monitoring (super_admin debugging tool)
+router.get('/cache-stats', dashboardController.getCacheStats);
+
 export default router;

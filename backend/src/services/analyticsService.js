@@ -1,32 +1,37 @@
 import analyticsRepository from '../db/repositories/analyticsRepository.js';
 import { getPrisma } from '../config/database.js';
 import logger from '../utils/logger.js';
+import { getCached, CACHE_KEYS } from '../config/analyticsCache.js';
 
 /**
- * Get Dashboard Summary
+ * Get Dashboard Summary (CACHED)
+ * Cache TTL: 5 minutes
+ * Invalidated on: order changes, user changes
  * @returns {Object} Summary metrics
  */
 export const getDashboardSummary = async () => {
-    const today = new Date();
-    const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+    return getCached(CACHE_KEYS.DASHBOARD_SUMMARY, async () => {
+        const today = new Date();
+        const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
 
-    const [todayMetrics, yesterdayMetrics, stats] = await Promise.all([
-        analyticsRepository.calculateDailyMetrics(today),
-        analyticsRepository.calculateDailyMetrics(yesterday),
-        getOverallStats()
-    ]);
+        const [todayMetrics, yesterdayMetrics, stats] = await Promise.all([
+            analyticsRepository.calculateDailyMetrics(today),
+            analyticsRepository.calculateDailyMetrics(yesterday),
+            getOverallStats()
+        ]);
 
-    const summary = {
-        today: todayMetrics,
-        yesterday: yesterdayMetrics,
-        change: {
-            revenue_percent: calculateChange(todayMetrics.revenue, yesterdayMetrics.revenue),
-            orders_percent: calculateChange(todayMetrics.orders, yesterdayMetrics.orders)
-        },
-        stats
-    };
+        const summary = {
+            today: todayMetrics,
+            yesterday: yesterdayMetrics,
+            change: {
+                revenue_percent: calculateChange(todayMetrics.revenue, yesterdayMetrics.revenue),
+                orders_percent: calculateChange(todayMetrics.orders, yesterdayMetrics.orders)
+            },
+            stats
+        };
 
-    return summary;
+        return summary;
+    });
 };
 
 const getOverallStats = async () => {
@@ -53,59 +58,71 @@ const calculateChange = (current, previous) => {
 };
 
 /**
- * Get Sales Trends
+ * Get Sales Trends (CACHED)
+ * Cache TTL: 5 minutes per day range
  * @param {number} days - Number of days (7, 30, 90)
  */
 export const getSalesTrends = async (days = 7) => {
-    const endDate = new Date();
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days);
+    return getCached(CACHE_KEYS.SALES_TRENDS(days), async () => {
+        const endDate = new Date();
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - days);
 
-    const daily = await analyticsRepository.getSalesTrends(startDate, endDate);
+        const daily = await analyticsRepository.getSalesTrends(startDate, endDate);
 
-    const summary = daily.reduce((acc, day) => ({
-        total_revenue: acc.total_revenue + day.revenue,
-        total_orders: acc.total_orders + day.orders,
-    }), { total_revenue: 0, total_orders: 0 });
+        const summary = daily.reduce((acc, day) => ({
+            total_revenue: acc.total_revenue + day.revenue,
+            total_orders: acc.total_orders + day.orders,
+        }), { total_revenue: 0, total_orders: 0 });
 
-    return {
-        range: `${days} days`,
-        daily,
-        summary: {
-            ...summary,
-            avg_daily_revenue: daily.length > 0 ? summary.total_revenue / daily.length : 0
-        }
-    };
+        return {
+            range: `${days} days`,
+            daily,
+            summary: {
+                ...summary,
+                avg_daily_revenue: daily.length > 0 ? summary.total_revenue / daily.length : 0
+            }
+        };
+    });
 };
 
 /**
- * Get Top Products
+ * Get Top Products (CACHED)
+ * Cache TTL: 5 minutes
  * @param {number} days 
  * @param {number} limit 
  */
 export const getTopProducts = async (days = 30, limit = 10) => {
-    const endDate = new Date();
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days);
+    return getCached(CACHE_KEYS.TOP_PRODUCTS(days, limit), async () => {
+        const endDate = new Date();
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - days);
 
-    const products = await analyticsRepository.getTopProducts(startDate, endDate, limit);
-    return products;
+        const products = await analyticsRepository.getTopProducts(startDate, endDate, limit);
+        return products;
+    });
 };
 
 /**
- * Get Order Status Breakdown
+ * Get Order Status Breakdown (CACHED)
+ * Cache TTL: 5 minutes
  */
 export const getOrderStatusBreakdown = async () => {
-    const breakdown = await analyticsRepository.getOrderStatusBreakdown();
-    return breakdown;
+    return getCached(CACHE_KEYS.ORDER_STATUS, async () => {
+        const breakdown = await analyticsRepository.getOrderStatusBreakdown();
+        return breakdown;
+    });
 };
 
 /**
- * Get Inventory Status
+ * Get Inventory Status (CACHED)
+ * Cache TTL: 5 minutes
  */
 export const getInventoryStatus = async () => {
-    const status = await analyticsRepository.getInventoryStatus();
-    return status;
+    return getCached(CACHE_KEYS.INVENTORY_STATUS, async () => {
+        const status = await analyticsRepository.getInventoryStatus();
+        return status;
+    });
 };
 
 /**
