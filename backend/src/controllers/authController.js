@@ -104,6 +104,10 @@ export const register = async (req, res, next) => {
         const notificationService = (await import('../services/notificationService.js')).default;
         await notificationService.notifyWelcome(user);
 
+        // 🔔 Real-time: Notify all admin dashboards of new user
+        const { notifyUsersChanged } = await import('../utils/adminBroadcast.js');
+        notifyUsersChanged({ action: 'registered', userId: user.id });
+
         logger.debug(`New user registered: ${user.email}`);
 
         res.status(201).json({

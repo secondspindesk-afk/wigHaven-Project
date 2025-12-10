@@ -1,5 +1,6 @@
 import * as emailLogRepository from '../db/repositories/emailLogRepository.js';
-import { getQueue } from '../config/queue.js';
+import { queueEmail } from '../jobs/emailQueue.js';
+import { getEmailQueue } from '../config/simpleEmailQueue.js';
 import logger from '../utils/logger.js';
 
 /**
@@ -47,27 +48,17 @@ export const getEmailStats = async (req, res, next) => {
     try {
         const dbStats = await emailLogRepository.getEmailStats();
 
-        // Get queue stats from pg-boss (may not be available)
-        let queueWaiting = 0;
-        try {
-            const boss = getQueue();
-            // pg-boss uses getJobCount or similar - wrap in try/catch in case API differs
-            if (typeof boss.getQueueSize === 'function') {
-                queueWaiting = await boss.getQueueSize('emails');
-            } else if (typeof boss.getJobCount === 'function') {
-                queueWaiting = await boss.getJobCount('emails', { state: 'created' });
-            }
-        } catch (queueError) {
-            logger.warn('Could not get queue stats:', queueError.message);
-        }
+        // Get queue stats from simple email queue
+        const queue = getEmailQueue();
+        const queueStats = queue.getStats();
 
         const stats = {
             ...dbStats,
             queue: {
-                waiting: queueWaiting || 0,
-                active: 0,
-                completed: 0,
-                failed: 0,
+                waiting: queueStats.queueSize || 0,
+                active: queueStats.processing || 0,
+                completed: queueStats.processed || 0,
+                failed: queueStats.failed || 0,
                 delayed: 0,
             },
         };
@@ -88,7 +79,6 @@ export const getEmailStats = async (req, res, next) => {
 export const retryFailedEmails = async (req, res, next) => {
     try {
         const { email_log_id } = req.body;
-        const boss = getQueue();
 
         let requeuedCount = 0;
 
@@ -110,21 +100,20 @@ export const retryFailedEmails = async (req, res, next) => {
                 });
             }
 
-            // Re-queue the email via pg-boss
+            // Re-queue the email via simple queue
             if (log.templateData) {
-                // FIXED: Use stored template data
-                await boss.send('emails', {
+                queueEmail({
                     type: log.type,
-                    to_email: log.toEmail,
+                    toEmail: log.toEmail,
                     subject: log.subject,
                     template: log.templateData.template,
                     variables: log.templateData.variables
                 });
             } else {
                 // Fallback for old logs without templateData
-                await boss.send('emails', {
+                queueEmail({
                     type: log.type,
-                    to_email: log.toEmail,
+                    toEmail: log.toEmail,
                     subject: log.subject,
                     body: log.body || ''
                 });
@@ -138,19 +127,17 @@ export const retryFailedEmails = async (req, res, next) => {
             for (const log of failedEmails) {
                 try {
                     if (log.templateData) {
-                        // FIXED: Use stored template data
-                        await boss.send('emails', {
+                        queueEmail({
                             type: log.type,
-                            to_email: log.toEmail,
+                            toEmail: log.toEmail,
                             subject: log.subject,
                             template: log.templateData.template,
                             variables: log.templateData.variables
                         });
                     } else {
-                        // Fallback for old logs
-                        await boss.send('emails', {
+                        queueEmail({
                             type: log.type,
-                            to_email: log.toEmail,
+                            toEmail: log.toEmail,
                             subject: log.subject,
                             body: log.body || ''
                         });

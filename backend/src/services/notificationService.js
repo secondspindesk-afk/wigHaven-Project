@@ -81,6 +81,11 @@ export const notifyWelcome = async (user) => {
  * Notify user of order placement
  */
 export const notifyOrderPlaced = async (order) => {
+    // Guard for guest orders (no userId)
+    if (!order.userId) {
+        return null;
+    }
+
     return createNotification(
         order.userId,
         NotificationTypes.ORDER_PLACED,

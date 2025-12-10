@@ -66,12 +66,36 @@ export const ForceLogoutMessageSchema = z.object({
 });
 
 /**
+ * Data update message schema for real-time admin dashboard updates
+ * Sent by backend when data changes, triggers cache invalidation
+ */
+export const DataUpdateMessageSchema = z.object({
+    type: z.literal('DATA_UPDATE'),
+    eventType: z.string(), // e.g., 'orders', 'products', 'users'
+    queryKeys: z.array(z.array(z.string())), // React Query keys to invalidate
+    metadata: z.record(z.any()).optional(),
+    timestamp: z.string()
+});
+
+/**
+ * PONG message schema for heartbeat responses from server
+ * Received in response to client PING messages
+ */
+export const PongMessageSchema = z.object({
+    type: z.literal('PONG'),
+    timestamp: z.number(),
+    clientTimestamp: z.number().optional()
+});
+
+/**
  * Union type for all possible WebSocket messages
  */
 export const WebSocketMessageSchema = z.union([
     NotificationSchema,
     ControlMessageSchema,
-    ForceLogoutMessageSchema
+    ForceLogoutMessageSchema,
+    DataUpdateMessageSchema,
+    PongMessageSchema
 ]);
 
 /**
@@ -80,4 +104,6 @@ export const WebSocketMessageSchema = z.union([
 export type Notification = z.infer<typeof NotificationSchema>;
 export type ControlMessage = z.infer<typeof ControlMessageSchema>;
 export type ForceLogoutMessage = z.infer<typeof ForceLogoutMessageSchema>;
+export type DataUpdateMessage = z.infer<typeof DataUpdateMessageSchema>;
+export type PongMessage = z.infer<typeof PongMessageSchema>;
 export type WebSocketMessage = z.infer<typeof WebSocketMessageSchema>;

@@ -33,6 +33,37 @@ export const createTicket = async (userId, data) => {
 };
 
 /**
+ * Create a guest support ticket (unauthenticated users)
+ * Stores contact info in the ticket/message for admin follow-up
+ */
+export const createGuestTicket = async (data) => {
+    const { name, email, subject, message, priority } = data;
+
+    // Create ticket without userId (guest)
+    const ticket = await supportRepository.createTicket({
+        userId: null, // Guest ticket - no user association
+        subject: `[GUEST] ${subject}`,
+        priority: priority || 'medium',
+        status: 'open',
+        guestName: name,
+        guestEmail: email
+    });
+
+    // Add initial message with contact info
+    await supportRepository.addMessage({
+        ticketId: ticket.id,
+        senderId: null, // Guest - no sender ID
+        message: `**Guest Contact:**\nName: ${name}\nEmail: ${email}\n\n**Message:**\n${message}`,
+        isAdmin: false
+    });
+
+    // Log guest ticket creation
+    logger.info('Guest support ticket created', { ticketId: ticket.id, guestEmail: email });
+
+    return ticket;
+};
+
+/**
  * Reply to a ticket
  */
 export const replyTicket = async (ticketId, userId, message, isAdmin = false) => {
@@ -61,13 +92,18 @@ export const replyTicket = async (ticketId, userId, message, isAdmin = false) =>
         }
     }
 
-    // Send email notification
-    if (isAdmin && ticket.user && ticket.user.email) {
-        // Admin replied -> Notify user
-        await emailService.sendSupportTicketReply(ticket, message, ticket.user);
-    } else if (!isAdmin) {
-        // User replied -> Notify admin (Optional, maybe via internal notification system)
-        // For now, we assume admins check the dashboard
+    // Send email notification when admin replies
+    if (isAdmin) {
+        if (ticket.userId && ticket.user?.email) {
+            // Registered user - send to their account email
+            await emailService.sendSupportTicketReply(ticket, message, ticket.user);
+        } else if (ticket.guestEmail) {
+            // Guest user - send to their guest email
+            await emailService.sendGuestTicketReply(ticket, message, {
+                email: ticket.guestEmail,
+                name: ticket.guestName || 'Guest'
+            });
+        }
     }
 
     return reply;
@@ -83,17 +119,20 @@ export const getUserTickets = async (userId, page = 1, limit = 20) => {
 
 /**
  * Get ticket details
+ * @param {string} ticketId - Ticket ID
+ * @param {string} userId - User ID making the request
+ * @param {boolean} isAdmin - If true, skip ownership check (admins can view any ticket)
  */
-export const getTicketById = async (ticketId, userId) => {
+export const getTicketById = async (ticketId, userId, isAdmin = false) => {
     const ticket = await supportRepository.findTicketById(ticketId);
 
     if (!ticket) {
         throw new Error('Ticket not found');
     }
 
-    // Security check: Ensure user owns the ticket (unless admin, but this service is mostly for user-facing)
-    // We'll let the controller handle admin vs user checks, but here we enforce ownership if userId is provided
-    if (userId && ticket.userId !== userId) {
+    // Security check: If not admin, user must own the ticket
+    // Admins can view any ticket (including guest tickets with null userId)
+    if (!isAdmin && userId && ticket.userId !== userId) {
         throw new Error('Unauthorized access to ticket');
     }
 
@@ -117,6 +156,7 @@ export const updateTicketStatus = async (ticketId, status) => {
 
 export default {
     createTicket,
+    createGuestTicket,
     replyTicket,
     getUserTickets,
     getTicketById,

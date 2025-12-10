@@ -37,6 +37,35 @@ export function useCreateTicket() {
     });
 }
 
+// Public hook - No authentication required
+export function useCreateGuestTicket() {
+    const { showToast } = useToast();
+
+    return useMutation({
+        mutationFn: (data: { name: string; email: string; subject: string; message: string; priority?: string }) =>
+            supportApi.createGuestTicket(data),
+        onSuccess: () => {
+            showToast('Your message has been sent!', 'success');
+        },
+        onError: (error: any) => {
+            // Extract user-friendly validation error message
+            const err = error.response?.data?.error;
+            let message = 'Failed to send message';
+
+            if (err?.fields && err.fields.length > 0) {
+                // Show the first validation error in a user-friendly way
+                message = err.fields[0].message;
+            } else if (typeof err === 'string') {
+                message = err;
+            } else if (err?.message) {
+                message = err.message;
+            }
+
+            showToast(message, 'error');
+        },
+    });
+}
+
 export function useReplyTicket(ticketId: string) {
     const queryClient = useQueryClient();
     const { showToast } = useToast();

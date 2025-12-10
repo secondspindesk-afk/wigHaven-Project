@@ -1,5 +1,6 @@
 import productService from '../services/productService.js';
 import variantRepository from '../db/repositories/variantRepository.js';
+import { notifyProductsChanged, notifyStockChanged } from '../utils/adminBroadcast.js';
 
 /**
  * Create variant (Admin)
@@ -7,6 +8,11 @@ import variantRepository from '../db/repositories/variantRepository.js';
 export const createVariant = async (req, res, next) => {
     try {
         const variant = await productService.createVariant(req.body);
+
+        // 🔔 Real-time: Notify all admin dashboards
+        notifyProductsChanged({ action: 'variant_created', variantId: variant.id });
+        notifyStockChanged({ action: 'variant_created' });
+
         res.status(201).json({
             success: true,
             data: variant,
@@ -28,6 +34,13 @@ export const createVariant = async (req, res, next) => {
 export const updateVariant = async (req, res, next) => {
     try {
         const variant = await productService.updateVariant(req.params.id, req.body);
+
+        // 🔔 Real-time: Notify all admin dashboards
+        notifyProductsChanged({ action: 'variant_updated', variantId: req.params.id });
+        if (req.body.stock !== undefined) {
+            notifyStockChanged({ action: 'stock_adjusted', variantId: req.params.id });
+        }
+
         res.json({
             success: true,
             data: variant,
@@ -65,6 +78,12 @@ export const bulkUpdateVariants = async (req, res, next) => {
         }
 
         const results = await productService.bulkUpdateVariants(variantIds, updates);
+
+        // 🔔 Real-time: Notify all admin dashboards
+        notifyProductsChanged({ action: 'bulk_variant_update', count: results.length });
+        if (updates.stock !== undefined) {
+            notifyStockChanged({ action: 'bulk_stock_adjusted' });
+        }
 
         res.json({
             success: true,

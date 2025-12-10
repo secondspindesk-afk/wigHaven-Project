@@ -1,50 +1,81 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useRef, useCallback } from 'react';
+import localCartService from '@/lib/services/localCartService';
 import cartService from '@/lib/api/cart';
 import { useToast } from '@/contexts/ToastContext';
+import { useToken } from '@/lib/hooks/useToken';
 
 interface UpdateCartVariables {
-    itemId: string;
+    variantId: string;
     quantity: number;
 }
 
 /**
- * Hook to update cart item quantity with optimistic updates
+ * LocalStorage-First Update Cart Hook
+ * 
+ * - INSTANT: Updates LocalStorage immediately
+ * - DEBOUNCED: Syncs to server after 500ms of no changes
+ * - NON-BLOCKING: Server errors don't affect local state
  */
 export function useUpdateCart() {
     const queryClient = useQueryClient();
     const { showToast } = useToast();
+    const token = useToken();
+    const isLoggedIn = !!token;
 
-    return useMutation({
-        mutationFn: ({ itemId, quantity }: UpdateCartVariables) =>
-            cartService.updateCartItem(itemId, { quantity }),
+    // Debounce tracking for server sync
+    const syncTimeouts = useRef<Map<string, NodeJS.Timeout>>(new Map());
 
-        onMutate: async ({ itemId, quantity }) => {
-            await queryClient.cancelQueries({ queryKey: ['cart'] });
-            const previousCart = queryClient.getQueryData(['cart']);
+    const mutation = useMutation({
+        mutationFn: async ({ variantId, quantity }: UpdateCartVariables) => {
+            // 1. INSTANT: Update LocalStorage
+            const localCart = localCartService.updateLocalCartItem(variantId, quantity);
+            const fullCart = localCartService.localCartToFullCart(localCart);
 
-            // Optimistically update quantity
-            queryClient.setQueryData(['cart'], (old: any) => {
-                if (!old) return old;
-                return {
-                    ...old,
-                    items: old.items.map((item: any) =>
-                        item.id === itemId ? { ...item, quantity } : item
-                    ),
-                };
-            });
+            // 2. Update React Query cache immediately
+            queryClient.setQueryData(['cart'], fullCart);
 
-            return { previousCart };
+            return fullCart;
         },
 
-        onError: (_err, _variables, context) => {
-            showToast('Failed to update cart', 'error');
-            if (context?.previousCart) {
-                queryClient.setQueryData(['cart'], context.previousCart);
-            }
-        },
-
-        onSettled: () => {
-            queryClient.invalidateQueries({ queryKey: ['cart'] });
+        onError: (error: any) => {
+            const errorMessage = error.message || 'Failed to update cart';
+            showToast(errorMessage, 'error');
         },
     });
+
+    /**
+     * Debounced update - INSTANT local update, DELAYED server sync
+     * This prevents API spam when user rapidly clicks +/-
+     */
+    const updateDebounced = useCallback((variantId: string, quantity: number) => {
+        // 1. INSTANT: Update LocalStorage and UI
+        const localCart = localCartService.updateLocalCartItem(variantId, quantity);
+        const fullCart = localCartService.localCartToFullCart(localCart);
+        queryClient.setQueryData(['cart'], fullCart);
+
+        // 2. DEBOUNCED: Schedule server sync (500ms delay)
+        if (isLoggedIn) {
+            // Clear existing timeout for this variant
+            const existingTimeout = syncTimeouts.current.get(variantId);
+            if (existingTimeout) {
+                clearTimeout(existingTimeout);
+            }
+
+            // Schedule new sync
+            const timeout = setTimeout(() => {
+                cartService.updateCartItem(variantId, { quantity }).catch(error => {
+                    console.warn('[UpdateCart] Background sync failed:', error);
+                });
+                syncTimeouts.current.delete(variantId);
+            }, 500);
+
+            syncTimeouts.current.set(variantId, timeout);
+        }
+    }, [isLoggedIn, queryClient]);
+
+    return {
+        ...mutation,
+        updateDebounced,
+    };
 }

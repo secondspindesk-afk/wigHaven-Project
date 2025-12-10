@@ -1,4 +1,5 @@
 import categoryService from '../services/categoryService.js';
+import { notifyCategoriesChanged } from '../utils/adminBroadcast.js';
 
 /**
  * Create category (Admin)
@@ -6,6 +7,10 @@ import categoryService from '../services/categoryService.js';
 export const createCategory = async (req, res, next) => {
     try {
         const category = await categoryService.createCategory(req.body);
+
+        // 🔔 Real-time: Notify all admin dashboards
+        notifyCategoriesChanged({ action: 'created', categoryId: category.id });
+
         res.status(201).json({
             success: true,
             data: category,
@@ -80,6 +85,10 @@ export const getCategory = async (req, res, next) => {
 export const updateCategory = async (req, res, next) => {
     try {
         const category = await categoryService.updateCategory(req.params.id, req.body);
+
+        // 🔔 Real-time: Notify all admin dashboards
+        notifyCategoriesChanged({ action: 'updated', categoryId: req.params.id });
+
         res.json({
             success: true,
             data: category,
@@ -100,8 +109,12 @@ export const updateCategory = async (req, res, next) => {
  */
 export const deleteCategory = async (req, res, next) => {
     try {
-        const { transferToId } = req.body; // Get transferToId from body
+        const { transferToId } = req.body;
         await categoryService.deleteCategory(req.params.id, transferToId);
+
+        // 🔔 Real-time: Notify all admin dashboards
+        notifyCategoriesChanged({ action: 'deleted', categoryId: req.params.id });
+
         res.json({
             success: true,
             message: 'Category deleted successfully',

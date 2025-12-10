@@ -262,71 +262,101 @@ export const listProducts = async ({
 
         // Execute query
         // Special handling for popular sort (requires aggregation)
+        // SECURITY FIX: Removed $queryRawUnsafe with string interpolation (SQL injection risk)
+        // Now using safe Prisma queries with post-processing for popularity sorting
         if (sort === 'popular') {
             try {
-                const sanitizedSearch = search ? search.replace(/'/g, "''") : '';
-                // Use raw SQL to join with order_items and count orders
-                const popularSql = `
-                    SELECT p.*, c.slug as category_slug,
-                           COUNT(DISTINCT oi.order_id) as order_count
-                    FROM products p
-                    LEFT JOIN categories c ON c.id = p.category_id
-                    LEFT JOIN variants v ON v.product_id = p.id AND v.is_active = true
-                    LEFT JOIN order_items oi ON oi.variant_id = v.id
-                    WHERE ${!isAdmin ? 'p.is_active = true' : 'true'}
-                    ${category ? `AND c.slug = '${category}'` : ''}
-                    ${search ? `AND (p.name ILIKE '%${sanitizedSearch}%' OR p.description ILIKE '%${sanitizedSearch}%')` : ''}
-                    ${minPrice ? `AND p.base_price >= ${parseFloat(minPrice)}` : ''}
-                    ${maxPrice ? `AND p.base_price <= ${parseFloat(maxPrice)}` : ''}
-                    ${inStock === 'true' ? 'AND EXISTS (SELECT 1 FROM variants v2 WHERE v2.product_id = p.id AND v2.stock > 0 AND v2.is_active = true)' : ''}
-                    GROUP BY p.id, c.slug
-                    ORDER BY order_count DESC, p.created_at DESC
-                    LIMIT ${limit} OFFSET ${skip};
-                `;
-
-                const products = await prisma.$queryRawUnsafe(popularSql);
-
-                // Normalize keys and fetch variants
-                const normalizedProducts = await Promise.all(products.map(async (p) => {
-                    const variants = await prisma.variant.findMany({
-                        where: {
-                            productId: p.id,
-                            ...(isAdmin ? {} : { isActive: true })
+                // Fetch products with their order counts safely using Prisma
+                // Step 1: Get all products that match filters (without popularity sort first)
+                const baseProducts = await prisma.product.findMany({
+                    where,
+                    include: {
+                        category: true,
+                        variants: {
+                            where: isAdmin ? {} : { isActive: true },
+                            select: {
+                                id: true,
+                                price: true,
+                                stock: true,
+                                sku: true,
+                                images: true,
+                                color: true,
+                                length: true,
+                                texture: true,
+                                size: true,
+                                isActive: true,
+                            },
                         },
-                        select: {
-                            id: true,
-                            price: true,
-                            stock: true,
-                            sku: true,
-                            images: true,
-                            color: true,
-                            length: true,
-                            texture: true,
-                            size: true,
-                            isActive: true,
-                        },
-                    });
+                    },
+                });
 
-                    return {
-                        id: p.id,
-                        name: p.name,
-                        description: p.description,
-                        basePrice: p.base_price || p.basePrice,
-                        category: p.category_slug, // Use slug from join
-                        images: p.images,
-                        isActive: p.is_active || p.isActive,
-                        isFeatured: p.is_featured || p.isFeatured,
-                        createdAt: p.created_at || p.createdAt,
-                        updatedAt: p.updated_at || p.updatedAt,
-                        variants,
-                    };
+                // Step 2: For each product, count distinct orders (safely via Prisma)
+                const productsWithOrderCounts = await Promise.all(
+                    baseProducts.map(async (product) => {
+                        const variantIds = product.variants.map(v => v.id);
+
+                        // Count orders that contain any variant of this product
+                        const orderCount = await prisma.orderItem.groupBy({
+                            by: ['orderId'],
+                            where: {
+                                variantId: { in: variantIds }
+                            },
+                        });
+
+                        return {
+                            ...product,
+                            orderCount: orderCount.length,
+                        };
+                    })
+                );
+
+                // Step 3: Sort by order count (descending), then by createdAt
+                productsWithOrderCounts.sort((a, b) => {
+                    if (b.orderCount !== a.orderCount) {
+                        return b.orderCount - a.orderCount;
+                    }
+                    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+                });
+
+                // Step 4: Apply pagination
+                const paginatedProducts = productsWithOrderCounts.slice(skip, skip + limit);
+                const total = productsWithOrderCounts.length;
+
+                // Map to expected format
+                const mappedProducts = paginatedProducts.map(p => ({
+                    id: p.id,
+                    name: p.name,
+                    description: p.description,
+                    basePrice: p.basePrice,
+                    categoryId: p.categoryId,
+                    category: p.category ? {
+                        id: p.category.id,
+                        name: p.category.name,
+                        slug: p.category.slug
+                    } : null,
+                    images: p.images || [],
+                    isActive: p.isActive,
+                    isFeatured: p.isFeatured,
+                    variantCount: p.variants?.length || 0,
+                    totalStock: p.variants?.reduce((sum, v) => sum + (v.stock || 0), 0) || 0,
+                    createdAt: p.createdAt,
+                    updatedAt: p.updatedAt,
+                    variants: p.variants?.map(v => ({
+                        id: v.id,
+                        price: v.price,
+                        stock: v.stock,
+                        sku: v.sku,
+                        images: v.images,
+                        color: v.color,
+                        length: v.length,
+                        texture: v.texture,
+                        size: v.size,
+                        isActive: v.isActive
+                    })) || []
                 }));
 
-                // Get total count
-                const total = await prisma.product.count({ where });
-
                 return {
-                    products: normalizedProducts,
+                    products: mappedProducts,
                     total,
                     pages: Math.ceil(total / limit),
                     currentPage: page,
@@ -337,6 +367,7 @@ export const listProducts = async ({
                 orderBy = { createdAt: 'desc' };
             }
         }
+
 
         // Regular query for non-popular sorts
         const [products, total] = await Promise.all([

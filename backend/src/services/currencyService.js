@@ -1,19 +1,40 @@
-// Using native fetch (available in Node.js 18+)
+/**
+ * Currency Service
+ * 
+ * Uses ExchangeRate-API for accurate GHS exchange rates.
+ * Features:
+ * - In-memory cache (reduces DB calls)
+ * - Database persistence (for fallback)
+ * - Supports GHS, USD, EUR, GBP
+ */
+
 import { getPrisma } from '../config/database.js';
 import logger from '../utils/logger.js';
 
-const FRANKFURTER_API = 'https://api.frankfurter.app/latest';
+// ExchangeRate-API - Free tier: 1500 requests/month
+// Supports GHS directly (unlike Frankfurter)
+const EXCHANGE_API_URL = 'https://open.er-api.com/v6/latest/GHS';
+
+// Fallback: ExchangeRate.host (also free)
+const FALLBACK_API_URL = 'https://api.exchangerate.host/latest?base=GHS';
+
 const SUPPORTED_CURRENCIES = ['USD', 'EUR', 'GBP'];
-const CACHE_DURATION_HOURS = 6;
+const CACHE_DURATION_MS = 6 * 60 * 60 * 1000; // 6 hours
+
+// ============================================
+// IN-MEMORY CACHE (reduces DB round-trips)
+// ============================================
+let ratesCache = null;
+let cacheTimestamp = 0;
 
 /**
- * Fetch latest rates from Frankfurter API
+ * Fetch latest rates from ExchangeRate-API
+ * Falls back to hardcoded rates if API fails
  */
 export const fetchLatestRates = async () => {
     try {
-        // Note: Frankfurter doesn't support GHS directly, we'll need to use a different approach
-        // Using USD as base and calculating GHS rates from there
-        const response = await fetch(`${FRANKFURTER_API}?from=USD&to=${SUPPORTED_CURRENCIES.join(',')}`);
+        // Primary API
+        const response = await fetch(EXCHANGE_API_URL);
 
         if (!response.ok) {
             throw new Error(`API error: ${response.status}`);
@@ -21,18 +42,41 @@ export const fetchLatestRates = async () => {
 
         const data = await response.json();
 
-        // Manually set GHS exchange rates (approximate, should be updated regularly)
-        // These are example rates - in production, use a service that supports GHS
-        const ghsToUsd = 0.082; // Approximate rate
+        if (data.result === 'success' && data.rates) {
+            const rates = {
+                USD: data.rates.USD || 0.082,
+                EUR: data.rates.EUR || 0.076,
+                GBP: data.rates.GBP || 0.065
+            };
 
-        return {
-            USD: ghsToUsd,
-            EUR: ghsToUsd * (data.rates.EUR || 0.92),
-            GBP: ghsToUsd * (data.rates.GBP || 0.79)
-        };
-    } catch (error) {
-        logger.error('Failed to fetch currency rates:', error);
-        // Return fallback rates
+            logger.info(`✓ Fetched live rates: 1 GHS = ${rates.USD.toFixed(4)} USD`);
+            return rates;
+        }
+
+        throw new Error('Invalid API response');
+
+    } catch (primaryError) {
+        logger.warn(`Primary API failed: ${primaryError.message}, trying fallback...`);
+
+        try {
+            // Fallback API
+            const fallbackResponse = await fetch(FALLBACK_API_URL);
+            const fallbackData = await fallbackResponse.json();
+
+            if (fallbackData.success && fallbackData.rates) {
+                return {
+                    USD: fallbackData.rates.USD || 0.082,
+                    EUR: fallbackData.rates.EUR || 0.076,
+                    GBP: fallbackData.rates.GBP || 0.065
+                };
+            }
+        } catch (fallbackError) {
+            logger.warn(`Fallback API also failed: ${fallbackError.message}`);
+        }
+
+        // Use hardcoded fallback (updated December 2024)
+        // 1 GHS ≈ 0.082 USD
+        logger.warn('Using fallback rates');
         return {
             USD: 0.082,
             EUR: 0.076,
@@ -42,68 +86,97 @@ export const fetchLatestRates = async () => {
 };
 
 /**
- * Update rates in database
+ * Update rates in database (now with retry and error handling)
  */
 export const updateRatesInDb = async () => {
     const rates = await fetchLatestRates();
-    const prisma = getPrisma();
 
-    const updates = Object.entries(rates).map(([currency, rate]) =>
-        prisma.currencyRate.upsert({
-            where: {
-                baseCurrency_currency: {
-                    baseCurrency: 'GHS',
-                    currency
-                }
-            },
-            create: {
-                baseCurrency: 'GHS',
-                currency,
-                rate,
-                lastUpdated: new Date()
-            },
-            update: {
-                rate,
-                lastUpdated: new Date()
+    // Update in-memory cache immediately
+    ratesCache = rates;
+    cacheTimestamp = Date.now();
+
+    // Try to persist to database (but don't fail if DB is unavailable)
+    try {
+        const prisma = getPrisma();
+
+        // Use a single transaction to minimize connection usage
+        await prisma.$transaction(async (tx) => {
+            for (const [currency, rate] of Object.entries(rates)) {
+                await tx.currencyRate.upsert({
+                    where: {
+                        baseCurrency_currency: {
+                            baseCurrency: 'GHS',
+                            currency
+                        }
+                    },
+                    create: {
+                        baseCurrency: 'GHS',
+                        currency,
+                        rate,
+                        lastUpdated: new Date()
+                    },
+                    update: {
+                        rate,
+                        lastUpdated: new Date()
+                    }
+                });
             }
-        })
-    );
+        });
 
-    await Promise.all(updates);
-    logger.info(`Updated ${updates.length} currency rates`);
+        logger.info(`✓ Updated ${Object.keys(rates).length} currency rates in DB`);
+    } catch (dbError) {
+        // Database update failed - but we still have in-memory cache
+        logger.warn(`DB update failed (using memory cache): ${dbError.message}`);
+    }
+
     return rates;
 };
 
 /**
- * Get cached rates from database
+ * Get cached rates (memory-first, then DB, then fetch)
  */
 export const getCachedRates = async () => {
-    const prisma = getPrisma();
-    const rates = await prisma.currencyRate.findMany({
-        where: { baseCurrency: 'GHS' }
-    });
-
-    // Check if cache is stale or empty
-    if (rates.length === 0) {
-        return await updateRatesInDb();
+    // 1. Check in-memory cache first (fastest)
+    if (ratesCache && (Date.now() - cacheTimestamp) < CACHE_DURATION_MS) {
+        return ratesCache;
     }
 
-    const oldestRate = rates.reduce((oldest, rate) =>
-        rate.lastUpdated < oldest.lastUpdated ? rate : oldest
-    );
+    // 2. Try database cache
+    try {
+        const prisma = getPrisma();
+        const rates = await prisma.currencyRate.findMany({
+            where: { baseCurrency: 'GHS' }
+        });
 
-    const hoursSinceUpdate = (Date.now() - oldestRate.lastUpdated.getTime()) / (1000 * 60 * 60);
+        if (rates.length > 0) {
+            const ratesObj = rates.reduce((obj, rate) => {
+                obj[rate.currency] = parseFloat(rate.rate);
+                return obj;
+            }, {});
 
-    if (hoursSinceUpdate > CACHE_DURATION_HOURS * 2) {
-        // Cache is stale, refresh
-        return await updateRatesInDb();
+            // Update memory cache
+            ratesCache = ratesObj;
+            cacheTimestamp = Date.now();
+
+            // Check if DB cache is stale
+            const oldestRate = rates.reduce((oldest, rate) =>
+                rate.lastUpdated < oldest.lastUpdated ? rate : oldest
+            );
+            const hoursSinceUpdate = (Date.now() - oldestRate.lastUpdated.getTime()) / (1000 * 60 * 60);
+
+            if (hoursSinceUpdate > 12) {
+                // Refresh in background (don't block)
+                setImmediate(() => updateRatesInDb().catch(() => { }));
+            }
+
+            return ratesObj;
+        }
+    } catch (dbError) {
+        logger.warn(`DB read failed: ${dbError.message}`);
     }
 
-    // Return cached rates as object
-    return rates.reduce((obj, rate) => {
-        obj[rate.currency] = parseFloat(rate.rate);
-        return obj;
-    }, {});
+    // 3. Fetch fresh rates
+    return await updateRatesInDb();
 };
 
 /**
@@ -141,10 +214,20 @@ export const getSupportedCurrencies = () => {
     return ['GHS', ...SUPPORTED_CURRENCIES];
 };
 
+/**
+ * Force refresh rates (for admin use)
+ */
+export const forceRefreshRates = async () => {
+    ratesCache = null;
+    cacheTimestamp = 0;
+    return await updateRatesInDb();
+};
+
 export default {
     fetchLatestRates,
     updateRatesInDb,
     getCachedRates,
     convertAmount,
-    getSupportedCurrencies
+    getSupportedCurrencies,
+    forceRefreshRates
 };

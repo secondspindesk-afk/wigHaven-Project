@@ -1,5 +1,6 @@
 import supportService from '../services/supportService.js';
 import logger from '../utils/logger.js';
+import { notifySupportChanged } from '../utils/adminBroadcast.js';
 
 /**
  * Create a new ticket
@@ -12,10 +13,50 @@ export const createTicket = async (req, res, next) => {
 
         const ticket = await supportService.createTicket(userId, { subject, message, priority });
 
+        // 🔔 Real-time: Notify all admin dashboards
+        notifySupportChanged({ action: 'created', ticketId: ticket.id });
+
         res.status(201).json({
             success: true,
             data: ticket,
             message: 'Support ticket created successfully'
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * Create a guest ticket (Public - no auth required)
+ * POST /api/support/guest
+ */
+export const createGuestTicket = async (req, res, next) => {
+    try {
+        const { name, email, subject, message, priority = 'medium' } = req.body;
+
+        // Validate required fields
+        if (!name || !email || !subject || !message) {
+            return res.status(400).json({
+                success: false,
+                error: 'Name, email, subject and message are required'
+            });
+        }
+
+        const ticket = await supportService.createGuestTicket({
+            name,
+            email,
+            subject,
+            message,
+            priority
+        });
+
+        // 🔔 Real-time: Notify all admin dashboards
+        notifySupportChanged({ action: 'guest_created', ticketId: ticket.id });
+
+        res.status(201).json({
+            success: true,
+            data: { id: ticket.id },
+            message: 'Your message has been submitted. We will respond to your email within 24 hours.'
         });
     } catch (error) {
         next(error);
@@ -79,8 +120,10 @@ export const getTicket = async (req, res, next) => {
     try {
         const userId = req.user.id;
         const ticketId = req.params.id;
+        // Allow admins to view any ticket (including guest tickets)
+        const isAdmin = ['admin', 'super_admin'].includes(req.user.role);
 
-        const ticket = await supportService.getTicketById(ticketId, userId);
+        const ticket = await supportService.getTicketById(ticketId, userId, isAdmin);
 
         res.json({
             success: true,
@@ -132,6 +175,9 @@ export const updateTicketStatus = async (req, res, next) => {
 
         const ticket = await supportService.updateTicketStatus(ticketId, status);
 
+        // 🔔 Real-time: Notify all admin dashboards
+        notifySupportChanged({ action: 'status_updated', ticketId, status });
+
         res.json({
             success: true,
             data: ticket,
@@ -166,6 +212,7 @@ export const adminReplyTicket = async (req, res, next) => {
 
 export default {
     createTicket,
+    createGuestTicket,
     replyTicket,
     getTickets,
     getTicket,

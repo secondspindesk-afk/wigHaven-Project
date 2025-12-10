@@ -2,8 +2,45 @@ import { getPrisma } from '../config/database.js';
 import { broadcastForceLogout } from '../config/websocket.js';
 import logger from '../utils/logger.js';
 
+// ============================================
+// IN-MEMORY CACHE FOR SETTINGS
+// ============================================
+// Settings change rarely but are read frequently (every cart request).
+// Caching them in memory significantly reduces database round-trips.
+
+let settingsCache = null;
+let settingsCacheTime = 0;
+const SETTINGS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Invalidate the settings cache
+ * Call this when settings are updated
+ */
+export const invalidateSettingsCache = () => {
+    settingsCache = null;
+    settingsCacheTime = 0;
+    logger.info('[CACHE] Settings cache invalidated');
+};
+
+/**
+ * Helper to parse setting values
+ */
+const parseValue = (value) => {
+    if (value === 'true') return true;
+    if (value === 'false') return false;
+    if (value && (value.startsWith('{') || value.startsWith('['))) {
+        try {
+            return JSON.parse(value);
+        } catch (e) {
+            return value;
+        }
+    }
+    return value;
+};
+
 /**
  * Get a specific setting by key
+ * Note: Individual settings are NOT cached to ensure critical reads are fresh
  */
 export const getSetting = async (key) => {
     const prisma = getPrisma();
@@ -11,60 +48,45 @@ export const getSetting = async (key) => {
         where: { key }
     });
 
-    // Helper to parse value
-    const parseValue = (key, value) => {
-        if (value === 'true') return true;
-        if (value === 'false') return false;
-
-        // Try parsing JSON for complex objects (like paymentMethods)
-        if (value && (value.startsWith('{') || value.startsWith('['))) {
-            try {
-                return JSON.parse(value);
-            } catch (e) {
-                return value;
-            }
-        }
-
-        return value;
-    };
-
-    // Parse boolean values and JSON
     if (setting) {
-        return parseValue(key, setting.value);
+        return parseValue(setting.value);
     }
 
     return null;
 };
 
 /**
- * Get all settings
+ * Get all settings with IN-MEMORY CACHING
+ * 
+ * Settings are cached for 5 minutes to reduce DB calls.
+ * Cache is invalidated when settings are updated.
  */
 export const getAllSettings = async () => {
+    const now = Date.now();
+
+    // Return cached settings if still valid
+    if (settingsCache && (now - settingsCacheTime) < SETTINGS_CACHE_TTL) {
+        return settingsCache;
+    }
+
+    // Fetch from database
     const prisma = getPrisma();
     const settings = await prisma.systemSetting.findMany();
 
-    // Helper to parse value (reused)
-    const parseValue = (value) => {
-        if (value === 'true') return true;
-        if (value === 'false') return false;
-        if (value && (value.startsWith('{') || value.startsWith('['))) {
-            try {
-                return JSON.parse(value);
-            } catch (e) {
-                return value;
-            }
-        }
-        return value;
-    };
-
-    return settings.reduce((acc, curr) => {
+    // Parse and cache
+    settingsCache = settings.reduce((acc, curr) => {
         acc[curr.key] = parseValue(curr.value);
         return acc;
     }, {});
+    settingsCacheTime = now;
+
+    logger.debug('[CACHE] Settings cache refreshed');
+    return settingsCache;
 };
 
 /**
  * Update a setting
+ * IMPORTANT: Invalidates cache after update
  */
 export const updateSetting = async (key, value, userId) => {
     const prisma = getPrisma();
@@ -81,6 +103,9 @@ export const updateSetting = async (key, value, userId) => {
             updatedBy: userId
         }
     });
+
+    // INVALIDATE CACHE after updating a setting
+    invalidateSettingsCache();
 
     // If enabling maintenance mode, record the start time and force logout non-admin users
     if ((key === 'maintenanceMode' || key === 'maintenance_mode') && String(value) === 'true') {
@@ -109,5 +134,6 @@ export const updateSetting = async (key, value, userId) => {
 export default {
     getSetting,
     getAllSettings,
-    updateSetting
+    updateSetting,
+    invalidateSettingsCache
 };

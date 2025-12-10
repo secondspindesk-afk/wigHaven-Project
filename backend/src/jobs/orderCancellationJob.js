@@ -47,6 +47,19 @@ export const startOrderCancellationJob = () => {
                         },
                     });
 
+                    // ✅ CRITICAL: Decrement discount usage for cancelled orders
+                    // This restores discount uses that were consumed by abandoned checkouts
+                    if (order.couponCode) {
+                        try {
+                            const discountService = (await import('../services/discountService.js')).default;
+                            await discountService.decrementUsage(order.couponCode);
+                            console.log(`Discount usage decremented for cancelled order ${order.orderNumber}: ${order.couponCode}`);
+                        } catch (discountError) {
+                            console.error(`Failed to decrement discount for order ${order.orderNumber}:`, discountError);
+                            // Don't fail the cancellation
+                        }
+                    }
+
                     // Send notification if order belongs to a user
                     if (order.userId) {
                         try {

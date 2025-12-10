@@ -9,7 +9,9 @@ import {
     Send,
     Loader2,
     User,
-    Clock
+    Clock,
+    Mail,
+    UserX
 } from 'lucide-react';
 import { useAdminSupportTickets, useUpdateTicketStatus, useAdminReplyTicket, useSupportTicket } from '@/lib/hooks/useSupport';
 import { SupportTicket } from '@/lib/types/support';
@@ -156,10 +158,24 @@ export default function TicketList() {
                                                     <h3 className="text-sm font-medium text-white truncate">
                                                         {ticket.subject}
                                                     </h3>
+                                                    {!ticket.userId && (
+                                                        <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase bg-purple-500/10 text-purple-400 rounded">
+                                                            GUEST
+                                                        </span>
+                                                    )}
                                                 </div>
                                                 <div className="flex items-center gap-2 text-xs text-zinc-500">
-                                                    <User size={12} />
-                                                    <span>{ticket.user?.firstName} {ticket.user?.lastName}</span>
+                                                    {ticket.userId ? (
+                                                        <>
+                                                            <User size={12} />
+                                                            <span>{ticket.user?.firstName} {ticket.user?.lastName}</span>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <UserX size={12} className="text-purple-400" />
+                                                            <span className="text-purple-400">{ticket.guestName}</span>
+                                                        </>
+                                                    )}
                                                     <span className="text-zinc-600">•</span>
                                                     <Clock size={12} />
                                                     <span>{formatDistanceToNow(new Date(ticket.createdAt), { addSuffix: true })}</span>
@@ -220,9 +236,30 @@ export default function TicketList() {
                                     ✕
                                 </button>
                             </div>
-                            <p className="text-xs text-zinc-500 mb-3">
-                                {selectedTicket.user?.firstName} {selectedTicket.user?.lastName} • {selectedTicket.user?.email}
-                            </p>
+
+                            {/* User/Guest Info */}
+                            {selectedTicket.userId ? (
+                                <p className="text-xs text-zinc-500 mb-3">
+                                    {selectedTicket.user?.firstName} {selectedTicket.user?.lastName} • {selectedTicket.user?.email}
+                                </p>
+                            ) : (
+                                <div className="p-3 bg-purple-500/10 border border-purple-500/20 rounded mb-3">
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <UserX size={14} className="text-purple-400" />
+                                        <span className="text-xs font-bold text-purple-400 uppercase">Guest Ticket</span>
+                                    </div>
+                                    <p className="text-xs text-zinc-400">
+                                        <span className="font-medium">{selectedTicket.guestName}</span>
+                                    </p>
+                                    <p className="text-xs text-zinc-500 flex items-center gap-1">
+                                        <Mail size={10} />
+                                        {selectedTicket.guestEmail}
+                                    </p>
+                                    <p className="text-[10px] text-purple-300/70 mt-2">
+                                        ⚡ Replies will be sent to their email
+                                    </p>
+                                </div>
+                            )}
 
                             {/* Status Controls */}
                             <div className="flex gap-2">

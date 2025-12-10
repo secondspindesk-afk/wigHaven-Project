@@ -52,19 +52,64 @@ export const startPaymentVerificationJob = () => {
                     const verificationResult = await verifyPayment(order.paystackReference);
 
                     if (verificationResult.status === 'success') {
-                        // Payment successful! Update order
-                        await prisma.order.update({
-                            where: { id: order.id },
-                            data: {
-                                status: 'processing', // Move to processing
-                                paymentStatus: 'paid',
-                                paidAt: new Date(),
-                                paymentMethod: verificationResult.channel || 'paystack',
-                            },
+                        // Payment successful! Process in transaction to ensure atomicity
+                        await prisma.$transaction(async (tx) => {
+                            // Get order with items for stock deduction
+                            const orderWithItems = await tx.order.findUnique({
+                                where: { id: order.id },
+                                include: { items: true }
+                            });
+
+                            // ✅ CRITICAL: Deduct stock for each item (mirroring webhookWorker.js)
+                            for (const item of orderWithItems.items) {
+                                const variant = await tx.variant.findUnique({
+                                    where: { id: item.variantId }
+                                });
+
+                                if (!variant) {
+                                    logger.error(`Variant ${item.variantId} not found for order ${order.orderNumber}`);
+                                    continue; // Skip but don't fail
+                                }
+
+                                if (variant.stock < item.quantity) {
+                                    logger.error(`CRITICAL: Insufficient stock during recovery for Order ${order.orderNumber}, Variant ${variant.sku}. Stock: ${variant.stock}, Req: ${item.quantity}`);
+                                    // Still deduct - order is already paid. Admin will handle overselling.
+                                }
+
+                                // Decrement stock
+                                await tx.variant.update({
+                                    where: { id: item.variantId },
+                                    data: { stock: { decrement: item.quantity } }
+                                });
+
+                                // Record Stock Movement
+                                await tx.stockMovement.create({
+                                    data: {
+                                        variantId: item.variantId,
+                                        orderId: order.id,
+                                        type: 'sale',
+                                        quantity: -item.quantity,
+                                        previousStock: variant.stock,
+                                        newStock: variant.stock - item.quantity,
+                                        reason: `Order ${order.orderNumber} payment recovered via verification job`
+                                    }
+                                });
+                            }
+
+                            // Update order status
+                            await tx.order.update({
+                                where: { id: order.id },
+                                data: {
+                                    status: 'processing',
+                                    paymentStatus: 'paid',
+                                    paidAt: new Date(),
+                                    paymentMethod: verificationResult.channel || 'paystack',
+                                },
+                            });
                         });
 
                         // Log recovery
-                        logger.info(`💰 Recovered payment for order ${order.orderNumber}`);
+                        logger.info(`💰 Recovered payment for order ${order.orderNumber} (stock deducted)`);
                         recovered++;
                     } else if (verificationResult.status === 'failed' || verificationResult.status === 'abandoned') {
                         // Explicit failure - cancel immediately

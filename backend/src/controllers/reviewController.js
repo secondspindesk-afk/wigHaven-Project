@@ -1,5 +1,6 @@
 import reviewService from '../services/reviewService.js';
 import logger from '../utils/logger.js';
+import { notifyReviewsChanged } from '../utils/adminBroadcast.js';
 
 /**
  * Create review with comprehensive validation
@@ -70,6 +71,9 @@ export const createReview = async (req, res) => {
             );
         }
 
+        // 🔔 Real-time: Notify all admin dashboards
+        notifyReviewsChanged({ action: 'created', reviewId: review.id, productId });
+
         res.status(201).json({
             success: true,
             data: review,
@@ -139,6 +143,9 @@ export const approveReview = async (req, res) => {
             const emailService = (await import('../services/emailService.js')).default;
             await emailService.sendReviewApproved(review, review.user, review.product);
         }
+
+        // 🔔 Real-time: Notify all admin dashboards
+        notifyReviewsChanged({ action: 'approved', reviewId: id });
 
         res.json({
             success: true,
@@ -262,6 +269,9 @@ export const rejectReview = async (req, res) => {
         const { id } = req.params;
         const review = await reviewService.rejectReview(id);
 
+        // 🔔 Real-time: Notify all admin dashboards
+        notifyReviewsChanged({ action: 'rejected', reviewId: id });
+
         res.json({
             success: true,
             data: review,
@@ -295,6 +305,9 @@ export const bulkUpdateReviews = async (req, res) => {
         }
 
         const result = await reviewService.bulkUpdateReviews(ids, action);
+
+        // 🔔 Real-time: Notify all admin dashboards
+        notifyReviewsChanged({ action: 'bulk_' + action, count: result.count });
 
         res.json({
             success: true,

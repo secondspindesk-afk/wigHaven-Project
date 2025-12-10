@@ -93,11 +93,12 @@ export const passwordResetLimiter = rateLimit({
 
 /**
  * General API rate limiter
- * Limit: 300 requests per 15 minutes per IP (increased for development)
+ * Limit: 1000 requests per 15 minutes per IP (increased for development)
+ * In production, consider lowering this value via RATE_LIMIT_MAX_REQUESTS env variable
  */
 export const generalLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '300', 10),
+    max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '1000', 10),
     message: {
         success: false,
         error: {
@@ -120,13 +121,22 @@ export const generalLimiter = rateLimit({
         if (req.path.startsWith('/api/admin')) return true;
         if (req.path.startsWith('/api/super-admin')) return true;
 
+        // Skip for support routes (admins use these frequently)
+        if (req.path.startsWith('/api/support')) return true;
+
+        // Skip in development mode
+        if (process.env.NODE_ENV === 'development') return true;
+
         return false;
     },
     keyGenerator: (req) => {
         return req.ip || req.headers['x-forwarded-for'] || 'unknown';
     },
     handler: (req, res, next) => {
-        logger.warn(`Rate limit exceeded for IP: ${req.ip}`);
+        // Only log in production to reduce noise
+        if (process.env.NODE_ENV !== 'development') {
+            logger.warn(`Rate limit exceeded for IP: ${req.ip}`);
+        }
         next(new TooManyRequestsError('Too many requests. Please try again later.'));
     },
 });

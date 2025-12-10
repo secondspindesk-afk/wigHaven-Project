@@ -6,6 +6,7 @@ import logger from '../utils/logger.js';
 import analyticsService from '../services/analyticsService.js';
 import bcrypt from 'bcryptjs';
 import { broadcastForceLogout } from '../config/websocket.js';
+import { notifyUsersChanged, notifySettingsChanged, notifyStockChanged } from '../utils/adminBroadcast.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -235,6 +236,9 @@ export const forceLogoutUser = async (req, res) => {
             data: { isActive: false }
         });
 
+        // 🔔 Real-time: Notify all admin dashboards
+        notifyUsersChanged({ action: 'deactivated', userId });
+
         logger.warn(`[SUPER_ADMIN] Deactivated user (Force Logout): ${userId}`);
         res.json({ success: true, message: 'User deactivated. They will be blocked on next request.' });
     } catch (error) {
@@ -256,6 +260,9 @@ export const updateUserRole = async (req, res) => {
             where: { id: userId },
             data: { role }
         });
+
+        // 🔔 Real-time: Notify all admin dashboards
+        notifyUsersChanged({ action: 'role_changed', userId, newRole: role });
 
         logger.warn(`[SUPER_ADMIN] Updated role for user ${userId} to ${role}`);
         res.json({ success: true, user });
@@ -333,6 +340,9 @@ export const updateSystemSetting = async (req, res) => {
         } else if ((key === 'maintenance_mode' || key === 'maintenanceMode') && String(value) === 'false') {
             logger.warn(`[SUPER_ADMIN] Maintenance Mode set to: ${value}`);
         }
+
+        // 🔔 Real-time: Notify all admin dashboards
+        notifySettingsChanged({ key, action: 'updated' });
 
         res.json({ success: true, setting });
     } catch (error) {
@@ -473,6 +483,10 @@ export const getAdminActivities = async (req, res) => {
 export const globalStockUpdate = async (req, res) => {
     try {
         // Placeholder for global stock update logic
+
+        // 🔔 Real-time: Notify all admin dashboards
+        notifyStockChanged({ action: 'global_update' });
+
         res.json({ success: true, message: 'Global stock update triggered' });
     } catch (error) {
         logger.error('Global Stock Update Error:', error);

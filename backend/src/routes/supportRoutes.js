@@ -29,7 +29,19 @@ const createTicketLimiter = rateLimit({
     message: { success: false, error: 'Too many tickets created. Please try again later.' }
 });
 
-// All user routes require authentication
+// Guest ticket schema (for public contact form)
+const guestTicketSchema = Joi.object({
+    name: Joi.string().min(2).max(100).required(),
+    email: Joi.string().email().required(),
+    subject: Joi.string().min(3).max(255).required(),
+    message: Joi.string().min(5).max(5000).required(),
+    priority: Joi.string().valid('low', 'medium', 'high').default('medium')
+});
+
+// PUBLIC ROUTE - Guest ticket (before auth middleware)
+router.post('/guest', createTicketLimiter, validateRequest(guestTicketSchema), supportController.createGuestTicket);
+
+// All user routes below require authentication
 router.use(authenticateToken);
 
 // User routes

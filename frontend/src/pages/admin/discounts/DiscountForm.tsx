@@ -46,6 +46,26 @@ export default function DiscountForm() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+
+        // Frontend validation to match backend
+        if (formData.type === 'percentage') {
+            if (formData.value <= 0 || formData.value > 100) {
+                showToast('Percentage discount must be between 1 and 100', 'error');
+                return;
+            }
+        } else if (formData.type === 'fixed') {
+            if (formData.value <= 0) {
+                showToast('Fixed discount amount must be greater than 0', 'error');
+                return;
+            }
+        }
+
+        // Validate dates
+        if (new Date(formData.startsAt) > new Date(formData.expiresAt)) {
+            showToast('End date must be after start date', 'error');
+            return;
+        }
+
         try {
             const payload = {
                 ...formData,
@@ -150,12 +170,16 @@ export default function DiscountForm() {
                             <input
                                 type="number"
                                 required
-                                min="0"
+                                min="1"
+                                max={formData.type === 'percentage' ? '100' : undefined}
                                 step={formData.type === 'percentage' ? '1' : '0.01'}
                                 value={formData.value}
                                 onChange={(e) => setFormData({ ...formData, value: Number(e.target.value) })}
                                 className="w-full bg-zinc-900 border border-zinc-800 p-2 text-sm text-white focus:outline-none focus:border-zinc-600"
                             />
+                            <p className="text-[9px] text-zinc-600">
+                                {formData.type === 'percentage' ? 'Enter 1-100 (e.g., 20 for 20% off)' : 'Enter amount in GHS'}
+                            </p>
                         </div>
                         <div className="space-y-1">
                             <label className="text-[10px] text-zinc-500 uppercase font-bold">Minimum Purchase</label>

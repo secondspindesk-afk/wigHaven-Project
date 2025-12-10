@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import notificationService, { NotificationsResponse } from '../api/notifications';
 import { useUser } from './useUser';
@@ -6,15 +6,57 @@ import { useToast } from '@/contexts/ToastContext';
 import { tokenManager } from '@/lib/utils/tokenManager';
 import { WebSocketMessageSchema, type Notification } from '@/lib/schemas/websocketSchemas';
 
+// ============ LIGHTWEIGHT ROBUSTNESS ENHANCEMENTS ============
+// Based on best practices for reliable WebSocket connections:
+// 1. Exponential backoff with jitter - prevents thundering herd
+// 2. Heartbeat ping/pong - detects dead connections early
+// 3. Sync-on-reconnect - recovers missed messages without heavy infrastructure
+
 export function useNotifications() {
     const queryClient = useQueryClient();
     const { data: user } = useUser();
     const { showToast } = useToast();
     const wsRef = useRef<WebSocket | null>(null);
     const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
+    const heartbeatIntervalRef = useRef<NodeJS.Timeout>();
     const reconnectAttemptsRef = useRef(0);
-    const MAX_RECONNECT_ATTEMPTS = 3;
-    const RECONNECT_DELAY = 5000;
+    const isReconnectRef = useRef(false);
+
+    // Reconnection config with exponential backoff
+    const MAX_RECONNECT_ATTEMPTS = 10; // More attempts with backoff
+    const BASE_DELAY = 1000; // Start at 1 second
+    const MAX_DELAY = 30000; // Cap at 30 seconds
+    const HEARTBEAT_INTERVAL = 30000; // Send heartbeat every 30 seconds
+
+    /**
+     * Calculate reconnection delay with exponential backoff and jitter
+     * Prevents "thundering herd" when many clients try to reconnect simultaneously
+     */
+    const getReconnectDelay = useCallback((attempt: number): number => {
+        // Exponential: 1s, 2s, 4s, 8s, 16s... capped at MAX_DELAY
+        const exponentialDelay = Math.min(BASE_DELAY * Math.pow(2, attempt), MAX_DELAY);
+        // Add jitter: ±25% randomization to distribute reconnection attempts
+        const jitter = exponentialDelay * 0.25 * (Math.random() * 2 - 1);
+        return Math.floor(exponentialDelay + jitter);
+    }, []);
+
+    /**
+     * Sync data after reconnection to recover any missed updates
+     * Lightweight: just invalidates queries, React Query handles the rest
+     */
+    const syncAfterReconnect = useCallback(() => {
+        console.log('🔄 Syncing data after WebSocket reconnection...');
+
+        // Invalidate critical queries that may have changed while disconnected
+        // React Query will only refetch if the data is currently being used
+        queryClient.invalidateQueries({ queryKey: ['notifications'] });
+        queryClient.invalidateQueries({ queryKey: ['orders'] });
+
+        // For admins, also sync dashboard data
+        if (user?.role === 'admin' || user?.role === 'super_admin') {
+            queryClient.invalidateQueries({ queryKey: ['admin'] });
+        }
+    }, [queryClient, user?.role]);
 
     // Fetch initial notifications
     const { data, isLoading, error } = useQuery({
@@ -40,9 +82,33 @@ export function useNotifications() {
                 wsRef.current = ws;
 
                 ws.onopen = () => {
-                    console.log('✅ WebSocket connected with secure token transmission');
+                    const wasReconnect = isReconnectRef.current;
+                    console.log(`✅ WebSocket connected${wasReconnect ? ' (reconnected)' : ''} with secure token transmission`);
+
                     // Reset reconnect counter on successful connection
                     reconnectAttemptsRef.current = 0;
+
+                    // If this was a reconnection, sync data to recover missed messages
+                    if (wasReconnect) {
+                        syncAfterReconnect();
+                        isReconnectRef.current = false;
+                    }
+
+                    // Start heartbeat to detect dead connections early
+                    if (heartbeatIntervalRef.current) {
+                        clearInterval(heartbeatIntervalRef.current);
+                    }
+                    heartbeatIntervalRef.current = setInterval(() => {
+                        if (ws.readyState === WebSocket.OPEN) {
+                            // Send lightweight ping - server will respond with pong
+                            // This keeps the connection alive through proxies/NAT
+                            try {
+                                ws.send(JSON.stringify({ type: 'PING', timestamp: Date.now() }));
+                            } catch {
+                                // Connection already dead, will be handled by close event
+                            }
+                        }
+                    }, HEARTBEAT_INTERVAL);
                 };
 
                 ws.onmessage = (event) => {
@@ -65,6 +131,12 @@ export function useNotifications() {
                             return;
                         }
 
+                        // Ignore PONG heartbeat responses (no action needed, just confirms connection is alive)
+                        if (message.type === 'PONG') {
+                            // Heartbeat response received - connection is alive
+                            return;
+                        }
+
                         // Handle force logout message (maintenance mode)
                         if (message.type === 'FORCE_LOGOUT') {
                             console.warn('🔒 Force logout received:', message.reason);
@@ -73,6 +145,19 @@ export function useNotifications() {
                             showToast(message.message, 'warning');
                             // Redirect to login with maintenance flag
                             window.location.href = '/login?maintenance=true';
+                            return;
+                        }
+
+                        // Handle DATA_UPDATE message (real-time admin dashboard updates)
+                        if (message.type === 'DATA_UPDATE') {
+                            console.log(`📊 DATA_UPDATE received: ${message.eventType}`, message.queryKeys);
+
+                            // Invalidate each query key sent by the backend
+                            message.queryKeys.forEach((queryKey: string[]) => {
+                                queryClient.invalidateQueries({ queryKey });
+                            });
+
+                            // No toast for data updates - silent refresh
                             return;
                         }
 
@@ -158,6 +243,12 @@ export function useNotifications() {
                 ws.onclose = (event) => {
                     wsRef.current = null;
 
+                    // Stop heartbeat
+                    if (heartbeatIntervalRef.current) {
+                        clearInterval(heartbeatIntervalRef.current);
+                        heartbeatIntervalRef.current = undefined;
+                    }
+
                     // Don't reconnect on normal closures or max attempts reached
                     const normalClosure = event.code === 1000 || event.code === 1005;
                     if (normalClosure) {
@@ -170,12 +261,18 @@ export function useNotifications() {
                         return;
                     }
 
-                    // Abnormal closure - attempt reconnect
+                    // Mark this as a reconnection attempt (for sync-on-reconnect)
+                    isReconnectRef.current = true;
+
+                    // Exponential backoff with jitter
+                    const delay = getReconnectDelay(reconnectAttemptsRef.current);
                     reconnectAttemptsRef.current++;
+
+                    console.log(`⏳ WebSocket reconnecting in ${Math.round(delay / 1000)}s (attempt ${reconnectAttemptsRef.current}/${MAX_RECONNECT_ATTEMPTS})`);
 
                     reconnectTimeoutRef.current = setTimeout(() => {
                         if (user) connectWebSocket();
-                    }, RECONNECT_DELAY);
+                    }, delay);
                 };
             } catch (error) {
                 console.error('Error connecting WebSocket:', error);
@@ -191,16 +288,23 @@ export function useNotifications() {
                 reconnectTimeoutRef.current = undefined;
             }
 
+            // Clear heartbeat interval
+            if (heartbeatIntervalRef.current) {
+                clearInterval(heartbeatIntervalRef.current);
+                heartbeatIntervalRef.current = undefined;
+            }
+
             // Close WebSocket with normal closure code
             if (wsRef.current) {
                 wsRef.current.close(1000, 'Component unmounted');
                 wsRef.current = null;
             }
 
-            // Reset reconnect counter
+            // Reset counters
             reconnectAttemptsRef.current = 0;
+            isReconnectRef.current = false;
         };
-    }, [user, queryClient]);
+    }, [user, queryClient, showToast, getReconnectDelay, syncAfterReconnect]);
 
     // Mutations
     const markReadMutation = useMutation({

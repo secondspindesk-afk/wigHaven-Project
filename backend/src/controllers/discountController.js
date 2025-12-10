@@ -1,5 +1,6 @@
 import discountService from '../services/discountService.js';
 import logger from '../utils/logger.js';
+import { notifyDiscountsChanged } from '../utils/adminBroadcast.js';
 
 /**
  * Create a new discount code (Admin)
@@ -35,6 +36,9 @@ export const createDiscount = async (req, res) => {
             isActive: isActive !== undefined ? isActive : true
         });
 
+        // 🔔 Real-time: Notify all admin dashboards
+        notifyDiscountsChanged({ action: 'created', code });
+
         res.status(201).json({
             success: true,
             data: discount,
@@ -42,7 +46,6 @@ export const createDiscount = async (req, res) => {
         });
     } catch (error) {
         logger.error('Create Discount Error:', error);
-        // Handle unique constraint violation
         if (error.code === 'P2002') {
             return res.status(409).json({
                 success: false,
@@ -82,6 +85,10 @@ export const deleteDiscount = async (req, res) => {
     try {
         const { id } = req.params;
         await discountService.deleteDiscount(id);
+
+        // 🔔 Real-time: Notify all admin dashboards
+        notifyDiscountsChanged({ action: 'deleted', discountId: id });
+
         res.json({
             success: true,
             message: 'Discount code deleted successfully'
@@ -161,6 +168,9 @@ export default {
                 minimumPurchase: minimumPurchase !== undefined ? (minimumPurchase ? parseFloat(minimumPurchase) : null) : undefined,
                 isActive
             });
+
+            // 🔔 Real-time: Notify all admin dashboards
+            notifyDiscountsChanged({ action: 'updated', discountId: id });
 
             res.json({ success: true, data: discount, message: 'Discount updated successfully' });
         } catch (error) {

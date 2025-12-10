@@ -443,6 +443,28 @@ export const sendSupportTicketReply = async (ticket, replyMessage, user) => {
 };
 
 /**
+ * Send guest support ticket reply email
+ * For guests who submitted contact form but have no account
+ */
+export const sendGuestTicketReply = async (ticket, replyMessage, guest) => {
+  const emailData = {
+    type: 'guest_ticket_reply',
+    to_email: guest.email,
+    subject: `Response to Your Inquiry - Ticket #${ticket.id}`,
+    template: 'guestTicketReply',
+    variables: {
+      name: guest.name || 'Valued Customer',
+      ticket_id: ticket.id,
+      ticket_subject: ticket.subject?.replace('[GUEST] ', '') || 'Your Inquiry',
+      reply_message: replyMessage,
+      contact_link: `${process.env.FRONTEND_URL}/contact`,
+      support_email: process.env.SUPPORT_EMAIL || 'support@wighaven.com',
+    },
+  };
+  return await safeQueueEmail(emailData, true); // Critical
+};
+
+/**
  * Send review approved email
  */
 export const sendReviewApproved = async (review, user, product) => {
@@ -517,6 +539,7 @@ export default {
   sendOrderStatusUpdate,
   sendSupportTicketCreated,
   sendSupportTicketReply,
+  sendGuestTicketReply,
   sendReviewApproved,
   sendReviewRejected,
   sendAccountDeactivated,

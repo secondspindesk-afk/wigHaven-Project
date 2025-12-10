@@ -326,7 +326,8 @@ export const getCartAbandonmentStats = async () => {
 };
 
 /**
- * Get System Health (Pg-Boss & DB)
+ * Get System Health (Database & Email Queue)
+ * NOTE: PgBoss removed - now using in-memory email queue
  */
 export const getSystemHealth = async () => {
     const prisma = getPrisma();
@@ -342,24 +343,15 @@ export const getSystemHealth = async () => {
         dbStatus = 'error';
     }
 
-    // Check Pg-Boss Jobs (assuming pgboss schema exists)
-    // We need to count jobs by state in the pgboss.job table
-    let queueStats = { active: 0, completed: 0, failed: 0 };
+    // Get email queue stats from simple in-memory queue
+    // Import dynamically to avoid circular dependency
+    let queueStats = { pending: 0, processing: 0, completed: 0, failed: 0 };
     try {
-        const jobStats = await prisma.$queryRaw`
-            SELECT state, count(*) as count 
-            FROM pgboss.job 
-            GROUP BY state
-        `;
-
-        jobStats.forEach(stat => {
-            if (stat.state === 'active') queueStats.active = Number(stat.count);
-            if (stat.state === 'completed') queueStats.completed = Number(stat.count);
-            if (stat.state === 'failed') queueStats.failed = Number(stat.count);
-        });
+        const { getQueueStats } = await import('../../config/simpleEmailQueue.js');
+        queueStats = getQueueStats();
     } catch (e) {
-        // pgboss schema might not exist or be accessible
-        queueStats = { error: 'Could not fetch queue stats' };
+        // If queue not available, use defaults
+        queueStats = { error: 'Queue stats unavailable' };
     }
 
     return {

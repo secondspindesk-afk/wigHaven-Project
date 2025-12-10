@@ -11,6 +11,7 @@ import { startSessionCleanupJob } from './sessionCleanupJob.js';
 import { startAnalyticsJob } from './analyticsAggregationJob.js';
 import { startCleanupOrphanedMediaJob } from './cleanupOrphanedMediaJob.js';
 import { startCurrencyRateJob } from './currencyRateJob.js';
+import { startDatabaseKeepAliveJob } from './databaseKeepAliveJob.js';
 import logger from '../utils/logger.js';
 
 /**
@@ -21,6 +22,7 @@ export const startCronJobs = () => {
     logger.info('⏰ Starting Cron Jobs...');
 
     const jobs = [
+        { name: 'Database Keep-Alive', schedule: 'Every 2 mins', fn: startDatabaseKeepAliveJob },
         { name: 'Payment Verification', schedule: 'Every 10 mins', fn: startPaymentVerificationJob },
         { name: 'Order Cancellation', schedule: 'Every hour', fn: startOrderCancellationJob },
         { name: 'Session Cleanup', schedule: 'Daily at 2:00 AM', fn: startSessionCleanupJob },

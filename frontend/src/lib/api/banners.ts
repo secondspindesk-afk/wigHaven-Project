@@ -40,6 +40,12 @@ function extractData<T>(response: { data: { success: boolean; data: T } | T }): 
 // ==================== API FUNCTIONS ====================
 
 export const bannerApi = {
+    // Get active banners (Public - no auth required)
+    getActiveBanners: async (): Promise<Banner[]> => {
+        const response = await api.get('/banners');
+        return extractData(response);
+    },
+
     // Get all banners (Admin)
     getAllBanners: async (): Promise<Banner[]> => {
         const response = await api.get('/admin/banners');

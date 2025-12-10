@@ -71,6 +71,34 @@ export const incrementUsage = async (id) => {
 };
 
 /**
+ * Decrement discount usage count (for order cancellation/failure)
+ * @param {string} id - Discount ID
+ * @returns {Promise<Object>} Updated discount
+ */
+export const decrementUsage = async (id) => {
+    try {
+        const prisma = getPrisma();
+        // First check current usage to prevent going negative
+        const discount = await prisma.discountCode.findUnique({
+            where: { id }
+        });
+
+        if (!discount || discount.usedCount <= 0) {
+            logger.warn(`Cannot decrement usage for discount ${id}: already at 0 or not found`);
+            return discount;
+        }
+
+        return await prisma.discountCode.update({
+            where: { id },
+            data: { usedCount: { decrement: 1 } }
+        });
+    } catch (error) {
+        logger.error(`Error decrementing usage for discount ${id}:`, error);
+        throw error;
+    }
+};
+
+/**
  * Get all discounts (Admin)
  */
 export const getAllDiscounts = async () => {
@@ -105,6 +133,7 @@ export default {
     findDiscountByCode,
     findDiscountById,
     incrementUsage,
+    decrementUsage,
     getAllDiscounts,
     deleteDiscount,
     updateDiscount: async (id, data) => {

@@ -5,8 +5,8 @@ import { processPaymentWebhook } from '../services/paymentService.js';
 import webhookRepository from '../db/repositories/webhookRepository.js';
 import logger from '../utils/logger.js';
 import { getPrisma } from '../config/database.js';
-import { getQueue } from '../config/queue.js';
 import settingsService from '../services/settingsService.js';
+import { notifyOrdersChanged } from '../utils/adminBroadcast.js';
 
 /**
  * Create order
@@ -87,6 +87,9 @@ export const createOrder = async (req, res, next) => {
 
         // Check order milestone
         await milestoneService.checkOrderMilestone();
+
+        // 🔔 Real-time: Notify all admin dashboards
+        notifyOrdersChanged({ action: 'created', orderNumber: result.order.order_number });
 
         res.status(201).json({
             success: true,
@@ -274,6 +277,9 @@ export const cancelOrder = async (req, res, next) => {
             );
         }
 
+        // 🔔 Real-time: Notify all admin dashboards
+        notifyOrdersChanged({ action: 'cancelled', orderNumber: order.order_number });
+
         res.json({
             success: true,
             data: { order },
@@ -329,6 +335,9 @@ export const updateOrderStatus = async (req, res, next) => {
                 status
             );
         }
+
+        // 🔔 Real-time: Notify all admin dashboards
+        notifyOrdersChanged({ action: 'status_updated', orderNumber: order.order_number, status });
 
         res.json({
             success: true,
@@ -557,6 +566,9 @@ export const updateTrackingNumber = async (req, res, next) => {
                 'shipped'
             );
         }
+
+        // 🔔 Real-time: Notify all admin dashboards
+        notifyOrdersChanged({ action: 'tracking_updated', orderNumber: order.order_number });
 
         res.json({
             success: true,

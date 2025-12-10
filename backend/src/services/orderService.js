@@ -113,18 +113,29 @@ export const createOrder = async (cart, orderData) => {
                 data: itemsData
             });
 
+            // D. Increment Discount Usage (if applicable) - INSIDE TRANSACTION
+            // This ensures if the transaction fails, usage is not incremented
+            if (cart.discount?.code) {
+                try {
+                    const discountRecord = await tx.discountCode.findUnique({
+                        where: { code: cart.discount.code }
+                    });
+                    if (discountRecord) {
+                        await tx.discountCode.update({
+                            where: { id: discountRecord.id },
+                            data: { usedCount: { increment: 1 } }
+                        });
+                        logger.info(`Discount usage incremented for code: ${cart.discount.code}`);
+                    }
+                } catch (err) {
+                    logger.error(`Failed to increment usage for discount ${cart.discount.code}:`, err);
+                    // Throw to rollback the entire transaction
+                    throw new Error(`Failed to apply discount code: ${err.message}`);
+                }
+            }
+
             return { order: newOrder, orderItems: itemsData };
         });
-
-        // Increment Discount Usage (if applicable)
-        if (cart.discount?.code) {
-            try {
-                await discountService.incrementUsage(cart.discount.code);
-            } catch (err) {
-                logger.error(`Failed to increment usage for discount ${cart.discount.code}:`, err);
-                // Don't fail the order for this
-            }
-        }
 
         // 5. Initialize Mobile Money Payment (Server-Side - Outside transaction)
         let payment = null;
@@ -157,6 +168,17 @@ export const createOrder = async (cart, orderData) => {
 
         } catch (paymentError) {
             logger.error('Mobile money charge failed, order NOT cleared from cart:', paymentError);
+
+            // ✅ CRITICAL: Decrement discount usage since payment failed
+            // The order was created in DB but payment failed, so restore the discount
+            if (cart.discount?.code) {
+                try {
+                    await discountService.decrementUsage(cart.discount.code);
+                    logger.info(`Discount usage decremented for failed payment: ${cart.discount.code}`);
+                } catch (err) {
+                    logger.error(`Failed to decrement discount usage for ${cart.discount.code}:`, err);
+                }
+            }
 
             // ❌ Payment failed - throw error and keep cart
             // Frontend should show error and let user retry

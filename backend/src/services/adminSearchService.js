@@ -118,7 +118,7 @@ const searchProducts = async (prisma, query, limit) => {
         meta: `₵${Number(p.basePrice).toFixed(2)}`,
         image: p.images?.[0] || null,
         status: p.isActive ? 'active' : 'inactive',
-        url: `/admin/products/${p.id}`
+        url: `/admin/products/${p.id}/edit`
     }));
 };
 

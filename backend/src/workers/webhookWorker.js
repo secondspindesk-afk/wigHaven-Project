@@ -1,261 +1,346 @@
 import { getPrisma } from '../config/database.js';
-import { initializeQueue, getQueue } from '../config/queue.js';
+import { queueEmail } from '../jobs/emailQueue.js';
 import logger from '../utils/logger.js';
-
-// Queue name for webhooks
-const QUEUE_NAME = 'webhooks';
+import { notifyOrdersChanged, notifyStockChanged } from '../utils/adminBroadcast.js';
 
 /**
- * Process a single webhook job
+ * Webhook Processor
+ * 
+ * SIMPLIFIED: No longer uses PgBoss queue
+ * - Called directly from paymentService.js via setImmediate
+ * - Emails queued via simple EventEmitter queue
+ * - Zero database connections for queue management
  */
-async function processWebhookJob(jobOrJobs) {
-    const jobs = Array.isArray(jobOrJobs) ? jobOrJobs : [jobOrJobs];
+
+/**
+ * Process a webhook payload directly
+ * Exported for use by paymentService.js
+ */
+export async function processWebhookPayload(webhookData) {
     const prisma = getPrisma();
 
-    for (const job of jobs) {
-        const jobData = job.data || job;
-        const { payload } = jobData;
+    const reference = webhookData.data?.reference;
+    const event = webhookData.event;
 
-        if (!payload || !payload.data || !payload.event) {
-            logger.error(`Invalid webhook payload for job ${job.id}`);
-            continue;
+    if (!reference || !event) {
+        logger.error(`Invalid webhook payload: missing reference or event`);
+        throw new Error('Invalid webhook payload');
+    }
+
+    try {
+        logger.info(`Processing webhook ${reference} (${event})`);
+
+        // 1. Check idempotency - webhook already processed?
+        const webhookLog = await prisma.webhookLog.findUnique({
+            where: { reference }
+        });
+
+        if (webhookLog?.isProcessed) {
+            logger.info(`Webhook ${reference} already processed. Skipping.`);
+            return;
         }
 
-        const reference = payload.data.reference;
-        const event = payload.event;
+        if (event === 'charge.success') {
+            // 2. Process Payment & Stock Deduction Atomically
+            let stockCheckFailed = false;
+            let insufficientStockItems = [];
 
-        try {
-            logger.info(`Processing webhook ${reference} (${event})`);
+            await prisma.$transaction(async (tx) => {
+                // Find the order
+                const order = await tx.order.findUnique({
+                    where: { paystackReference: reference },
+                    include: { items: true }
+                });
 
-            // 1. Log the webhook first (idempotency check)
-            // We use upsert to handle potential duplicate deliveries from Paystack
-            const webhookLog = await prisma.webhookLog.upsert({
-                where: { reference },
-                update: {}, // No update if exists
-                create: {
-                    provider: 'paystack',
-                    reference,
-                    event,
-                    status: 'processing',
-                    payload,
-                    isProcessed: false
+                if (!order) {
+                    throw new Error(`Order not found for reference: ${reference}`);
                 }
-            });
 
-            if (webhookLog.isProcessed) {
-                logger.info(`Webhook ${reference} already processed. Skipping.`);
-                continue;
-            }
+                if (order.paymentStatus === 'paid') {
+                    logger.info(`Order ${order.orderNumber} already paid.`);
+                    return;
+                }
 
-            if (event === 'charge.success') {
-                // 2. Process Payment & Stock Deduction Atomically
-                await prisma.$transaction(async (tx) => {
-                    // Find the order
-                    const order = await tx.order.findUnique({
-                        where: { paystackReference: reference },
-                        include: { items: true }
+                // ✅ CRITICAL: STRICT STOCK CHECK BEFORE DEDUCTION
+                for (const item of order.items) {
+                    const variant = await tx.variant.findUnique({
+                        where: { id: item.variantId }
                     });
 
-                    if (!order) {
-                        throw new Error(`Order not found for reference: ${reference}`);
+                    if (!variant) {
+                        throw new Error(`Variant ${item.variantId} not found for order ${order.orderNumber}`);
                     }
 
-                    if (order.paymentStatus === 'paid') {
-                        logger.info(`Order ${order.orderNumber} already paid.`);
-                        return;
-                    }
-
-                    // ✅ SINGLE STOCK DEDUCTION (ONLY happens here after payment confirmed)
-                    // NOTE: Stock is NOT deducted in orderService.createOrder anymore
-                    // This ensures stock is only committed when payment is successful
-                    // Deduct Stock for each item
-                    for (const item of order.items) {
-                        // Check current stock
-                        const variant = await tx.variant.findUnique({
-                            where: { id: item.variantId }
-                        });
-
-                        if (!variant) {
-                            throw new Error(`Variant ${item.variantId} not found for order ${order.orderNumber}`);
-                        }
-
-                        if (variant.stock < item.quantity) {
-                            // CRITICAL: Overselling detected during payment
-                            // In a real system, you might trigger a refund or partial fulfillment here.
-                            // For now, we log a critical error but proceed to negative stock to honor the paid order,
-                            // or throw to fail the webhook (which might retry).
-                            // Decision: Allow negative stock but log CRITICAL alert.
-                            logger.error(`CRITICAL: Overselling detected for Order ${order.orderNumber}, Variant ${variant.sku}. Stock: ${variant.stock}, Req: ${item.quantity}`);
-                        }
-
-                        // Decrement stock
-                        await tx.variant.update({
-                            where: { id: item.variantId },
-                            data: { stock: { decrement: item.quantity } }
-                        });
-
-                        // Record Stock Movement
-                        await tx.stockMovement.create({
-                            data: {
-                                variantId: item.variantId,
-                                orderId: order.id,
-                                type: 'sale',
-                                quantity: -item.quantity,
-                                previousStock: variant.stock,
-                                newStock: variant.stock - item.quantity,
-                                reason: `Order ${order.orderNumber} payment confirmed`
-                            }
+                    if (variant.stock < item.quantity) {
+                        insufficientStockItems.push({
+                            variantId: variant.id,
+                            sku: variant.sku,
+                            available: variant.stock,
+                            requested: item.quantity
                         });
                     }
+                }
 
-                    // Update Order Status
+                // If ANY item has insufficient stock, trigger refund flow
+                if (insufficientStockItems.length > 0) {
+                    stockCheckFailed = true;
+
                     await tx.order.update({
                         where: { id: order.id },
                         data: {
-                            status: 'processing', // Move from pending to processing
-                            paymentStatus: 'paid',
-                            paidAt: new Date()
+                            status: 'cancelled',
+                            paymentStatus: 'refund_pending',
+                            notes: `Auto-cancelled: Insufficient stock. ` +
+                                insufficientStockItems.map(i => `${i.sku}: needed ${i.requested}, had ${i.available}`).join('; ')
                         }
                     });
 
-                    // Update Webhook Log
-                    await tx.webhookLog.update({
-                        where: { id: webhookLog.id },
+                    if (order.couponCode) {
+                        await tx.discountCode.updateMany({
+                            where: { code: order.couponCode, usedCount: { gt: 0 } },
+                            data: { usedCount: { decrement: 1 } }
+                        });
+                    }
+
+                    logger.error(`❌ OVERSELLING PREVENTED for Order ${order.orderNumber}. Triggering refund.`);
+                    return;
+                }
+
+                // ✅ All stock checks passed - proceed with deduction
+                for (const item of order.items) {
+                    const variant = await tx.variant.findUnique({
+                        where: { id: item.variantId }
+                    });
+
+                    await tx.variant.update({
+                        where: { id: item.variantId },
+                        data: { stock: { decrement: item.quantity } }
+                    });
+
+                    await tx.stockMovement.create({
                         data: {
-                            status: 'processed',
-                            isProcessed: true,
-                            orderId: order.id
+                            variantId: item.variantId,
+                            orderId: order.id,
+                            type: 'sale',
+                            quantity: -item.quantity,
+                            previousStock: variant.stock,
+                            newStock: variant.stock - item.quantity,
+                            reason: `Order ${order.orderNumber} payment confirmed`
                         }
                     });
+                }
 
-                    logger.info(`✅ Order ${order.orderNumber} paid and stock deducted.`);
+                // Update Order Status
+                await tx.order.update({
+                    where: { id: order.id },
+                    data: {
+                        status: 'processing',
+                        paymentStatus: 'paid',
+                        paidAt: new Date()
+                    }
                 });
 
-                // 3. Broadcast WebSocket Notification (Real-time UI update)
+                // Update Webhook Log
+                await tx.webhookLog.update({
+                    where: { reference },
+                    data: {
+                        status: 'processed',
+                        isProcessed: true,
+                        orderId: order.id
+                    }
+                });
+
+                logger.info(`✅ Order ${order.orderNumber} paid and stock deducted.`);
+
+                // 🔔 Real-time: Notify all admin dashboards of payment
+                notifyOrdersChanged({ action: 'payment_confirmed', orderNumber: order.orderNumber });
+                notifyStockChanged({ action: 'deducted', orderNumber: order.orderNumber });
+            });
+
+            // Handle refund OUTSIDE transaction (Paystack API call)
+            if (stockCheckFailed) {
                 try {
-                    const { broadcastNotification } = await import('../config/websocket.js');
+                    const { refundPayment } = await import('../services/paystackService.js');
+                    await refundPayment(reference);
+
                     const order = await prisma.order.findUnique({
                         where: { paystackReference: reference }
                     });
 
-                    if (order && order.userId) {
-                        broadcastNotification(order.userId, {
-                            type: 'order_payment_confirmed',
-                            message: `Payment received for Order #${order.orderNumber}`,
-                            data: {
-                                orderNumber: order.orderNumber,
-                                status: order.status,
-                                paymentStatus: order.paymentStatus
-                            }
-                        });
-                        logger.info(`📡 WebSocket notification sent to user ${order.userId}`);
-                    }
-                } catch (wsError) {
-                    logger.error(`Failed to send WebSocket notification for ${reference}:`, wsError);
-                }
-
-                // 4. Send Confirmation Email (Outside transaction to keep it fast)
-                // Check if order confirmation emails are enabled
-                try {
-                    const settingsService = (await import('../services/settingsService.js')).default;
-                    const orderConfirmationEmailEnabled = await settingsService.getSetting('orderConfirmationEmail');
-
-                    // Skip email if setting is explicitly disabled (default: true)
-                    if (orderConfirmationEmailEnabled === 'false' || orderConfirmationEmailEnabled === false) {
-                        logger.info(`📧 Order confirmation emails disabled - skipping for ref ${reference}`);
-                    } else {
-                        const order = await prisma.order.findUnique({
-                            where: { paystackReference: reference },
-                            include: {
-                                items: {
-                                    include: {
-                                        variant: { include: { product: true } }
-                                    }
-                                }
-                            }
+                    if (order) {
+                        await prisma.order.update({
+                            where: { id: order.id },
+                            data: { paymentStatus: 'refunded' }
                         });
 
-                        if (order) {
-                            const boss = getQueue();
-                            await boss.send('emails', {
-                                type: 'order_confirmation',
-                                toEmail: order.customerEmail, // Fixed: was to_email
-                                subject: `Order Confirmed #${order.orderNumber}`,
-                                template: 'orderConfirmation',
-                                variables: {
-                                    order_number: order.orderNumber,
-                                    customer_name: order.customerEmail.split('@')[0],
-                                    total: order.total,
-                                    items: order.items.map(item => ({
-                                        name: item.variant.product.name,
-                                        quantity: item.quantity,
-                                        price: item.unitPrice, // Fixed: was item.price
-                                        image: item.variant.product.images[0] || ''
-                                    })),
-                                    date: new Date().toLocaleDateString()
-                                }
+                        if (order.userId) {
+                            const notificationService = (await import('../services/notificationService.js')).default;
+                            await notificationService.create({
+                                userId: order.userId,
+                                type: 'order_cancelled',
+                                title: 'Order Cancelled - Item Out of Stock',
+                                message: `We're sorry, Order #${order.orderNumber} has been cancelled and refunded because one or more items sold out while you were checking out.`,
+                                link: `/account/orders/${order.orderNumber}`
                             });
-                            logger.info(`📧 Queued confirmation email for order ${order.orderNumber}`);
                         }
+
+                        // Queue email via simple queue (no PgBoss)
+                        queueEmail({
+                            type: 'order_cancelled_stock',
+                            toEmail: order.customerEmail,
+                            subject: `Order #${order.orderNumber} Cancelled - Item Out of Stock`,
+                            template: 'orderCancelledStock',
+                            variables: {
+                                order_number: order.orderNumber,
+                                customer_name: order.customerEmail.split('@')[0],
+                                items: insufficientStockItems.map(i => ({
+                                    sku: i.sku,
+                                    available: i.available,
+                                    requested: i.requested
+                                }))
+                            }
+                        });
                     }
-                } catch (emailError) {
-                    logger.error(`Failed to queue email for webhook ${reference}:`, emailError);
+
+                    logger.info(`💸 Refund initiated for oversold order ${reference}`);
+                } catch (refundError) {
+                    logger.error(`Failed to process refund for ${reference}:`, refundError);
+
+                    // ⚠️ CRITICAL: Notify admins about failed refund
+                    try {
+                        const notificationService = (await import('../services/notificationService.js')).default;
+                        await notificationService.notifyAllAdmins(
+                            'refund_failed',
+                            '⚠️ URGENT: Refund Failed',
+                            `Automatic refund failed for reference ${reference}. Amount needs manual refund via Paystack dashboard. Error: ${refundError.message}`,
+                            '/admin/orders'
+                        );
+                        logger.info(`📢 Admin notification sent for failed refund ${reference}`);
+                    } catch (notifyError) {
+                        logger.error(`Failed to notify admins about refund failure:`, notifyError);
+                    }
+
+                    const existingOrder = await prisma.order.findUnique({
+                        where: { paystackReference: reference },
+                        select: { notes: true }
+                    });
+                    const updatedNotes = (existingOrder?.notes || '') + ` | Refund failed: ${refundError.message}`;
+
+                    await prisma.order.update({
+                        where: { paystackReference: reference },
+                        data: {
+                            paymentStatus: 'refund_failed',
+                            notes: updatedNotes
+                        }
+                    });
                 }
 
-            } else {
-                // Handle other events (e.g., failed)
-                await prisma.webhookLog.update({
-                    where: { id: webhookLog.id },
-                    data: { status: 'ignored', isProcessed: true }
-                });
-            }
-
-        } catch (error) {
-            logger.error(`Failed to process webhook job ${job.id}:`, error);
-
-            // Update log with error if possible
-            try {
                 await prisma.webhookLog.update({
                     where: { reference },
-                    data: {
-                        status: 'failed',
-                        errorMessage: error.message
-                    }
+                    data: { status: 'processed_refunded', isProcessed: true }
                 });
-            } catch (e) { /* Ignore update error */ }
+                return;
+            }
 
-            throw error; // Retry
+            // 3. Broadcast WebSocket Notification
+            try {
+                const { broadcastNotification } = await import('../config/websocket.js');
+                const order = await prisma.order.findUnique({
+                    where: { paystackReference: reference }
+                });
+
+                if (order && order.userId) {
+                    broadcastNotification(order.userId, {
+                        type: 'order_payment_confirmed',
+                        message: `Payment received for Order #${order.orderNumber}`,
+                        data: {
+                            orderNumber: order.orderNumber,
+                            status: order.status,
+                            paymentStatus: order.paymentStatus
+                        }
+                    });
+                    logger.info(`📡 WebSocket notification sent to user ${order.userId}`);
+                }
+            } catch (wsError) {
+                logger.error(`Failed to send WebSocket notification for ${reference}:`, wsError);
+            }
+
+            // 4. Send Confirmation Email
+            try {
+                const settingsService = (await import('../services/settingsService.js')).default;
+                const orderConfirmationEmailEnabled = await settingsService.getSetting('orderConfirmationEmail');
+
+                if (orderConfirmationEmailEnabled === 'false' || orderConfirmationEmailEnabled === false) {
+                    logger.info(`📧 Order confirmation emails disabled - skipping for ref ${reference}`);
+                } else {
+                    const order = await prisma.order.findUnique({
+                        where: { paystackReference: reference },
+                        include: {
+                            items: {
+                                include: {
+                                    variant: { include: { product: true } }
+                                }
+                            }
+                        }
+                    });
+
+                    if (order) {
+                        // Queue email via simple queue (no PgBoss)
+                        queueEmail({
+                            type: 'order_confirmation',
+                            toEmail: order.customerEmail,
+                            subject: `Order Confirmed #${order.orderNumber}`,
+                            template: 'orderConfirmation',
+                            variables: {
+                                order_number: order.orderNumber,
+                                customer_name: order.customerEmail.split('@')[0],
+                                total: order.total,
+                                items: order.items.map(item => ({
+                                    name: item.variant.product.name,
+                                    quantity: item.quantity,
+                                    price: item.unitPrice,
+                                    image: item.variant.product.images[0] || ''
+                                })),
+                                date: new Date().toLocaleDateString()
+                            }
+                        });
+                        logger.info(`📧 Queued confirmation email for order ${order.orderNumber}`);
+                    }
+                }
+            } catch (emailError) {
+                logger.error(`Failed to queue email for webhook ${reference}:`, emailError);
+            }
+
+        } else {
+            // Handle other events (e.g., failed)
+            await prisma.webhookLog.update({
+                where: { reference },
+                data: { status: 'ignored', isProcessed: true }
+            });
         }
+
+    } catch (error) {
+        logger.error(`Failed to process webhook ${reference}:`, error);
+
+        try {
+            await prisma.webhookLog.update({
+                where: { reference },
+                data: {
+                    status: 'failed',
+                    errorMessage: error.message
+                }
+            });
+        } catch (e) { /* Ignore update error */ }
+
+        throw error;
     }
 }
 
 /**
- * Start the Webhook Worker
+ * Start the Webhook Worker (DEPRECATED - kept for compatibility)
+ * Webhooks are now processed directly via paymentService.js
  */
 export async function startWorker() {
-    try {
-        const boss = getQueue(); // Queue already initialized
-
-        logger.info('👷 Webhook Worker started (pg-boss)');
-
-        // Subscribe to the queue
-        // FIXED: Added retry limits and backoff strategy
-        await boss.work(QUEUE_NAME, {
-            teamSize: 5,               // Process up to 5 webhooks concurrently
-            newJobCheckInterval: 1000, // Check for new jobs every second
-            retryLimit: 3,             // FIXED: Max 3 retries on failure
-            retryDelay: 60,            // FIXED: 60 seconds between retries
-            retryBackoff: true         // FIXED: Exponential backoff (60s, 120s, 240s)
-        }, processWebhookJob);
-
-        logger.info('✅ Webhook Worker subscribed to queue');
-    } catch (error) {
-        logger.error('Failed to start Webhook Worker:', error);
-        throw error; // Re-throw so index.js knows it failed
-    }
-}
-
-// Start if run directly
-if (process.argv[1] === import.meta.url) {
-    startWorker();
+    logger.info('👷 Webhook processing enabled (direct mode, no queue)');
+    // No longer uses PgBoss - webhooks processed directly
 }

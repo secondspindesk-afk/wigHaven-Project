@@ -214,7 +214,9 @@ export const validateRequest = (schema) => {
                 message: detail.message,
             }));
 
-            logger.debug('❌ Validation failed:', JSON.stringify(details, null, 2));
+            logger.warn(`❌ Validation failed for ${req.path}`);
+            logger.warn(`Request body: ${JSON.stringify(req.body)}`);
+            logger.warn(`Validation errors: ${JSON.stringify(details)}`);
 
             return res.status(400).json({
                 success: false,

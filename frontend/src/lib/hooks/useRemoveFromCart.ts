@@ -1,47 +1,47 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import localCartService from '@/lib/services/localCartService';
 import cartService from '@/lib/api/cart';
 import { useToast } from '@/contexts/ToastContext';
+import { useToken } from '@/lib/hooks/useToken';
 
 /**
- * Hook to remove item from cart with optimistic updates
+ * LocalStorage-First Remove from Cart Hook
+ * 
+ * - INSTANT: Removes from LocalStorage immediately
+ * - BACKGROUND: Syncs removal to server for logged-in users
  */
 export function useRemoveFromCart() {
     const queryClient = useQueryClient();
     const { showToast } = useToast();
+    const token = useToken();
+    const isLoggedIn = !!token;
 
     return useMutation({
-        mutationFn: (itemId: string) => cartService.removeCartItem(itemId),
+        mutationFn: async (variantId: string) => {
+            // 1. INSTANT: Remove from LocalStorage
+            const localCart = localCartService.removeFromLocalCart(variantId);
+            const fullCart = localCartService.localCartToFullCart(localCart);
 
-        onMutate: async (itemId) => {
-            await queryClient.cancelQueries({ queryKey: ['cart'] });
-            const previousCart = queryClient.getQueryData(['cart']);
+            // 2. Update React Query cache immediately
+            queryClient.setQueryData(['cart'], fullCart);
 
-            // Optimistically remove item
-            queryClient.setQueryData(['cart'], (old: any) => {
-                if (!old) return old;
-                return {
-                    ...old,
-                    items: old.items.filter((item: any) => item.id !== itemId),
-                    items_count: Math.max(0, old.items_count - 1),
-                };
-            });
+            // 3. BACKGROUND: Sync to server (non-blocking)
+            if (isLoggedIn) {
+                cartService.removeCartItem(variantId).catch(error => {
+                    console.warn('[RemoveFromCart] Background sync failed:', error);
+                });
+            }
 
-            return { previousCart };
+            return fullCart;
         },
 
         onSuccess: () => {
             showToast('Item removed', 'success');
         },
 
-        onError: (_err, _itemId, context) => {
-            showToast('Failed to remove item', 'error');
-            if (context?.previousCart) {
-                queryClient.setQueryData(['cart'], context.previousCart);
-            }
-        },
-
-        onSettled: () => {
-            queryClient.invalidateQueries({ queryKey: ['cart'] });
+        onError: (error: any) => {
+            const errorMessage = error.message || 'Failed to remove item';
+            showToast(errorMessage, 'error');
         },
     });
 }

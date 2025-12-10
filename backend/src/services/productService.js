@@ -649,6 +649,11 @@ export const createVariant = async (data) => {
             data.price = product.basePrice;
         }
 
+        // VALIDATION: Ensure final price is > 0 (edge case protection)
+        if (!data.price || parseFloat(data.price) <= 0) {
+            throw new Error('Variant price must be greater than 0. Product base price is also invalid.');
+        }
+
         // Check SKU uniqueness
         const existingSku = await variantRepository.findVariantBySku(data.sku);
         if (existingSku) {
@@ -994,8 +999,13 @@ export const bulkUploadProducts = async (filePath) => {
             }
         }
 
-        // Cleanup file
-        fs.unlinkSync(filePath);
+        // Cleanup file safely
+        try {
+            fs.unlinkSync(filePath);
+        } catch (unlinkError) {
+            logger.warn(`Failed to delete temp file ${filePath}: ${unlinkError.message}`);
+            // Don't fail the entire operation if cleanup fails
+        }
 
         return results;
     } catch (error) {

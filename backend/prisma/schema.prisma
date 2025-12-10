@@ -6,8 +6,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
@@ -690,36 +691,39 @@ model CurrencyRate {
 }
 
 model SupportTicket {
-  id        String   @id @default(cuid()) @db.VarChar(30)
-  userId    String   @map("user_id") @db.VarChar(30)
-  subject   String   @db.VarChar(255)
-  status    String   @default("open") @db.VarChar(20) // open, pending, closed
-  priority  String   @default("medium") @db.VarChar(20) // low, medium, high
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id         String   @id @default(cuid()) @db.VarChar(30)
+  userId     String?  @map("user_id") @db.VarChar(30) // Optional for guest tickets
+  subject    String   @db.VarChar(255)
+  status     String   @default("open") @db.VarChar(20) // open, pending, closed
+  priority   String   @default("medium") @db.VarChar(20) // low, medium, high
+  guestName  String?  @map("guest_name") @db.VarChar(100) // For guest tickets
+  guestEmail String?  @map("guest_email") @db.VarChar(255) // For guest tickets
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
 
   // Relations
-  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user     User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
   messages SupportMessage[]
 
   @@index([userId])
   @@index([status])
   @@index([priority])
   @@index([createdAt])
+  @@index([guestEmail])
   @@map("support_tickets")
 }
 
 model SupportMessage {
   id        String   @id @default(cuid()) @db.VarChar(30)
   ticketId  String   @map("ticket_id") @db.VarChar(30)
-  senderId  String   @map("sender_id") @db.VarChar(30) // User ID or Admin ID
+  senderId  String?  @map("sender_id") @db.VarChar(30) // User ID, Admin ID, or null for guest
   message   String   @db.Text
   isAdmin   Boolean  @default(false) @map("is_admin")
   createdAt DateTime @default(now()) @map("created_at")
 
   // Relations
   ticket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  sender User          @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  sender User?         @relation(fields: [senderId], references: [id], onDelete: Cascade)
 
   @@index([ticketId])
   @@index([senderId])

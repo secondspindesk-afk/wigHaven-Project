@@ -4,6 +4,7 @@ import logger from '../utils/logger.js';
 
 /**
  * Initialize default milestones
+ * Uses batch operation for efficiency (single DB round-trip instead of 8)
  */
 export const initializeMilestones = async () => {
     const prisma = getPrisma();
@@ -19,20 +20,24 @@ export const initializeMilestones = async () => {
         { type: 'daily_sales', threshold: 10000 },
     ];
 
-    for (const m of defaultMilestones) {
-        await prisma.adminMilestone.upsert({
-            where: {
-                type_threshold: {
-                    type: m.type,
-                    threshold: m.threshold
-                }
-            },
-            create: m,
-            update: {}
+    try {
+        // Use createMany with skipDuplicates for single DB call
+        // This is ~8x faster than individual upserts
+        const result = await prisma.adminMilestone.createMany({
+            data: defaultMilestones,
+            skipDuplicates: true, // Ignore if already exists
         });
-    }
 
-    logger.info('Milestones initialized');
+        if (result.count > 0) {
+            logger.info(`✓ Created ${result.count} new milestones`);
+        } else {
+            logger.info('✓ Milestones initialized (all exist)');
+        }
+    } catch (error) {
+        // Fallback: If createMany fails, log and continue
+        // Milestones might already exist from previous startup
+        logger.warn(`Milestones init: ${error.message}`);
+    }
 };
 
 /**

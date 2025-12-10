@@ -21,8 +21,11 @@ export const validateDiscount = async (code, cartTotal, userId = null) => {
         }
 
         const now = new Date();
-        if (now < discount.startsAt || now > discount.expiresAt) {
-            throw new Error('Discount code is expired');
+        if (now < discount.startsAt) {
+            throw new Error('Discount code is not yet active');
+        }
+        if (now > discount.expiresAt) {
+            throw new Error('Discount code has expired');
         }
 
         if (discount.maxUses && discount.usedCount >= discount.maxUses) {
@@ -94,8 +97,28 @@ export const deleteDiscount = async (id) => {
 export const createDiscount = async (data) => {
     // Basic validation
     if (!data.code || !data.type || !data.value) {
-        throw new Error('Missing required fields');
+        throw new Error('Missing required fields: code, type, and value are required');
     }
+
+    // Validate discount type and value
+    if (data.type === 'percentage') {
+        if (data.value <= 0 || data.value > 100) {
+            throw new Error('Percentage discount must be between 1 and 100');
+        }
+    } else if (data.type === 'fixed') {
+        if (data.value <= 0) {
+            throw new Error('Fixed discount amount must be greater than 0');
+        }
+    } else {
+        throw new Error('Invalid discount type. Must be "percentage" or "fixed"');
+    }
+
+    // Check if code already exists
+    const existing = await discountRepository.findDiscountByCode(data.code);
+    if (existing) {
+        throw new Error(`Discount code "${data.code}" already exists`);
+    }
+
     return await discountRepository.createDiscount(data);
 };
 
@@ -121,11 +144,25 @@ export const incrementUsage = async (code) => {
     }
 };
 
+/**
+ * Decrement discount usage (for order cancellation/failure)
+ * @param {string} code - The coupon code
+ * @returns {Promise<void>}
+ */
+export const decrementUsage = async (code) => {
+    const discount = await discountRepository.findDiscountByCode(code);
+    if (discount) {
+        return await discountRepository.decrementUsage(discount.id);
+    }
+};
+
 export default {
     validateDiscount,
     createDiscount,
     getAllDiscounts,
     getDiscountById,
     updateDiscount,
-    deleteDiscount
+    deleteDiscount,
+    incrementUsage,
+    decrementUsage
 };

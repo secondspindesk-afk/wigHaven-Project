@@ -35,9 +35,9 @@ export default function Cart() {
         }
     };
 
-    const handleUpdateQuantity = (itemId: string, newQuantity: number) => {
+    const handleUpdateQuantity = (variantId: string, newQuantity: number) => {
         if (newQuantity < 1) return;
-        updateCartMutation.mutate({ itemId, quantity: newQuantity });
+        updateCartMutation.mutate({ variantId, quantity: newQuantity });
     };
 
     const handleRemoveItem = (itemId: string) => {

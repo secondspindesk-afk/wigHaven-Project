@@ -11,6 +11,10 @@ const MAX_CONNECTION_ATTEMPTS = 10; // 10 attempts per minute
 // Map to store active connections: userId -> Set<WebSocket>
 const clients = new Map();
 
+// Map to store admin connections: userId -> { role, sockets: Set<WebSocket> }
+// Used for real-time admin dashboard updates
+const adminClients = new Map();
+
 /**
  * Initialize WebSocket Server
  * @param {Object} server - HTTP Server instance
@@ -117,7 +121,7 @@ export const initializeWebSocket = (server) => {
         }
     });
 
-    wss.on('connection', (ws, request, userId) => {
+    wss.on('connection', async (ws, request, userId) => {
         logger.info(`✅ WebSocket connected for user: ${userId}`);
 
         // Add to clients map
@@ -126,9 +130,50 @@ export const initializeWebSocket = (server) => {
         }
         clients.get(userId).add(ws);
 
+        // Check if user is admin/super_admin and track separately for dashboard updates
+        try {
+            const { getPrisma } = await import('./database.js');
+            const prisma = getPrisma();
+            const user = await prisma.user.findUnique({
+                where: { id: userId },
+                select: { role: true }
+            });
+
+            if (user && (user.role === 'admin' || user.role === 'super_admin')) {
+                if (!adminClients.has(userId)) {
+                    adminClients.set(userId, { role: user.role, sockets: new Set() });
+                }
+                adminClients.get(userId).sockets.add(ws);
+                logger.info(`📊 Admin ${user.role} connected to dashboard updates: ${userId}`);
+            }
+        } catch (err) {
+            // Non-fatal: continue without admin tracking
+            logger.warn(`Could not check admin status for ${userId}: ${err.message}`);
+        }
+
+        // Track connection health for heartbeat
         ws.isAlive = true;
         ws.on('pong', () => {
             ws.isAlive = true;
+        });
+
+        // Handle client messages (heartbeat PING from frontend)
+        ws.on('message', (data) => {
+            try {
+                const message = JSON.parse(data.toString());
+
+                // Respond to client PING with PONG (keeps connection alive through proxies/NAT)
+                if (message.type === 'PING') {
+                    ws.isAlive = true; // Mark as alive on any client message
+                    ws.send(JSON.stringify({
+                        type: 'PONG',
+                        timestamp: Date.now(),
+                        clientTimestamp: message.timestamp
+                    }));
+                }
+            } catch (err) {
+                // Ignore malformed messages - not critical for heartbeat
+            }
         });
 
         // Send welcome message
@@ -144,6 +189,15 @@ export const initializeWebSocket = (server) => {
                 userClients.delete(ws);
                 if (userClients.size === 0) {
                     clients.delete(userId);
+                }
+            }
+
+            // Also remove from admin clients
+            if (adminClients.has(userId)) {
+                const adminData = adminClients.get(userId);
+                adminData.sockets.delete(ws);
+                if (adminData.sockets.size === 0) {
+                    adminClients.delete(userId);
                 }
             }
         });
@@ -243,3 +297,48 @@ export const broadcastForceLogout = (excludeUserIds = []) => {
  * @returns {string[]} Array of connected user IDs
  */
 export const getConnectedUserIds = () => Array.from(clients.keys());
+
+/**
+ * Broadcast data update to all connected admins (admin + super_admin)
+ * Used for real-time dashboard updates without polling
+ * 
+ * @param {string} eventType - Type of data that changed (e.g., 'orders', 'products', 'users')
+ * @param {string[][]} queryKeys - React Query keys to invalidate (e.g., [['admin', 'orders']])
+ * @param {Object} metadata - Optional additional data about the change
+ */
+export const broadcastToAdmins = (eventType, queryKeys, metadata = {}) => {
+    if (adminClients.size === 0) {
+        return 0;
+    }
+
+    const message = JSON.stringify({
+        type: 'DATA_UPDATE',
+        eventType,
+        queryKeys,
+        metadata,
+        timestamp: new Date().toISOString()
+    });
+
+    let sentCount = 0;
+
+    for (const [userId, adminData] of adminClients.entries()) {
+        adminData.sockets.forEach((ws) => {
+            if (ws.readyState === 1) { // OPEN
+                ws.send(message);
+                sentCount++;
+            }
+        });
+    }
+
+    if (sentCount > 0) {
+        logger.debug(`📊 DATA_UPDATE [${eventType}] sent to ${sentCount} admin connections`);
+    }
+
+    return sentCount;
+};
+
+/**
+ * Get count of connected admin users
+ * @returns {number} Number of connected admins
+ */
+export const getConnectedAdminCount = () => adminClients.size;

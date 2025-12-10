@@ -22,6 +22,12 @@ export const supportApi = {
         return response.data.data;
     },
 
+    // Public - Guest ticket (no auth required)
+    createGuestTicket: async (data: { name: string; email: string; subject: string; message: string; priority?: string }) => {
+        const response = await api.post<{ data: { id: string }; message: string }>('/support/guest', data);
+        return response.data;
+    },
+
     // Admin functions
     getAllTicketsAdmin: async (params: { page?: number; limit?: number; status?: string; priority?: string }) => {
         const query = new URLSearchParams();

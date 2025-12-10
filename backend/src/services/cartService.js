@@ -331,62 +331,109 @@ export const clearCart = async (cartContext) => {
 
 /**
  * Merge Guest Cart into User Cart (Login)
+ * FIXED: Now uses transaction to prevent data loss on partial failure
  */
 export const mergeCarts = async (sessionId, userId) => {
     try {
-        // 1. Get Guest Cart
-        const guestCart = await cartRepository.findGuestCartBySessionId(sessionId);
-        if (!guestCart || guestCart.items.length === 0) return;
+        const { getPrisma } = await import('../config/database.js');
+        const prisma = getPrisma();
 
-        logger.info(`[MERGE] Merging guest cart ${guestCart.id} to user ${userId}`);
+        // Use transaction to ensure atomicity - either all items merge or none
+        await prisma.$transaction(async (tx) => {
+            // 1. Get Guest Cart
+            const guestCart = await tx.guestCart.findUnique({
+                where: { sessionId },
+                include: { items: true }
+            });
+            if (!guestCart || guestCart.items.length === 0) return;
 
-        // 2. Ensure User Cart exists
-        let userCart = await cartRepository.findCartByUserId(userId);
-        if (!userCart) {
-            userCart = await cartRepository.createCart(userId);
-        }
+            logger.info(`[MERGE] Merging guest cart ${guestCart.id} to user ${userId}`);
 
-        // 3. Merge Items with STOCK VALIDATION
-        for (const guestItem of guestCart.items) {
-            // CRITICAL: Check stock availability before merging
-            const variant = await variantRepository.findVariantById(guestItem.variantId);
-            if (!variant || !variant.isActive) {
-                logger.warn(`[MERGE] Skipping unavailable variant ${guestItem.variantId}`);
-                continue; // Skip unavailable items
+            // 2. Ensure User Cart exists
+            let userCart = await tx.cart.findUnique({
+                where: { userId },
+                include: { items: true }
+            });
+            if (!userCart) {
+                userCart = await tx.cart.create({
+                    data: { userId },
+                    include: { items: true }
+                });
             }
 
-            // Check if item exists in user cart
-            const existingUserItem = userCart.items.find(i => i.variantId === guestItem.variantId);
+            // 3. Merge Items with STOCK VALIDATION
+            for (const guestItem of guestCart.items) {
+                // CRITICAL: Check stock availability before merging
+                const variant = await tx.variant.findUnique({
+                    where: { id: guestItem.variantId }
+                });
+                if (!variant || !variant.isActive) {
+                    logger.warn(`[MERGE] Skipping unavailable variant ${guestItem.variantId}`);
+                    continue; // Skip unavailable items
+                }
 
-            let newQuantity = guestItem.quantity;
-            if (existingUserItem) {
-                newQuantity += existingUserItem.quantity;
+                // Check if item exists in user cart
+                const existingUserItem = userCart.items.find(i => i.variantId === guestItem.variantId);
+
+                let newQuantity = guestItem.quantity;
+                if (existingUserItem) {
+                    newQuantity += existingUserItem.quantity;
+                }
+
+                // VALIDATION: Cap at available stock AND 999
+                if (newQuantity > variant.stock) {
+                    logger.warn(`[MERGE] Capping quantity for variant ${guestItem.variantId} at stock: ${variant.stock}`);
+                    newQuantity = variant.stock;
+                }
+                if (newQuantity > 999) {
+                    newQuantity = 999;
+                }
+
+                // Skip if quantity is 0 (out of stock)
+                if (newQuantity <= 0) continue;
+
+                await tx.cartItem.upsert({
+                    where: {
+                        cartId_variantId: {
+                            cartId: userCart.id,
+                            variantId: guestItem.variantId
+                        }
+                    },
+                    update: { quantity: newQuantity },
+                    create: {
+                        cartId: userCart.id,
+                        variantId: guestItem.variantId,
+                        quantity: newQuantity
+                    }
+                });
             }
 
-            // VALIDATION: Cap at available stock AND 999
-            if (newQuantity > variant.stock) {
-                logger.warn(`[MERGE] Capping quantity for variant ${guestItem.variantId} at stock: ${variant.stock}`);
-                newQuantity = variant.stock;
+            // 4. Merge Coupon (if user doesn't have one) - WITH VALIDATION
+            if (guestCart.couponCode && !userCart.couponCode) {
+                // Re-validate coupon is still active before transferring
+                try {
+                    const validation = await discountService.validateDiscount(guestCart.couponCode, 0, userId);
+                    if (validation.valid) {
+                        await tx.cart.update({
+                            where: { id: userCart.id },
+                            data: { couponCode: guestCart.couponCode }
+                        });
+                        logger.info(`[MERGE] Transferred valid coupon ${guestCart.couponCode} to user cart`);
+                    } else {
+                        logger.warn(`[MERGE] Coupon ${guestCart.couponCode} is no longer valid, not transferring`);
+                    }
+                } catch (couponError) {
+                    logger.warn(`[MERGE] Coupon validation failed: ${couponError.message}`);
+                    // Don't transfer invalid coupon - silently skip
+                }
             }
-            if (newQuantity > 999) {
-                newQuantity = 999;
-            }
 
-            await cartRepository.upsertCartItem(userCart.id, guestItem.variantId, newQuantity, true);
-        }
+            // 5. Delete Guest Cart (within transaction so it rolls back if merge failed)
+            await tx.guestCartItem.deleteMany({ where: { cartId: guestCart.id } });
+            await tx.guestCart.delete({ where: { id: guestCart.id } });
 
-        // 4. Merge Coupon (if user doesn't have one)
-        if (guestCart.couponCode && !userCart.couponCode) {
-            await cartRepository.updateCart(userCart.id, { couponCode: guestCart.couponCode });
-        }
-
-        // 5. Delete Guest Cart
-        try {
-            await cartRepository.deleteGuestCart(guestCart.id);
-        } catch (error) {
-            // Don't fail login if cleanup fails
-            logger.error('[MERGE] Failed to delete guest cart:', error);
-        }
+            logger.info(`[MERGE] Successfully merged ${guestCart.items.length} items from guest cart`);
+        });
 
     } catch (error) {
         logger.error('Error merging carts:', error);

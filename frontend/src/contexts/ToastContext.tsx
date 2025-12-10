@@ -34,9 +34,25 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const [toasts, setToasts] = useState<Toast[]>([]);
     const [confirmData, setConfirmData] = useState<ConfirmOptions | null>(null);
 
-    const showToast = useCallback((message: string, type: Toast['type'] = 'info') => {
+    const showToast = useCallback((message: string | any, type: Toast['type'] = 'info') => {
+        // Ensure message is always a string
+        let safeMessage: string;
+        if (typeof message === 'string') {
+            safeMessage = message;
+        } else if (message?.message) {
+            safeMessage = message.message;
+        } else if (message?.error) {
+            safeMessage = message.error;
+        } else {
+            try {
+                safeMessage = JSON.stringify(message);
+            } catch {
+                safeMessage = 'An error occurred';
+            }
+        }
+
         const id = Math.random().toString(36).substring(7);
-        const newToast: Toast = { id, message, type };
+        const newToast: Toast = { id, message: safeMessage, type };
 
         setToasts(prev => [...prev, newToast]);
 

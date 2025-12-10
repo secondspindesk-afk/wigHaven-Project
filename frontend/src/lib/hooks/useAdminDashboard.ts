@@ -9,13 +9,23 @@ import adminApi, {
     LowStockItem
 } from '../api/admin';
 
+// ============================================
+// CACHE CONFIGURATION
+// ============================================
+// WebSocket DATA_UPDATE messages handle real-time invalidation,
+// so we can use longer staleTime to reduce DB load
+const ADMIN_CACHE_CONFIG = {
+    staleTime: 5 * 60 * 1000,     // 5 minutes - data is fresh
+    gcTime: 30 * 60 * 1000,       // 30 minutes - keep in memory
+    refetchOnWindowFocus: true,   // Refresh on tab switch (admins expect this)
+};
+
 // Dashboard Summary Hook
 export function useAdminSummary() {
     return useQuery<DashboardSummary>({
         queryKey: ['admin', 'dashboard', 'summary'],
         queryFn: adminApi.getSummary,
-        staleTime: 0,
-        refetchInterval: 1000 * 60 * 5 // 5 minutes
+        ...ADMIN_CACHE_CONFIG,
     });
 }
 
@@ -24,7 +34,7 @@ export function useSalesTrends(days: number = 30) {
     return useQuery<SalesTrendsResponse>({
         queryKey: ['admin', 'dashboard', 'sales-trends', days],
         queryFn: () => adminApi.getSalesTrends(days),
-        staleTime: 0
+        ...ADMIN_CACHE_CONFIG,
     });
 }
 
@@ -33,7 +43,7 @@ export function useTopProducts(limit: number = 5) {
     return useQuery<TopProduct[]>({
         queryKey: ['admin', 'dashboard', 'top-products', limit],
         queryFn: () => adminApi.getTopProducts(limit),
-        staleTime: 0
+        ...ADMIN_CACHE_CONFIG,
     });
 }
 
@@ -42,7 +52,7 @@ export function useRecentOrders(limit: number = 10) {
     return useQuery<RecentOrder[]>({
         queryKey: ['admin', 'dashboard', 'recent-orders', limit],
         queryFn: () => adminApi.getRecentOrders(limit),
-        staleTime: 0
+        ...ADMIN_CACHE_CONFIG,
     });
 }
 
@@ -51,7 +61,7 @@ export function useOrderStatusBreakdown() {
     return useQuery<OrderStatusBreakdown>({
         queryKey: ['admin', 'dashboard', 'order-status-breakdown'],
         queryFn: adminApi.getOrderStatusBreakdown,
-        staleTime: 0
+        ...ADMIN_CACHE_CONFIG,
     });
 }
 
@@ -60,7 +70,7 @@ export function useInventoryStatus() {
     return useQuery<InventoryStatus>({
         queryKey: ['admin', 'dashboard', 'inventory-status'],
         queryFn: adminApi.getInventoryStatus,
-        staleTime: 0
+        ...ADMIN_CACHE_CONFIG,
     });
 }
 
@@ -69,7 +79,7 @@ export function useLowStockAlerts() {
     return useQuery<LowStockItem[]>({
         queryKey: ['admin', 'dashboard', 'low-stock'],
         queryFn: adminApi.getLowStockAlerts,
-        staleTime: 0
+        ...ADMIN_CACHE_CONFIG,
     });
 }
 
@@ -78,7 +88,7 @@ export function useRevenueByCategory() {
     return useQuery({
         queryKey: ['admin', 'dashboard', 'revenue-by-category'],
         queryFn: adminApi.getRevenueByCategory,
-        staleTime: 0
+        ...ADMIN_CACHE_CONFIG,
     });
 }
 
@@ -87,7 +97,7 @@ export function useCustomerAnalytics() {
     return useQuery({
         queryKey: ['admin', 'dashboard', 'customer-analytics'],
         queryFn: adminApi.getCustomerAnalytics,
-        staleTime: 0
+        ...ADMIN_CACHE_CONFIG,
     });
 }
 
@@ -96,7 +106,7 @@ export function useCartAbandonment() {
     return useQuery({
         queryKey: ['admin', 'dashboard', 'cart-abandonment'],
         queryFn: adminApi.getCartAbandonment,
-        staleTime: 0
+        ...ADMIN_CACHE_CONFIG,
     });
 }
 
@@ -105,7 +115,7 @@ export function useAdminActivity(page: number = 1) {
     return useQuery({
         queryKey: ['admin', 'dashboard', 'activity', page],
         queryFn: () => adminApi.getAdminActivity(page),
-        staleTime: 0
+        ...ADMIN_CACHE_CONFIG,
     });
 }
 
@@ -114,7 +124,7 @@ export function useEmailStats() {
     return useQuery({
         queryKey: ['admin', 'dashboard', 'email-stats'],
         queryFn: adminApi.getEmailStats,
-        staleTime: 0
+        ...ADMIN_CACHE_CONFIG,
     });
 }
 
@@ -123,17 +133,20 @@ export function usePaymentMethods() {
     return useQuery({
         queryKey: ['admin', 'dashboard', 'payment-methods'],
         queryFn: adminApi.getPaymentMethods,
-        staleTime: 0
+        ...ADMIN_CACHE_CONFIG,
     });
 }
 
-// System Health Hook
+// System Health Hook - reduced polling to prevent excessive API calls
+// The keep-alive cron job handles database connection maintenance
 export function useSystemHealth(enabled: boolean = true) {
     return useQuery({
         queryKey: ['admin', 'dashboard', 'system-health'],
         queryFn: adminApi.getSystemHealth,
-        staleTime: 0,
-        refetchInterval: 30000, // Check every 30s
+        staleTime: 3 * 60 * 1000,      // 3 minutes
+        gcTime: 5 * 60 * 1000,          // 5 minutes
+        refetchInterval: 3 * 60 * 1000, // Check every 3 minutes (was 30 seconds)
+        refetchOnWindowFocus: false,    // Don't refetch on focus - causes unnecessary load
         enabled
     });
 }
@@ -143,8 +156,7 @@ export function useSidebarStats(enabled: boolean = true) {
     return useQuery({
         queryKey: ['admin', 'sidebar-stats'],
         queryFn: adminApi.getSidebarStats,
-        staleTime: 0,
-        refetchInterval: 1000 * 60, // Refresh every minute
+        ...ADMIN_CACHE_CONFIG,
         enabled
     });
 }

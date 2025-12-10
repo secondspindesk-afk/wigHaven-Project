@@ -2,10 +2,12 @@ import { User } from './index';
 
 export interface SupportTicket {
     id: string;
-    userId: string;
+    userId: string | null; // Null for guest tickets
     subject: string;
     status: 'open' | 'pending' | 'closed';
     priority: 'low' | 'medium' | 'high';
+    guestName?: string | null; // For guest tickets
+    guestEmail?: string | null; // For guest tickets
     createdAt: string;
     updatedAt: string;
     messages: SupportMessage[];

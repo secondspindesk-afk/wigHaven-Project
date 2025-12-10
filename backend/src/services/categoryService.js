@@ -36,9 +36,12 @@ const createCategory = async (data) => {
     // Validate image if present (only for ImageKit URLs)
     if (data.image && data.image.includes('ik.imagekit.io')) {
         const prisma = getPrisma();
+        // Strip query parameters for media lookup (cache-busting params like ?v=...)
+        const imageUrlWithoutParams = data.image.split('?')[0];
+
         const media = await prisma.media.findFirst({
             where: {
-                url: data.image,
+                url: imageUrlWithoutParams,
                 status: 'active'
             }
         });
@@ -55,8 +58,10 @@ const createCategory = async (data) => {
     // Link media record
     if (data.image && data.image.includes('ik.imagekit.io')) {
         const prisma = getPrisma();
+        // Strip query parameters for media update
+        const imageUrlWithoutParams = data.image.split('?')[0];
         await prisma.media.updateMany({
-            where: { url: data.image },
+            where: { url: imageUrlWithoutParams },
             data: {
                 usedBy: category.id,
                 usageType: 'category_image'
@@ -102,10 +107,13 @@ const updateCategory = async (id, data) => {
         const isImageKitUrl = data.image.includes('ik.imagekit.io');
 
         if (isImageKitUrl) {
+            // Strip query parameters for media lookup (cache-busting params like ?v=...)
+            const imageUrlWithoutParams = data.image.split('?')[0];
+
             // 1. Validate new image exists in media table
             const media = await prisma.media.findFirst({
                 where: {
-                    url: data.image,
+                    url: imageUrlWithoutParams,
                     status: 'active'
                 }
             });
@@ -128,7 +136,7 @@ const updateCategory = async (id, data) => {
 
             // 3. Link new image
             await prisma.media.updateMany({
-                where: { url: data.image },
+                where: { url: imageUrlWithoutParams },
                 data: {
                     usedBy: id,
                     usageType: 'category_image'

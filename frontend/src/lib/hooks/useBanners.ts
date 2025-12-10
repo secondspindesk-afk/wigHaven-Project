@@ -1,12 +1,24 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import bannerApi, { BannerFormData } from '../api/banners';
 
-// Get All Banners Hook
+// Get All Banners Hook (Admin)
 export function useBanners() {
     return useQuery({
         queryKey: ['admin', 'banners'],
         queryFn: bannerApi.getAllBanners,
         staleTime: 0
+    });
+}
+
+// Get Active Banners Hook (Public - no auth required)
+// Banners rarely change - aggressive caching is safe
+export function usePublicBanners() {
+    return useQuery({
+        queryKey: ['public', 'banners'],
+        queryFn: bannerApi.getActiveBanners,
+        staleTime: 1000 * 60 * 30, // 30 minutes - banners rarely change
+        gcTime: 1000 * 60 * 60, // 1 hour garbage collection
+        refetchOnWindowFocus: false,
     });
 }
 

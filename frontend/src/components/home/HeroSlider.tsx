@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { useBanners } from '@/lib/hooks/useBanners';
+import { usePublicBanners } from '@/lib/hooks/useBanners';
 
 export default function HeroSlider() {
-    const { data: banners = [], isLoading } = useBanners();
+    const { data: banners = [], isLoading } = usePublicBanners();
     const [currentIndex, setCurrentIndex] = useState(0);
     const [isPaused, setIsPaused] = useState(false);
 

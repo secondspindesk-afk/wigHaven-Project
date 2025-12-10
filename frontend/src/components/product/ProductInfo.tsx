@@ -2,14 +2,14 @@ import { useState, useEffect } from 'react';
 import { Heart, Share2, Minus, Plus, ShoppingBag, Bell, Check } from 'lucide-react';
 import { Product, Variant, getDefaultVariant } from '@/lib/types/product';
 import { useCurrencyContext } from '@/lib/context/CurrencyContext';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import cartService from '@/lib/api/cart';
+import { useMutation } from '@tanstack/react-query';
 import productApi from '@/lib/api/product';
 import { useToast } from '@/contexts/ToastContext';
 import { useUser } from '@/lib/hooks/useUser';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useCart } from '@/lib/hooks/useCart';
 import { useWishlist } from '@/lib/hooks/useWishlist';
+import { useAddToCart } from '@/lib/hooks/useAddToCart';
 
 
 interface ProductInfoProps {
@@ -24,7 +24,6 @@ export default function ProductInfo({ product, onVariantChange }: ProductInfoPro
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const variantIdFromUrl = searchParams.get('variant');
-    const queryClient = useQueryClient();
     const { showToast } = useToast();
 
     // State
@@ -180,17 +179,8 @@ export default function ProductInfo({ product, onVariantChange }: ProductInfoPro
         }
     };
 
-    // Mutations
-    const addToCartMutation = useMutation({
-        mutationFn: cartService.addToCart,
-        onSuccess: () => {
-            showToast('Added to cart', 'success');
-            queryClient.invalidateQueries({ queryKey: ['cart'] });
-        },
-        onError: (error: any) => {
-            showToast(error.response?.data?.message || 'Failed to add to cart', 'error');
-        }
-    });
+    // Use shared hook with optimistic updates
+    const addToCartMutation = useAddToCart();
 
     const notifyMutation = useMutation({
         mutationFn: (email: string) => productApi.subscribeToRestock(selectedVariant!.id, email),
@@ -232,7 +222,26 @@ export default function ProductInfo({ product, onVariantChange }: ProductInfoPro
             return;
         }
 
-        addToCartMutation.mutate({ variantId: selectedVariant.id, quantity });
+        // Pass product info for INSTANT optimistic UI update
+        addToCartMutation.mutate({
+            variantId: selectedVariant.id,
+            quantity,
+            productInfo: {
+                product_id: product.id,
+                product_name: product.name,
+                sku: selectedVariant.sku || '',
+                unit_price: selectedVariant.price > 0 ? selectedVariant.price : product.basePrice,
+                images: selectedVariant.images || [],
+                attributes: {
+                    length: selectedVariant.length || null,
+                    color: selectedVariant.color || null,
+                    texture: selectedVariant.texture || null,
+                    size: selectedVariant.size || null,
+                },
+                stock_available: selectedVariant.stock,
+                category: product.category?.slug || 'uncategorized',
+            }
+        });
     };
 
     const handleWishlist = () => {

@@ -5,12 +5,15 @@ import publicProductApi from '../api/product';
 // ==================== STOREFRONT PRODUCTS ====================
 
 // Public Products Hook (for Shop page, Home page, etc.)
+// Cache aggressively - products don't change frequently
 export function useProducts(params?: { search?: string; category?: string; sort?: string; page?: number; limit?: number; minPrice?: number; maxPrice?: number; inStock?: boolean }) {
     return useQuery({
         queryKey: ['products', params],
         queryFn: () => publicProductApi.getProducts(params),
         placeholderData: (previousData) => previousData,
-        staleTime: 1000 * 60 // 1 minute
+        staleTime: 1000 * 60 * 10, // 10 minutes - products don't change often
+        gcTime: 1000 * 60 * 30, // 30 minutes garbage collection
+        refetchOnWindowFocus: false, // Don't refetch on tab focus
     });
 }
 

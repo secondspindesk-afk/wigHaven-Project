@@ -1,6 +1,7 @@
 import settingsService from '../services/settingsService.js';
 import { getPrisma } from '../config/database.js';
 import logger from '../utils/logger.js';
+import { notifySettingsChanged } from '../utils/adminBroadcast.js';
 
 /**
  * Get all settings
@@ -51,6 +52,9 @@ export const updateSetting = async (req, res) => {
                 ipAddress: req.ip
             }
         });
+
+        // 🔔 Real-time: Notify all admin dashboards
+        notifySettingsChanged({ key, action: 'updated' });
 
         res.json({
             success: true,

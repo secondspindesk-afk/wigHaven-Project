@@ -17,6 +17,8 @@ import Cart from '@/pages/Cart';
 import Shop from '@/pages/Shop';
 import Search from '@/pages/Search';
 import ProductDetails from '@/pages/ProductDetails';
+import About from '@/pages/About';
+import Contact from '@/pages/Contact';
 
 // Account Pages
 import AccountDashboard from '@/pages/account/Dashboard';
@@ -75,8 +77,8 @@ function App() {
             <Route path="/shop" element={<Shop />} />
             <Route path="/search" element={<Search />} />
             <Route path="/products/:id" element={<ProductDetails />} />
-            <Route path="/about" element={<div>About Page (Coming Soon)</div>} />
-            <Route path="/contact" element={<div>Contact Page (Coming Soon)</div>} />
+            <Route path="/about" element={<About />} />
+            <Route path="/contact" element={<Contact />} />
             <Route path="/cart" element={<Cart />} />
 
             {/* Guest Only Routes */}

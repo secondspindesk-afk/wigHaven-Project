@@ -1,6 +1,7 @@
 import productService from '../services/productService.js';
 import searchService from '../services/searchService.js';
 import logger from '../utils/logger.js';
+import { notifyProductsChanged } from '../utils/adminBroadcast.js';
 
 /**
  * Create product (Admin)
@@ -9,6 +10,10 @@ import logger from '../utils/logger.js';
 export const createProduct = async (req, res, next) => {
     try {
         const product = await productService.createProduct(req.body, req.user?.id);
+
+        // 🔔 Real-time: Notify all admin dashboards
+        notifyProductsChanged({ action: 'created', productId: product.id });
+
         res.status(201).json({
             success: true,
             data: product,
@@ -187,6 +192,10 @@ export const getAdminProduct = async (req, res, next) => {
 export const updateProduct = async (req, res, next) => {
     try {
         const product = await productService.updateProduct(req.params.id, req.body, req.user?.id);
+
+        // 🔔 Real-time: Notify all admin dashboards
+        notifyProductsChanged({ action: 'updated', productId: req.params.id });
+
         res.json({
             success: true,
             data: product,
@@ -208,6 +217,10 @@ export const updateProduct = async (req, res, next) => {
 export const deleteProduct = async (req, res, next) => {
     try {
         await productService.deleteProduct(req.params.id);
+
+        // 🔔 Real-time: Notify all admin dashboards
+        notifyProductsChanged({ action: 'deleted', productId: req.params.id });
+
         res.json({
             success: true,
             message: 'Product deleted successfully',

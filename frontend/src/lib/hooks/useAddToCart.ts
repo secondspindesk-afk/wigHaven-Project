@@ -1,66 +1,55 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import localCartService from '@/lib/services/localCartService';
 import cartService from '@/lib/api/cart';
 import { useToast } from '@/contexts/ToastContext';
+import { useToken } from '@/lib/hooks/useToken';
+import { CartItem } from '@/lib/types/cart';
 
 interface AddToCartVariables {
     variantId: string;
     quantity: number;
+    productInfo?: Partial<CartItem>;
 }
 
 /**
- * Hook to add item to cart with optimistic updates
+ * LocalStorage-First Add to Cart Hook
+ * 
+ * Operations happen INSTANTLY in LocalStorage.
+ * Background sync to server for logged-in users.
  */
 export function useAddToCart() {
     const queryClient = useQueryClient();
     const { showToast } = useToast();
+    const token = useToken();
+    const isLoggedIn = !!token;
 
     return useMutation({
-        mutationFn: ({ variantId, quantity }: AddToCartVariables) =>
-            cartService.addToCart({ variantId, quantity }),
+        mutationFn: async ({ variantId, quantity, productInfo }: AddToCartVariables) => {
+            // 1. INSTANT: Update LocalStorage
+            const localCart = localCartService.addToLocalCart(variantId, quantity, productInfo || {});
+            const fullCart = localCartService.localCartToFullCart(localCart);
 
-        // Optimistic Update
-        onMutate: async () => {
-            // Cancel any outgoing refetches
-            await queryClient.cancelQueries({ queryKey: ['cart'] });
+            // 2. Update React Query cache immediately
+            queryClient.setQueryData(['cart'], fullCart);
 
-            // Snapshot the previous value
-            const previousCart = queryClient.getQueryData(['cart']);
+            // 3. BACKGROUND: Sync to server (non-blocking)
+            if (isLoggedIn) {
+                cartService.addToCart({ variantId, quantity }).catch(error => {
+                    console.warn('[AddToCart] Background sync failed:', error);
+                    // Don't show error - local cart is source of truth
+                });
+            }
 
-            // Optimistically update to the new value
-            // Note: This is a best-guess update. Real data comes from server.
-            // We can't easily guess the full item details without more data, 
-            // so for add-to-cart we often just wait or do a partial update if we have product data.
-            // For now, we'll rely on the fast server response, but we could pass product data here to fake it.
-
-            return { previousCart };
+            return fullCart;
         },
 
         onSuccess: () => {
             showToast('Added to cart', 'success');
         },
 
-        onError: (error: any, _variables, context) => {
-            // Extract error message from API response
-            const errorMessage = error.response?.data?.error?.message || error.message || 'Failed to add to cart';
-
-            // Show specific error messages
-            if (errorMessage.includes('Insufficient stock')) {
-                showToast(errorMessage, 'error');
-            } else if (errorMessage.includes('already in cart')) {
-                showToast('Item is already in your cart. Update quantity from cart page.', 'info');
-            } else {
-                showToast(errorMessage, 'error');
-            }
-
-            // If the mutation fails, use the context returned from onMutate to roll back
-            if (context?.previousCart) {
-                queryClient.setQueryData(['cart'], context.previousCart);
-            }
-        },
-
-        // Always refetch after error or success:
-        onSettled: () => {
-            queryClient.invalidateQueries({ queryKey: ['cart'] });
+        onError: (error: any) => {
+            const errorMessage = error.message || 'Failed to add to cart';
+            showToast(errorMessage, 'error');
         },
     });
 }

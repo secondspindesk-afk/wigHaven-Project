@@ -14,33 +14,36 @@ const batchDeleteSchema = Joi.object({
 /**
  * Media Routes - Admin only
  * All routes require authentication and admin privileges
+ * 
+ * CRITICAL: Do NOT use router.use(authenticateToken) here!
+ * That would intercept ALL /api/* requests since this router is
+ * mounted at /api with app.use('/api', mediaRoutes).
+ * Instead, add middleware to each route individually.
  */
 
-// All routes require admin
-router.use(authenticateToken, requireAdmin);
-
 // List all media with filters
-router.get('/admin/media', mediaController.listMedia);
+router.get('/admin/media', authenticateToken, requireAdmin, mediaController.listMedia);
 
 // Get trash
-router.get('/admin/media/trash', mediaController.getTrash);
+router.get('/admin/media/trash', authenticateToken, requireAdmin, mediaController.getTrash);
 
 // Restore from trash 
-router.post('/admin/media/:id/restore', mediaController.restore);
+router.post('/admin/media/:id/restore', authenticateToken, requireAdmin, mediaController.restore);
 
 // Soft delete (move to trash)
-router.delete('/admin/media/:id/soft', mediaController.softDelete);
+router.delete('/admin/media/:id/soft', authenticateToken, requireAdmin, mediaController.softDelete);
 
 // Hard delete (permanent)
-router.delete('/admin/media/:id/hard', mediaController.hardDelete);
+router.delete('/admin/media/:id/hard', authenticateToken, requireAdmin, mediaController.hardDelete);
 
 // Batch delete
-router.delete('/admin/media/batch', validateRequest(batchDeleteSchema), mediaController.batchDelete);
+router.delete('/admin/media/batch', authenticateToken, requireAdmin, validateRequest(batchDeleteSchema), mediaController.batchDelete);
 
 // Empty trash
-router.delete('/admin/media/trash/clear', mediaController.emptyTrash);
+router.delete('/admin/media/trash/clear', authenticateToken, requireAdmin, mediaController.emptyTrash);
 
 // Sync media
-router.post('/admin/media/sync', mediaController.syncMedia);
+router.post('/admin/media/sync', authenticateToken, requireAdmin, mediaController.syncMedia);
 
 export default router;
+

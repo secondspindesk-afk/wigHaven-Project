@@ -4,6 +4,7 @@ import { Product, getDefaultVariant } from '@/lib/types/product';
 import { useAddToCart } from '@/lib/hooks/useAddToCart';
 import { useCart } from '@/lib/hooks/useCart';
 import { useWishlist } from '@/lib/hooks/useWishlist';
+import { usePrefetchProduct } from '@/lib/hooks/usePrefetchProduct';
 import { useCurrencyContext } from '@/lib/context/CurrencyContext';
 
 
@@ -16,6 +17,7 @@ export default function ProductCard({ product }: ProductCardProps) {
     const { data: cart } = useCart();
     const { formatPrice } = useCurrencyContext();
     const { addToWishlist, removeFromWishlist, isInWishlist } = useWishlist();
+    const prefetchProduct = usePrefetchProduct();
 
     const inWishlist = isInWishlist(product.id);
 
@@ -68,15 +70,34 @@ export default function ProductCard({ product }: ProductCardProps) {
         if (!canQuickAdd) return;
 
         if (defaultVariant) {
+            // Pass product info for INSTANT optimistic UI update
             addToCartMutation.mutate({
                 variantId: defaultVariant.id,
-                quantity: 1
+                quantity: 1,
+                productInfo: {
+                    product_id: product.id,
+                    product_name: product.name,
+                    sku: defaultVariant.sku || '',
+                    unit_price: defaultVariant.price || product.basePrice,
+                    images: defaultVariant.images || [],
+                    attributes: {
+                        length: defaultVariant.length || null,
+                        color: defaultVariant.color || null,
+                        texture: defaultVariant.texture || null,
+                        size: defaultVariant.size || null,
+                    },
+                    stock_available: defaultVariant.stock,
+                    category: product.category?.slug || 'uncategorized',
+                }
             });
         }
     };
 
     return (
-        <div className="bg-[#050505] group/card relative hover:bg-[#0A0A0A] transition-colors h-full flex flex-col">
+        <div
+            className="bg-[#050505] group/card relative hover:bg-[#0A0A0A] transition-colors h-full flex flex-col"
+            onMouseEnter={() => prefetchProduct(product.id)}
+        >
             <Link
                 to={`/products/${product.id}${defaultVariant ? `?variant=${defaultVariant.id}` : ''}`}
                 className="flex-1 flex flex-col"

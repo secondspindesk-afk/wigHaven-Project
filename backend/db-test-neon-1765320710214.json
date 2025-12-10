@@ -1,0 +1,44 @@
+{
+  "provider": "Neon",
+  "timestamp": "2025-12-09T22:51:37.498Z",
+  "tests": {
+    "connection": {
+      "success": true,
+      "duration": 1718
+    },
+    "singleRead": {
+      "avg": 213,
+      "min": 175,
+      "max": 430,
+      "p95": 430
+    },
+    "singleWrite": {
+      "avg": 221,
+      "min": 155,
+      "max": 375,
+      "p95": 375
+    },
+    "concurrentRead": {
+      "avg": 1241,
+      "min": 381,
+      "max": 1762,
+      "p95": 1762,
+      "total": 1763,
+      "failed": 0
+    },
+    "concurrentWrite": {
+      "avg": 521,
+      "min": 415,
+      "max": 626,
+      "p95": 626,
+      "total": 629,
+      "failed": 0
+    },
+    "complexQuery": {
+      "avg": 237,
+      "min": 199,
+      "max": 384,
+      "p95": 384
+    }
+  }
+}

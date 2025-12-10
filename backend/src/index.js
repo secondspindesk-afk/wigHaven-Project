@@ -1,10 +1,8 @@
 import dotenv from 'dotenv';
 import createApp from './server.js';
 import { initializePrisma, disconnectPrisma } from './config/database.js';
-import { initializeQueue } from './config/queue.js';
 import { startWorker } from './workers/webhookWorker.js';
 import { startCronJobs } from './jobs/cronJobs.js';
-import { startEmailWorker } from './jobs/emailWorker.js';
 import logger from './utils/logger.js';
 
 // Load environment variables
@@ -34,35 +32,32 @@ const startServer = async () => {
         logger.info('📊 Connecting to PostgreSQL...');
         await initializePrisma();
 
-        // Initialize Queue System FIRST (required by workers)
-        logger.info('🔧 Initializing Queue System...');
-        await initializeQueue();
+        // NOTE: PgBoss queue REMOVED - using simple in-memory email queue instead
+        // This eliminates database connection pool issues with Supabase
 
-        // Start Background Services (queue is now ready)
-        logger.info('👷 Starting Webhook Worker...');
-        await startWorker(); // AWAIT to ensure subscribed before server starts
+        // Start Background Services
+        logger.info('👷 Enabling Webhook Processing...');
+        await startWorker(); // Now just logs that webhooks are enabled
 
         logger.info('⏰ Starting Cron Jobs...');
         startCronJobs();
 
-        logger.info('📧 Starting Email Worker...');
-        await startEmailWorker(); // AWAIT to ensure ready
+        logger.info('📧 Email queue ready (in-memory)');
+        // Simple email queue starts automatically on first use
 
-        // Initialize business milestones
-        logger.info('🎯 Initializing Business Milestones...');
-        const milestoneService = (await import('./services/milestoneService.js')).default;
-        await milestoneService.initializeMilestones();
-        logger.info('✓ Milestones initialized');
+        // Initialize business services in parallel (faster startup)
+        logger.info('🎯 Initializing Business Services...');
+        const [milestoneService, currencyService] = await Promise.all([
+            import('./services/milestoneService.js'),
+            import('./services/currencyService.js')
+        ]);
 
-        // Fetch initial currency rates
-        logger.info('💱 Fetching Initial Currency Rates...');
-        const currencyService = (await import('./services/currencyService.js')).default;
-        try {
-            await currencyService.updateRatesInDb();
-            logger.info('✓ Currency rates initialized');
-        } catch (error) {
-            logger.warn('⚠ Failed to fetch initial currency rates (will retry in next cron cycle)');
-        }
+        // Run both initializations in parallel
+        await Promise.allSettled([
+            milestoneService.default.initializeMilestones(),
+            currencyService.default.updateRatesInDb()
+        ]);
+        logger.info('✓ Business services initialized');
 
         // Create Express app
         const app = createApp();

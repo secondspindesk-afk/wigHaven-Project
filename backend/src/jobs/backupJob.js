@@ -22,13 +22,27 @@ export const startBackupJob = () => {
             const backupMethod = process.env.BACKUP_METHOD || 'log_only';
 
             if (backupMethod === 'pg_dump') {
-                // Option A: Use pg_dump command
+                // Option A: Use pg_dump command with env vars (SECURITY: don't put password in command line)
+                // Parse DATABASE_URL to extract connection info
                 const databaseUrl = process.env.DATABASE_URL;
                 const backupPath = process.env.BACKUP_PATH || '/tmp/backup';
                 const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
                 const filename = `${backupPath}/backup-${timestamp}.sql`;
 
-                const command = `pg_dump ${databaseUrl} > ${filename}`;
+                // Parse connection string safely
+                // Format: postgres://user:password@host:port/database
+                const urlMatch = databaseUrl.match(/postgres(?:ql)?:\/\/([^:]+):([^@]+)@([^:]+):(\d+)\/(.+)/);
+                if (!urlMatch) {
+                    throw new Error('Invalid DATABASE_URL format');
+                }
+                const [, user, password, host, port, database] = urlMatch;
+
+                // Use PGPASSWORD env var to avoid password in command line/logs
+                const command = `PGPASSWORD="${password}" pg_dump -h ${host} -p ${port} -U ${user} -d ${database} -f ${filename}`;
+
+                // Mask password in logs
+                logger.info(`Creating database backup: pg_dump -h ${host} -p ${port} -U ${user} -d ${database} -f ${filename}`);
+
                 await execAsync(command);
 
                 logger.info(`Database backup created: ${filename}`);

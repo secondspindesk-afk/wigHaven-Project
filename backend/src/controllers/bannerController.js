@@ -1,5 +1,6 @@
 import bannerService from '../services/bannerService.js';
 import logger from '../utils/logger.js';
+import { notifyBannersChanged } from '../utils/adminBroadcast.js';
 
 /**
  * GET /api/banners
@@ -98,6 +99,9 @@ export const createBanner = async (req, res) => {
             notifyUsers: notifyUsers || false
         }, req.user.id);
 
+        // 🔔 Real-time: Notify all admin dashboards
+        notifyBannersChanged({ action: 'created', bannerId: banner.id });
+
         res.status(201).json({
             success: true,
             data: banner,
@@ -127,6 +131,9 @@ export const updateBanner = async (req, res) => {
 
         const banner = await bannerService.updateBanner(id, updateData);
 
+        // 🔔 Real-time: Notify all admin dashboards
+        notifyBannersChanged({ action: 'updated', bannerId: id });
+
         res.json({
             success: true,
             data: banner,
@@ -150,6 +157,9 @@ export const deleteBanner = async (req, res) => {
         const { id } = req.params;
 
         await bannerService.deleteBanner(id);
+
+        // 🔔 Real-time: Notify all admin dashboards
+        notifyBannersChanged({ action: 'deleted', bannerId: id });
 
         res.json({
             success: true,
