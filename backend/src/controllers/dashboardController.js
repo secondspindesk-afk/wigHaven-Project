@@ -173,92 +173,139 @@ export const getCartAbandonment = async (req, res) => {
     }
 };
 
+/**
+ * Export Reports - STREAMING CSV
+ * 
+ * Memory-optimized: Uses cursor pagination to stream data in batches
+ * Never holds more than 100 records in memory at once
+ */
 export const exportReports = async (req, res) => {
     try {
         const { type, range } = req.query;
         const prisma = getPrisma();
-        let data = [];
-        let fields = [];
+        const BATCH_SIZE = 100;
 
         // Calculate date filter
         const days = parseInt(range) || 30;
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - days);
 
-        if (type === 'orders') {
-            const orders = await prisma.order.findMany({
-                where: {
-                    createdAt: {
-                        gte: startDate
-                    }
-                },
-                orderBy: { createdAt: 'desc' },
-                include: {
-                    user: true,
-                    items: true
-                }
-            });
-
-            data = orders.map(o => ({
-                'Order Number': o.orderNumber,
-                'Date': o.createdAt.toISOString().split('T')[0],
-                'Customer Name': o.user ? `${o.user.firstName} ${o.user.lastName}` : 'Guest',
-                'Customer Email': o.user ? o.user.email : o.customerEmail || '',
-                'Status': o.status,
-                'Payment Status': o.paymentStatus,
-                'Total': o.total,
-                'Items Count': o.items.length
-            }));
-            fields = ['Order Number', 'Date', 'Customer Name', 'Customer Email', 'Status', 'Payment Status', 'Total', 'Items Count'];
-        } else if (type === 'products') {
-            const products = await prisma.product.findMany({
-                include: { variants: true }
-            });
-            data = products.map(p => ({
-                Name: p.name,
-                Category: p.category,
-                BasePrice: p.basePrice,
-                TotalStock: p.variants.reduce((sum, v) => sum + v.stock, 0),
-                Status: p.isActive ? 'Active' : 'Inactive'
-            }));
-            fields = ['Name', 'Category', 'BasePrice', 'TotalStock', 'Status'];
-        } else if (type === 'customers') {
-            const customers = await prisma.user.findMany({
-                where: {
-                    role: 'customer',
-                    createdAt: {
-                        gte: startDate
-                    }
-                },
-                include: { _count: { select: { orders: true } } }
-            });
-            data = customers.map(c => ({
-                Name: `${c.firstName} ${c.lastName}`,
-                Email: c.email,
-                Orders: c._count.orders,
-                Joined: c.createdAt.toISOString().split('T')[0]
-            }));
-            fields = ['Name', 'Email', 'Orders', 'Joined'];
-        } else {
-            return res.status(400).json({ success: false, error: 'Invalid report type' });
+        // Validate type
+        if (!['orders', 'products', 'customers'].includes(type)) {
+            return res.status(400).json({ success: false, error: 'Invalid report type. Use: orders, products, customers' });
         }
 
-        // Convert to CSV
-        const csv = [
-            fields.join(','),
-            ...data.map(row => fields.map(field => {
-                const val = row[field];
-                return typeof val === 'string' ? `"${val}"` : val;
-            }).join(','))
-        ].join('\n');
+        // Set response headers for CSV streaming
+        const filename = `${type}_report_${new Date().toISOString().split('T')[0]}.csv`;
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename=${filename}`);
 
-        res.header('Content-Type', 'text/csv');
-        res.header('Content-Disposition', `attachment; filename=${type}_report_${new Date().toISOString().split('T')[0]}.csv`);
-        res.send(csv);
+        // Define fields and headers for each type
+        const config = {
+            orders: {
+                headers: ['Order Number', 'Date', 'Customer Name', 'Customer Email', 'Status', 'Payment Status', 'Total', 'Items Count'],
+                model: prisma.order,
+                where: { createdAt: { gte: startDate } },
+                include: { user: { select: { firstName: true, lastName: true, email: true } }, items: { select: { id: true } } },
+                mapRow: (o) => [
+                    o.orderNumber,
+                    o.createdAt.toISOString().split('T')[0],
+                    o.user ? `${o.user.firstName} ${o.user.lastName}` : 'Guest',
+                    o.user?.email || o.customerEmail || '',
+                    o.status,
+                    o.paymentStatus,
+                    Number(o.total).toFixed(2),
+                    o.items?.length || 0
+                ]
+            },
+            products: {
+                headers: ['Name', 'Category', 'Base Price', 'Total Stock', 'Status'],
+                model: prisma.product,
+                where: {},
+                include: { variants: { select: { stock: true } }, category: { select: { name: true } } },
+                mapRow: (p) => [
+                    p.name,
+                    p.category?.name || 'Uncategorized',
+                    Number(p.basePrice).toFixed(2),
+                    p.variants?.reduce((sum, v) => sum + v.stock, 0) || 0,
+                    p.isActive ? 'Active' : 'Inactive'
+                ]
+            },
+            customers: {
+                headers: ['Name', 'Email', 'Orders', 'Joined'],
+                model: prisma.user,
+                where: { role: 'customer', createdAt: { gte: startDate } },
+                include: { _count: { select: { orders: true } } },
+                mapRow: (c) => [
+                    `${c.firstName || ''} ${c.lastName || ''}`.trim() || 'N/A',
+                    c.email,
+                    c._count?.orders || 0,
+                    c.createdAt.toISOString().split('T')[0]
+                ]
+            }
+        };
+
+        const { headers, model, where, include, mapRow } = config[type];
+
+        // Escape CSV field
+        const escapeCSV = (val) => {
+            if (val === null || val === undefined) return '';
+            const str = String(val);
+            if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+                return `"${str.replace(/"/g, '""')}"`;
+            }
+            return str;
+        };
+
+        // Write headers
+        res.write(headers.join(',') + '\n');
+
+        // Stream data with cursor pagination
+        let cursor = null;
+        let totalRows = 0;
+
+        while (true) {
+            const query = {
+                where,
+                include,
+                take: BATCH_SIZE,
+                orderBy: { id: 'asc' }
+            };
+
+            if (cursor) {
+                query.skip = 1;
+                query.cursor = { id: cursor };
+            }
+
+            const batch = await model.findMany(query);
+
+            if (batch.length === 0) break;
+
+            // Write each row
+            for (const record of batch) {
+                const row = mapRow(record).map(escapeCSV).join(',');
+                res.write(row + '\n');
+                totalRows++;
+            }
+
+            // Update cursor for next batch
+            cursor = batch[batch.length - 1].id;
+
+            // If batch is smaller than requested, we're done
+            if (batch.length < BATCH_SIZE) break;
+        }
+
+        logger.info(`[Export] ${type}: ${totalRows} rows exported`);
+        res.end();
 
     } catch (error) {
         logger.error('Export Report Error:', error);
-        res.status(500).json({ success: false, error: 'Failed to export report' });
+        // Check if headers already sent
+        if (!res.headersSent) {
+            res.status(500).json({ success: false, error: 'Failed to export report' });
+        } else {
+            res.end('\n\nError: Export failed. Check server logs.');
+        }
     }
 };
 

@@ -1,16 +1,21 @@
 import { getPrisma } from '../config/database.js';
+import { getCached } from '../config/analyticsCache.js';
 import logger from '../utils/logger.js';
 
 /**
  * Admin Search Service
  * Unified search across all admin-relevant entities
  * 
+ * OPTIMIZATIONS:
+ * - 60-second cache for repeated searches (reduces 8 parallel queries to 0)
+ * - Results are cached per normalized query
+ * 
  * SECURITY: All searches are sanitized and use Prisma's built-in query safety.
  * No raw SQL is used to prevent injection attacks.
  */
 
 /**
- * Unified search across all entities
+ * Unified search across all entities (CACHED)
  * @param {string} query - Search query (minimum 2 characters)
  * @param {Object} options - Search options
  * @param {number} options.limit - Results per category (default: 5, max: 20)
@@ -18,13 +23,26 @@ import logger from '../utils/logger.js';
  */
 export const unifiedSearch = async (query, options = {}) => {
     const limit = Math.min(options.limit || 5, 20);
-    const prisma = getPrisma();
 
     // Sanitize query - trim whitespace, ensure minimum length
-    const searchTerm = query?.trim();
+    const searchTerm = query?.trim()?.toLowerCase();
     if (!searchTerm || searchTerm.length < 2) {
         throw new Error('Search query must be at least 2 characters');
     }
+
+    // Cache key: normalize search for consistency
+    const cacheKey = `search:${searchTerm}:${limit}`;
+
+    return getCached(cacheKey, async () => {
+        return executeSearch(searchTerm, limit);
+    }, 60); // 60 second TTL for search results
+};
+
+/**
+ * Execute the actual search (uncached)
+ */
+const executeSearch = async (searchTerm, limit) => {
+    const prisma = getPrisma();
 
     try {
         // Execute all searches in parallel for performance
