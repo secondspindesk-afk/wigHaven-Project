@@ -257,21 +257,11 @@ export const cancelOrder = async (req, res, next) => {
         });
 
         // Notify user via In-App Notification
-        if (order.userId) { // Note: formatOrder doesn't return userId, we might need to rely on context or fetch it
-            // Actually formatOrder DOES NOT return userId. 
-            // But the original code was accessing order.userId which suggests the variable 'order' 
-            // in the original code might have been the raw prisma object BEFORE formatting?
-            // Let's check orderService.cancelOrder again. 
-            // It returns formatOrder(updatedOrder). 
-            // formatOrder DOES NOT include userId.
-            // This means the existing notification code might be BUGGY if it relies on order.userId from the result of cancelOrder.
-
-            // However, we have context.userId.
-            // Let's use context.userId if available.
-
+        // FIXED: Use context.userId since formatOrder returns user_id (not userId)
+        if (context.userId) {
             const notificationService = (await import('../services/notificationService.js')).default;
             await notificationService.notifyOrderStatusChanged(
-                { userId: context.userId, orderNumber: order.order_number }, // Use context.userId if available
+                { userId: context.userId, orderNumber: order.order_number },
                 'pending',
                 'cancelled'
             );
@@ -323,15 +313,16 @@ export const updateOrderStatus = async (req, res, next) => {
         const order = await orderService.updateStatus(order_number, status);
 
         // Notify user of status change
-        if (order.userId) {
+        // FIXED: formatOrder returns user_id (with underscore), not userId
+        if (order.user_id) {
             const notificationService = (await import('../services/notificationService.js')).default;
             await notificationService.notifyOrderStatusChanged(
                 {
-                    userId: order.userId,
+                    userId: order.user_id,
                     orderNumber: order.order_number,
                     total: order.total
                 },
-                'previous_status', // We don't have old status here easily, but message handles it
+                'previous_status',
                 status
             );
         }
@@ -385,27 +376,27 @@ export const bulkUpdateStatus = async (req, res, next) => {
 };
 
 /**
- * Export orders to CSV (Admin)
- * GET /api/orders/export
- */
-/**
- * Export orders to CSV (Admin)
+ * Export orders to CSV (Admin) - STREAMING
+ * Memory-optimized: Uses cursor pagination (100 records per batch)
  * GET /api/orders/export
  */
 export const exportOrdersCSV = async (req, res, next) => {
     try {
         const { startDate, endDate, status } = req.query;
+        const prisma = getPrisma();
+        const BATCH_SIZE = 100;
 
-        // Fetch all matching orders (no pagination)
-        const result = await orderService.getAllOrders({
-            page: 1,
-            limit: 10000, // Reasonable limit for export
-            status,
-            startDate,
-            endDate
-        });
-
-        const orders = result.orders;
+        // Build where clause
+        const where = {};
+        if (status && status !== 'all') {
+            where.status = status;
+        }
+        if (startDate) {
+            where.createdAt = { ...where.createdAt, gte: new Date(startDate) };
+        }
+        if (endDate) {
+            where.createdAt = { ...where.createdAt, lte: new Date(endDate) };
+        }
 
         // Define CSV Headers
         const headers = [
@@ -427,39 +418,87 @@ export const exportOrdersCSV = async (req, res, next) => {
             'Items Count'
         ];
 
-        // Convert to CSV string
-        const csvRows = [headers.join(',')];
-
-        for (const order of orders) {
-            const row = [
-                order.order_number,
-                !isNaN(new Date(order.created_at).getTime()) ? new Date(order.created_at).toISOString().split('T')[0] : 'N/A',
-                `"${(order.shipping_address?.name || 'Guest').replace(/"/g, '""')}"`,
-                order.customer_email,
-                order.status,
-                order.payment_status,
-                (order.subtotal || 0).toFixed(2),
-                (order.shipping || 0).toFixed(2),
-                (order.tax || 0).toFixed(2),
-                (order.discount_amount || 0).toFixed(2),
-                order.coupon_code || '',
-                order.total.toFixed(2),
-                order.payment_method || '',
-                order.tracking_number || '',
-                order.carrier || '',
-                order.items?.length || 0
-            ];
-            csvRows.push(row.join(','));
-        }
-
-        const csvString = csvRows.join('\n');
-
+        // Set response headers for CSV streaming
         res.setHeader('Content-Type', 'text/csv');
         res.setHeader('Content-Disposition', `attachment; filename=orders-${new Date().toISOString().split('T')[0]}.csv`);
 
-        res.send(csvString);
+        // Write headers
+        res.write(headers.join(',') + '\n');
+
+        // Escape CSV field
+        const escapeCSV = (val) => {
+            if (val === null || val === undefined) return '';
+            const str = String(val);
+            if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+                return `"${str.replace(/"/g, '""')}"`;
+            }
+            return str;
+        };
+
+        // Stream data with cursor pagination
+        let cursor = null;
+        let totalRows = 0;
+
+        while (true) {
+            const query = {
+                where,
+                include: {
+                    items: { select: { id: true } },
+                },
+                take: BATCH_SIZE,
+                orderBy: { id: 'asc' }
+            };
+
+            if (cursor) {
+                query.skip = 1;
+                query.cursor = { id: cursor };
+            }
+
+            const batch = await prisma.order.findMany(query);
+
+            if (batch.length === 0) break;
+
+            // Write each row
+            for (const order of batch) {
+                const row = [
+                    order.orderNumber,
+                    order.createdAt ? order.createdAt.toISOString().split('T')[0] : 'N/A',
+                    escapeCSV(order.shippingAddress?.name || 'Guest'),
+                    order.customerEmail || '',
+                    order.status,
+                    order.paymentStatus,
+                    (parseFloat(order.subtotal) || 0).toFixed(2),
+                    (parseFloat(order.shipping) || 0).toFixed(2),
+                    (parseFloat(order.tax) || 0).toFixed(2),
+                    (parseFloat(order.discount) || 0).toFixed(2),
+                    order.couponCode || '',
+                    (parseFloat(order.total) || 0).toFixed(2),
+                    order.paymentMethod || '',
+                    order.trackingNumber || '',
+                    order.carrier || '',
+                    order.items?.length || 0
+                ].map(escapeCSV).join(',');
+
+                res.write(row + '\n');
+                totalRows++;
+            }
+
+            // Update cursor for next batch
+            cursor = batch[batch.length - 1].id;
+
+            // If batch is smaller than requested, we're done
+            if (batch.length < BATCH_SIZE) break;
+        }
+
+        logger.info(`[Export] Orders: ${totalRows} rows exported`);
+        res.end();
     } catch (error) {
-        next(error);
+        logger.error('Export Orders CSV Error:', error);
+        if (!res.headersSent) {
+            next(error);
+        } else {
+            res.end('\n\nError: Export failed');
+        }
     }
 };
 
@@ -470,18 +509,74 @@ export const exportOrdersCSV = async (req, res, next) => {
 export const manuallyVerifyPayment = async (req, res, next) => {
     try {
         const { order_number } = req.params;
+        const prisma = getPrisma();
 
-        // Logic to manually trigger payment verification
-        const order = await orderService.getOrder(order_number, {});
-        if (!order) throw new Error('Order not found');
+        // Get order with payment reference
+        const order = await orderService.getOrder(order_number, { skipAuth: true });
+        if (!order) {
+            return res.status(404).json({ success: false, error: 'Order not found' });
+        }
 
-        // Re-run verification logic
-        // ...
+        // If already paid, return early
+        if (order.payment_status === 'paid') {
+            return res.json({
+                success: true,
+                message: 'Order is already marked as paid',
+                order
+            });
+        }
 
-        res.json({
-            success: true,
-            message: 'Payment verification triggered'
-        });
+        // If no Paystack reference, cannot verify programmatically
+        if (!order.paystack_reference) {
+            // Admin can force-mark as paid
+            const { force } = req.body;
+            if (force === true) {
+                await prisma.order.update({
+                    where: { orderNumber: order_number },
+                    data: {
+                        paymentStatus: 'paid',
+                        paidAt: new Date(),
+                        updatedAt: new Date()
+                    }
+                });
+
+                notifyOrdersChanged({ action: 'payment_verified', orderNumber: order_number });
+
+                logger.warn(`[ADMIN] Payment force-marked as paid for ${order_number} by ${req.user?.email}`);
+
+                return res.json({
+                    success: true,
+                    message: 'Payment manually marked as paid (forced)',
+                    warning: 'No Paystack reference - verify externally'
+                });
+            }
+
+            return res.status(400).json({
+                success: false,
+                error: 'No Paystack reference available',
+                hint: 'Use { "force": true } to manually mark as paid'
+            });
+        }
+
+        // Verify with Paystack API
+        const { verifyPayment } = await import('../services/paymentService.js');
+        const verification = await verifyPayment(order.paystack_reference);
+
+        if (verification.success) {
+            notifyOrdersChanged({ action: 'payment_verified', orderNumber: order_number });
+
+            res.json({
+                success: true,
+                message: 'Payment verified successfully',
+                verification
+            });
+        } else {
+            res.status(400).json({
+                success: false,
+                error: 'Payment verification failed',
+                details: verification.error
+            });
+        }
     } catch (error) {
         next(error);
     }
