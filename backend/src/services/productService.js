@@ -5,6 +5,7 @@ import logger from '../utils/logger.js';
 import { getPrisma } from '../config/database.js';
 import { uploadFromUrl } from '../config/imagekit.js';
 import { generateUniqueFilename, getFolderPath, validateExternalImageUrl } from '../utils/imageUtils.js';
+import cache from '../utils/cache.js';
 
 /**
  * Process image URLs - uploads external URLs to ImageKit and returns all as ImageKit URLs
@@ -221,15 +222,21 @@ export const createProduct = async (productData, userId = null) => {
 };
 
 /**
- * Get product by ID - NO CACHING (Redis is too slow!)
+ * Get product by ID - CACHED (node-cache)
+ * Serves from memory if available, otherwise DB
  */
 export const getProductById = async (id) => {
     const startTime = Date.now();
 
     try {
-        // DIRECT DATABASE ACCESS - Redis was 100x slower!
-        // Cache operations were taking 3-5 seconds vs 18ms database queries
+        // 1. Check Cache
+        const cachedProduct = cache.get(cache.productKey(id));
+        if (cachedProduct) {
+            // logger.info(`[PERF] Serving product ${id} from cache`);
+            return cachedProduct;
+        }
 
+        // 2. Fetch from DB
         const dbStart = Date.now();
         const product = await productRepository.findProductById(id);
         const dbTime = Date.now() - dbStart;
@@ -250,7 +257,10 @@ export const getProductById = async (id) => {
         const result = { ...product, stats };
         const totalTime = Date.now() - startTime;
 
-        logger.info(`[PERF] getProductById: ${totalTime}ms (DB: ${dbTime}ms)`);
+        logger.info(`[PERF] getProductById: ${totalTime}ms (DB: ${dbTime}ms) - CACHE MISS`);
+
+        // 3. Save to Cache (10 minutes)
+        cache.set(cache.productKey(id), result);
 
         return result;
     } catch (error) {
@@ -468,7 +478,12 @@ export const updateProduct = async (id, data, userId = null) => {
         }
 
         // Update product (only with fields that were actually provided)
+        // Update product (only with fields that were actually provided)
         const updatedProduct = await productRepository.updateProduct(id, data);
+
+        // INVALIDATE CACHE
+        cache.del(cache.productKey(id));
+
         return updatedProduct;
     } catch (error) {
         logger.error(`Error in updateProduct service for ${id}:`, error);
@@ -487,6 +502,10 @@ export const deleteProduct = async (id) => {
 
         const result = await productRepository.hardDeleteProduct(id, moveToTrash);
         logger.info(`Product ${id} deleted. ${result.imagesMovedToTrash} images moved to trash.`);
+
+        // INVALIDATE CACHE
+        cache.del(cache.productKey(id));
+
         return result;
     } catch (error) {
         logger.error(`Error in deleteProduct service for ${id}:`, error);

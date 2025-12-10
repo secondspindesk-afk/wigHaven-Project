@@ -2,20 +2,32 @@ import axios from './axios';
 
 /**
  * Get supported currencies
+ * NEVER returns undefined - always returns at least ['GHS']
  */
 export const getSupportedCurrencies = async (): Promise<string[]> => {
-    const response = await axios.get<{ success: boolean; data: string[] }>('/currency/supported');
-    return response.data.data;
+    try {
+        const response = await axios.get<{ success: boolean; data: string[] }>('/currency/supported');
+        return response.data?.data ?? ['GHS'];
+    } catch (error) {
+        console.error('Failed to fetch supported currencies:', error);
+        return ['GHS']; // Safe fallback
+    }
 };
 
 /**
  * Get current exchange rates
+ * NEVER returns undefined - always returns valid structure
  */
 export const getExchangeRates = async (): Promise<{ rates: Record<string, number>; base: string; timestamp: string }> => {
-    const response = await axios.get<{ success: boolean; data: { rates: Record<string, number>; base: string; timestamp: string } }>(
-        '/currency/rates'
-    );
-    return response.data.data;
+    try {
+        const response = await axios.get<{ success: boolean; data: { rates: Record<string, number>; base: string; timestamp: string } }>(
+            '/currency/rates'
+        );
+        return response.data?.data ?? { rates: {}, base: 'GHS', timestamp: new Date().toISOString() };
+    } catch (error) {
+        console.error('Failed to fetch exchange rates:', error);
+        return { rates: {}, base: 'GHS', timestamp: new Date().toISOString() }; // Safe fallback
+    }
 };
 
 /**

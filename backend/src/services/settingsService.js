@@ -2,23 +2,14 @@ import { getPrisma } from '../config/database.js';
 import { broadcastForceLogout } from '../config/websocket.js';
 import logger from '../utils/logger.js';
 
-// ============================================
-// IN-MEMORY CACHE FOR SETTINGS
-// ============================================
-// Settings change rarely but are read frequently (every cart request).
-// Caching them in memory significantly reduces database round-trips.
-
-let settingsCache = null;
-let settingsCacheTime = 0;
-const SETTINGS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+import cache from '../utils/cache.js';
 
 /**
  * Invalidate the settings cache
  * Call this when settings are updated
  */
 export const invalidateSettingsCache = () => {
-    settingsCache = null;
-    settingsCacheTime = 0;
+    cache.del('settings:all');
     logger.info('[CACHE] Settings cache invalidated');
 };
 
@@ -58,30 +49,31 @@ export const getSetting = async (key) => {
 /**
  * Get all settings with IN-MEMORY CACHING
  * 
- * Settings are cached for 5 minutes to reduce DB calls.
+ * Settings are cached for 10 minutes (via cache.js default) to reduce DB calls.
  * Cache is invalidated when settings are updated.
  */
 export const getAllSettings = async () => {
-    const now = Date.now();
-
-    // Return cached settings if still valid
-    if (settingsCache && (now - settingsCacheTime) < SETTINGS_CACHE_TTL) {
-        return settingsCache;
+    // 1. Check Cache
+    const cachedSettings = cache.get('settings:all');
+    if (cachedSettings) {
+        return cachedSettings;
     }
 
-    // Fetch from database
+    // 2. Fetch from database
     const prisma = getPrisma();
     const settings = await prisma.systemSetting.findMany();
 
-    // Parse and cache
-    settingsCache = settings.reduce((acc, curr) => {
+    // 3. Parse and Cache
+    const settingsObject = settings.reduce((acc, curr) => {
         acc[curr.key] = parseValue(curr.value);
         return acc;
     }, {});
-    settingsCacheTime = now;
+
+    // Cache for 10 minutes
+    cache.set('settings:all', settingsObject);
 
     logger.debug('[CACHE] Settings cache refreshed');
-    return settingsCache;
+    return settingsObject;
 };
 
 /**

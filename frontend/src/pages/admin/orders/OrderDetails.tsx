@@ -4,7 +4,7 @@ import {
     ArrowLeft, Package, Truck, CheckCircle, XCircle, Clock, AlertCircle,
     Phone, Mail, CreditCard, RefreshCw, DollarSign, Printer, Plus
 } from 'lucide-react';
-import { useAdminOrder, useUpdateOrderStatus, useRefundOrder, useUpdateTracking } from '@/lib/hooks/useOrders';
+import { useAdminOrder, useUpdateOrderStatus, useRefundOrder, useUpdateTracking, useVerifyPayment } from '@/lib/hooks/useOrders';
 import { OrderStatus } from '@/lib/api/orders';
 import { useToast } from '@/contexts/ToastContext';
 import { formatCurrency } from '@/lib/utils/currency';
@@ -34,13 +34,16 @@ export default function OrderDetails() {
 
     const [showRefundModal, setShowRefundModal] = useState(false);
     const [showTrackingModal, setShowTrackingModal] = useState(false);
+    const [showVerifyModal, setShowVerifyModal] = useState(false);
     const [trackingNumber, setTrackingNumber] = useState('');
     const [carrier, setCarrier] = useState('');
+    const [forceVerify, setForceVerify] = useState(false);
 
     const { data: order, isLoading, refetch } = useAdminOrder(orderNumber || '');
     const updateStatusMutation = useUpdateOrderStatus();
     const refundMutation = useRefundOrder();
     const trackingMutation = useUpdateTracking();
+    const verifyMutation = useVerifyPayment();
 
     // Format date
     const formatDate = (dateString: string) => {
@@ -84,6 +87,25 @@ export default function OrderDetails() {
             setShowTrackingModal(false);
         } catch (error: any) {
             showToast(error.message || 'Failed to add tracking', 'error');
+        }
+    };
+
+    const handleVerifyPayment = async () => {
+        if (!orderNumber) return;
+        try {
+            const result = await verifyMutation.mutateAsync({ orderNumber, force: forceVerify });
+            if (result.success) {
+                showToast(result.message || 'Payment verified successfully', 'success');
+                if (result.warning) {
+                    showToast(result.warning, 'warning');
+                }
+            } else {
+                showToast(result.error || 'Verification failed', 'error');
+            }
+            setShowVerifyModal(false);
+            setForceVerify(false);
+        } catch (error: any) {
+            showToast(error.response?.data?.error || error.message || 'Verification failed', 'error');
         }
     };
 
@@ -158,6 +180,15 @@ export default function OrderDetails() {
                             >
                                 <DollarSign size={14} />
                                 Refund
+                            </button>
+                        )}
+                        {order.payment_status !== 'paid' && (
+                            <button
+                                onClick={() => setShowVerifyModal(true)}
+                                className="px-4 py-2 bg-emerald-500/10 text-emerald-500 border border-emerald-500/30 text-[10px] font-bold font-mono uppercase hover:bg-emerald-500/20 transition-colors flex items-center gap-2"
+                            >
+                                <CreditCard size={14} />
+                                Verify Payment
                             </button>
                         )}
                         <button
@@ -496,6 +527,60 @@ export default function OrderDetails() {
                                 className="flex-1 px-4 py-2 bg-emerald-600 text-white text-sm font-bold uppercase hover:bg-emerald-700 transition-colors disabled:opacity-50"
                             >
                                 {trackingMutation.isPending ? 'Saving...' : 'Save Tracking'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Verify Payment Modal */}
+            {showVerifyModal && (
+                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+                    <div className="bg-[#0A0A0A] border border-[#27272a] p-6 max-w-md w-full">
+                        <h2 className="text-lg text-white font-bold mb-4">Verify Payment</h2>
+                        <p className="text-sm text-zinc-400 mb-4">
+                            Attempt to verify payment for order <span className="text-white font-mono">{order.order_number}</span>.
+                        </p>
+                        <p className="text-xs text-zinc-500 mb-4">
+                            If a Paystack reference exists, we'll verify with their API. Otherwise, use force-verify to manually mark as paid.
+                        </p>
+                        <div className="mb-6 p-3 bg-zinc-900/50 border border-zinc-800 rounded">
+                            <label className="flex items-center gap-3 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={forceVerify}
+                                    onChange={(e) => setForceVerify(e.target.checked)}
+                                    className="w-4 h-4 accent-emerald-500"
+                                />
+                                <div>
+                                    <span className="text-sm text-white font-medium">Force verify payment</span>
+                                    <p className="text-[10px] text-zinc-500 mt-0.5">Mark as paid without API verification</p>
+                                </div>
+                            </label>
+                        </div>
+                        {forceVerify && (
+                            <div className="mb-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded">
+                                <p className="text-xs text-amber-400">
+                                    ⚠️ Warning: Force-verify bypasses payment gateway verification. Only use if you've confirmed payment externally.
+                                </p>
+                            </div>
+                        )}
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => {
+                                    setShowVerifyModal(false);
+                                    setForceVerify(false);
+                                }}
+                                className="flex-1 px-4 py-2 bg-zinc-800 text-white text-sm font-bold uppercase hover:bg-zinc-700 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleVerifyPayment}
+                                disabled={verifyMutation.isPending}
+                                className="flex-1 px-4 py-2 bg-emerald-600 text-white text-sm font-bold uppercase hover:bg-emerald-700 transition-colors disabled:opacity-50"
+                            >
+                                {verifyMutation.isPending ? 'Verifying...' : 'Verify Payment'}
                             </button>
                         </div>
                     </div>

@@ -6,7 +6,8 @@ export function useDiscounts() {
     return useQuery({
         queryKey: ['admin', 'discounts'],
         queryFn: discountApi.getAllDiscounts,
-        staleTime: 0
+        staleTime: 2 * 60 * 1000, // 2 minutes
+        gcTime: 10 * 60 * 1000,
     });
 }
 
@@ -27,7 +28,7 @@ export function useDiscount(id: string | undefined) {
         queryKey: ['admin', 'discounts', id],
         queryFn: () => discountApi.getDiscount(id!),
         enabled: !!id,
-        staleTime: 0
+        staleTime: 1 * 60 * 1000, // 1 minute
     });
 }
 

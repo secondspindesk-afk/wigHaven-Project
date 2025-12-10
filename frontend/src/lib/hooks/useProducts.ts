@@ -25,7 +25,8 @@ export function useAdminProducts(params?: { search?: string; category?: string; 
         queryKey: ['admin', 'products', params],
         queryFn: () => adminProductApi.getProducts(params),
         placeholderData: (previousData) => previousData,
-        staleTime: 0
+        staleTime: 2 * 60 * 1000, // 2 minutes
+        gcTime: 10 * 60 * 1000,
     });
 }
 
@@ -35,7 +36,7 @@ export function useProduct(id: string | undefined) {
         queryKey: ['admin', 'products', id],
         queryFn: () => adminProductApi.getProduct(id!),
         enabled: !!id,
-        staleTime: 0
+        staleTime: 1 * 60 * 1000, // 1 minute
     });
 }
 
@@ -149,7 +150,8 @@ export function useAdminCategories(params?: { isActive?: boolean; type?: string;
     return useQuery({
         queryKey: ['admin', 'categories', params],
         queryFn: () => adminProductApi.getCategories(params),
-        staleTime: 0
+        staleTime: 2 * 60 * 1000, // 2 minutes - categories rarely change
+        gcTime: 10 * 60 * 1000,
     });
 }
 

@@ -6,6 +6,11 @@ interface CustomAxiosRequestConfig extends InternalAxiosRequestConfig {
     _retry?: boolean;
 }
 
+// Custom event for auth redirect (allows React Router to handle instead of full page reload)
+const dispatchAuthRedirect = () => {
+    window.dispatchEvent(new CustomEvent('auth:logout', { detail: { redirect: '/login' } }));
+};
+
 // Session ID management
 const getSessionId = () => {
     let sessionId = localStorage.getItem('session_id');
@@ -17,7 +22,10 @@ const getSessionId = () => {
 };
 
 const api = axios.create({
-    baseURL: '/api',
+    // Use environment variable if set, otherwise default to relative path (Vite proxy)
+    baseURL: import.meta.env.VITE_API_URL
+        ? `${import.meta.env.VITE_API_URL}/api`
+        : '/api',
     headers: {
         'Content-Type': 'application/json',
     },
@@ -29,6 +37,8 @@ api.interceptors.request.use(
         const token = tokenManager.getAccessToken();
         if (token) {
             config.headers.Authorization = `Bearer ${token}`;
+            // Also send as custom header to bypass Gateway overwriting Authorization
+            config.headers['X-Auth-Token'] = token;
         }
 
         // Add Session ID to every request
@@ -57,18 +67,24 @@ api.interceptors.response.use(
                 // For /me 401, force immediate logout
                 if (originalRequest.url?.includes('/auth/me')) {
                     tokenManager.clearTokens();
-                    if (!window.location.pathname.includes('/login')) {
-                        window.location.href = '/login';
-                    }
+                    // Use custom event instead of hard redirect
+                    dispatchAuthRedirect();
                 }
                 return Promise.reject(error);
             }
 
             originalRequest._retry = true;
 
-            try {
-                const refreshToken = tokenManager.getRefreshToken();
+            // Check if we have tokens at all - if not, user was never logged in
+            const refreshToken = tokenManager.getRefreshToken();
+            const accessToken = tokenManager.getAccessToken();
 
+            // User was never logged in - don't redirect, just reject
+            if (!refreshToken && !accessToken) {
+                return Promise.reject(error);
+            }
+
+            try {
                 if (!refreshToken) {
                     throw new Error('No refresh token available');
                 }
@@ -76,25 +92,23 @@ api.interceptors.response.use(
                 // Call refresh endpoint
                 const response = await axios.post('/api/auth/refresh', { refreshToken });
 
-                const { accessToken, refreshToken: newRefreshToken } = response.data.data;
+                const { accessToken: newAccessToken, refreshToken: newRefreshToken } = response.data.data;
 
                 // Update tokens
-                tokenManager.setTokens(accessToken, newRefreshToken);
+                tokenManager.setTokens(newAccessToken, newRefreshToken);
 
                 // Retry original request with new token
                 if (originalRequest.headers) {
-                    originalRequest.headers.Authorization = `Bearer ${accessToken}`;
+                    originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
                 }
                 return api(originalRequest);
 
             } catch (refreshError) {
-                // If refresh fails, logout
+                // If refresh fails and we HAD tokens, session expired - logout
                 tokenManager.clearTokens();
 
-                // Only redirect if not already on login page
-                if (!window.location.pathname.includes('/login')) {
-                    window.location.href = '/login';
-                }
+                // Use custom event instead of hard redirect
+                dispatchAuthRedirect();
                 return Promise.reject(refreshError);
             }
         }

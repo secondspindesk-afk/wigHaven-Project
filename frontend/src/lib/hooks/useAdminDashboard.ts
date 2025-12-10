@@ -6,7 +6,8 @@ import adminApi, {
     RecentOrder,
     OrderStatusBreakdown,
     InventoryStatus,
-    LowStockItem
+    LowStockItem,
+    CacheStats
 } from '../api/admin';
 
 // ============================================
@@ -156,6 +157,16 @@ export function useSidebarStats(enabled: boolean = true) {
     return useQuery({
         queryKey: ['admin', 'sidebar-stats'],
         queryFn: adminApi.getSidebarStats,
+        ...ADMIN_CACHE_CONFIG,
+        enabled
+    });
+}
+
+// Cache Stats Hook (for monitoring server-side cache performance)
+export function useCacheStats(enabled: boolean = true) {
+    return useQuery<CacheStats>({
+        queryKey: ['admin', 'dashboard', 'cache-stats'],
+        queryFn: adminApi.getCacheStats,
         ...ADMIN_CACHE_CONFIG,
         enabled
     });

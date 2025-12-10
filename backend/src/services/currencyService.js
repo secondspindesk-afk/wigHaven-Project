@@ -11,6 +11,8 @@
 import { getPrisma } from '../config/database.js';
 import logger from '../utils/logger.js';
 
+import cache from '../utils/cache.js';
+
 // ExchangeRate-API - Free tier: 1500 requests/month
 // Supports GHS directly (unlike Frankfurter)
 const EXCHANGE_API_URL = 'https://open.er-api.com/v6/latest/GHS';
@@ -19,13 +21,8 @@ const EXCHANGE_API_URL = 'https://open.er-api.com/v6/latest/GHS';
 const FALLBACK_API_URL = 'https://api.exchangerate.host/latest?base=GHS';
 
 const SUPPORTED_CURRENCIES = ['USD', 'EUR', 'GBP'];
-const CACHE_DURATION_MS = 6 * 60 * 60 * 1000; // 6 hours
-
-// ============================================
-// IN-MEMORY CACHE (reduces DB round-trips)
-// ============================================
-let ratesCache = null;
-let cacheTimestamp = 0;
+const RATES_CACHE_KEY = 'currency:rates';
+const CACHE_TTL = 6 * 60 * 60; // 6 hours (in seconds for node-cache)
 
 /**
  * Fetch latest rates from ExchangeRate-API
@@ -91,9 +88,8 @@ export const fetchLatestRates = async () => {
 export const updateRatesInDb = async () => {
     const rates = await fetchLatestRates();
 
-    // Update in-memory cache immediately
-    ratesCache = rates;
-    cacheTimestamp = Date.now();
+    // Update centralized cache immediately
+    cache.set(RATES_CACHE_KEY, rates, CACHE_TTL);
 
     // Try to persist to database (but don't fail if DB is unavailable)
     try {
@@ -136,9 +132,10 @@ export const updateRatesInDb = async () => {
  * Get cached rates (memory-first, then DB, then fetch)
  */
 export const getCachedRates = async () => {
-    // 1. Check in-memory cache first (fastest)
-    if (ratesCache && (Date.now() - cacheTimestamp) < CACHE_DURATION_MS) {
-        return ratesCache;
+    // 1. Check centralized cache first (fastest)
+    const cached = cache.get(RATES_CACHE_KEY);
+    if (cached) {
+        return cached;
     }
 
     // 2. Try database cache
@@ -155,8 +152,8 @@ export const getCachedRates = async () => {
             }, {});
 
             // Update memory cache
-            ratesCache = ratesObj;
-            cacheTimestamp = Date.now();
+            // Update centralized cache
+            cache.set(RATES_CACHE_KEY, ratesObj, CACHE_TTL);
 
             // Check if DB cache is stale
             const oldestRate = rates.reduce((oldest, rate) =>
@@ -218,8 +215,7 @@ export const getSupportedCurrencies = () => {
  * Force refresh rates (for admin use)
  */
 export const forceRefreshRates = async () => {
-    ratesCache = null;
-    cacheTimestamp = 0;
+    cache.del(RATES_CACHE_KEY);
     return await updateRatesInDb();
 };
 

@@ -532,12 +532,12 @@ export default function Settings() {
                                         }
                                     }}
                                     className={`w-full flex items-center gap-3 px-4 py-3 text-xs font-semibold uppercase tracking-wide transition-all rounded-lg ${activeTab === tab.id
-                                            ? index >= baseTabs.length
-                                                ? 'bg-amber-500/10 text-amber-500'
-                                                : 'bg-[#00C3F7]/10 text-[#00C3F7]'
-                                            : index >= baseTabs.length
-                                                ? 'text-amber-500/50 hover:text-amber-500 hover:bg-amber-500/5'
-                                                : 'text-zinc-500 hover:text-white hover:bg-zinc-800/50'
+                                        ? index >= baseTabs.length
+                                            ? 'bg-amber-500/10 text-amber-500'
+                                            : 'bg-[#00C3F7]/10 text-[#00C3F7]'
+                                        : index >= baseTabs.length
+                                            ? 'text-amber-500/50 hover:text-amber-500 hover:bg-amber-500/5'
+                                            : 'text-zinc-500 hover:text-white hover:bg-zinc-800/50'
                                         }`}
                                 >
                                     <tab.icon size={16} />
@@ -967,15 +967,16 @@ export default function Settings() {
 
                                 <div className="p-4 bg-zinc-800/30 border border-zinc-700/50 rounded-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                                     <div>
-                                        <h3 className="text-sm font-bold text-white uppercase">Database Backup</h3>
+                                        <h3 className="text-sm font-bold text-white uppercase">Cloud Backup (R2)</h3>
                                         <p className="text-xs text-zinc-400 mt-1">
-                                            Download a full JSON dump. Contains sensitive data.
+                                            Backup database to Cloudflare R2 cloud storage. Retention: 7 days.
                                         </p>
                                     </div>
                                     <button
                                         onClick={async () => {
                                             if (!superAdminAuth) return;
                                             try {
+                                                showToast('Starting backup to R2...', 'info');
                                                 const response = await fetch('/api/super-admin/backup', {
                                                     headers: {
                                                         'Authorization': `Bearer ${tokenManager.getAccessToken()}`,
@@ -983,28 +984,26 @@ export default function Settings() {
                                                         'x-super-admin-secret': superAdminAuth.secret
                                                     }
                                                 });
-                                                if (response.ok) {
-                                                    const blob = await response.blob();
-                                                    const url = window.URL.createObjectURL(blob);
-                                                    const a = document.createElement('a');
-                                                    a.href = url;
-                                                    a.download = `backup-${new Date().toISOString().split('T')[0]}.json`;
-                                                    document.body.appendChild(a);
-                                                    a.click();
-                                                    window.URL.revokeObjectURL(url);
-                                                    document.body.removeChild(a);
-                                                    showToast('Backup downloaded', 'success');
+                                                const data = await response.json();
+                                                if (response.ok && data.success) {
+                                                    const msg = [
+                                                        `✅ ${data.message}`,
+                                                        data.filename ? `File: ${data.filename}` : '',
+                                                        data.stats?.totalRecords ? `Records: ${data.stats.totalRecords}` : '',
+                                                        data.location || ''
+                                                    ].filter(Boolean).join('\n');
+                                                    showToast(msg, 'success');
                                                 } else {
-                                                    showToast('Failed to download backup', 'error');
+                                                    showToast(data.error || data.hint || 'Backup failed', 'error');
                                                 }
                                             } catch (error) {
-                                                showToast('Failed to download backup', 'error');
+                                                showToast('Failed to trigger backup', 'error');
                                             }
                                         }}
                                         className="px-4 py-2 bg-zinc-900 border border-zinc-700 text-white text-xs font-bold uppercase rounded-lg hover:bg-zinc-800 transition-colors flex items-center gap-2"
                                     >
                                         <Database size={14} />
-                                        Download Backup
+                                        Backup to R2
                                     </button>
                                 </div>
                             </SettingsCard>

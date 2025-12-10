@@ -154,6 +154,17 @@ export const ordersApi = {
     updateTrackingNumber: async (orderNumber: string, trackingNumber: string, carrier: string): Promise<AdminOrder> => {
         const response = await api.patch(`/admin/orders/${orderNumber}/tracking`, { tracking_number: trackingNumber, carrier });
         return extractData(response).order;
+    },
+
+    // Manually verify/force payment (Admin)
+    verifyPayment: async (orderNumber: string, force: boolean = false): Promise<{
+        success: boolean;
+        message: string;
+        warning?: string;
+        error?: string;
+    }> => {
+        const response = await api.post(`/orders/${orderNumber}/verify-payment`, { force });
+        return response.data;
     }
 };
 

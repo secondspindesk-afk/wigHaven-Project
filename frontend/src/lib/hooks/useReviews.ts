@@ -31,9 +31,10 @@ export function useCreateReview() {
 // Admin Hooks
 export function useAdminReviews(filters?: ReviewFilters) {
     return useQuery({
-        queryKey: ['admin-reviews', filters],
+        queryKey: ['admin', 'reviews', filters],
         queryFn: () => reviewsApi.getReviews(filters),
-        staleTime: 0,
+        staleTime: 2 * 60 * 1000, // 2 minutes
+        gcTime: 10 * 60 * 1000,
     });
 }
 
@@ -42,7 +43,7 @@ export function useApproveReview() {
     return useMutation({
         mutationFn: reviewsApi.approveReview,
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['admin-reviews'] });
+            queryClient.invalidateQueries({ queryKey: ['admin', 'reviews'] });
         },
     });
 }
@@ -52,7 +53,7 @@ export function useRejectReview() {
     return useMutation({
         mutationFn: reviewsApi.rejectReview,
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['admin-reviews'] });
+            queryClient.invalidateQueries({ queryKey: ['admin', 'reviews'] });
         },
     });
 }
@@ -62,7 +63,7 @@ export function useDeleteReview() {
     return useMutation({
         mutationFn: reviewsApi.deleteReview,
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['admin-reviews'] });
+            queryClient.invalidateQueries({ queryKey: ['admin', 'reviews'] });
         },
     });
 }
@@ -73,7 +74,7 @@ export function useUpdateReview() {
         mutationFn: ({ id, data }: { id: string; data: { title?: string; content?: string } }) =>
             reviewsApi.updateReview(id, data),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['admin-reviews'] });
+            queryClient.invalidateQueries({ queryKey: ['admin', 'reviews'] });
         },
     });
 }

@@ -9,7 +9,8 @@ export function useAdminUsers(filters?: UsersFilters) {
         queryKey: ['admin', 'users', filters],
         queryFn: () => usersApi.getUsers(filters),
         placeholderData: (previousData) => previousData,
-        staleTime: 0,
+        staleTime: 2 * 60 * 1000, // 2 minutes
+        gcTime: 10 * 60 * 1000,
     });
 }
 

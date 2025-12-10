@@ -173,6 +173,28 @@ const createApp = () => {
         }
     });
 
+    // Root route handler - Required for Hugging Face Spaces platform health checks
+    // HF sends GET / and GET /?logs=container&__sign=... for container monitoring
+    app.get('/', (req, res) => {
+        // If this is an HF internal request (logs/container check), return simple OK
+        if (req.query.logs || req.query.__sign) {
+            return res.status(200).json({
+                status: 'ok',
+                service: 'wighaven-backend',
+                message: 'Container is running'
+            });
+        }
+
+        // For regular root requests, return API info
+        res.json({
+            success: true,
+            message: 'WigHaven Backend API',
+            version: '1.0.0',
+            health: '/api/health',
+            docs: '/api'
+        });
+    });
+
     // API Routes
     app.get('/api', (req, res) => {
         res.json({

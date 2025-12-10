@@ -8,7 +8,8 @@ import {
     useRecentOrders,
     useOrderStatusBreakdown,
     useInventoryStatus,
-    useLowStockAlerts
+    useLowStockAlerts,
+    useCacheStats
 } from '@/lib/hooks/useAdminDashboard';
 import SalesChart from '@/components/admin/SalesChart';
 import OrderStatusChart from '@/components/admin/OrderStatusChart';
@@ -99,6 +100,7 @@ export default function AdminDashboard() {
     const { data: orderStatus, isLoading: statusLoading } = useOrderStatusBreakdown();
     const { data: inventoryStatus, isLoading: inventoryLoading } = useInventoryStatus();
     const { data: lowStock, isLoading: lowStockLoading } = useLowStockAlerts();
+    const { data: cacheStats, isLoading: cacheLoading } = useCacheStats();
 
     const formatCurrency = (amount: number) => `GHS ${(amount || 0).toLocaleString()}`;
     const safeArray = <T,>(data: T[] | undefined | null): T[] => Array.isArray(data) ? data : [];
@@ -378,6 +380,51 @@ export default function AdminDashboard() {
                 </div>
                 <div className="p-6">
                     <ActivityFeed />
+                </div>
+            </div>
+
+            {/* Cache Stats (for all admins - debugging tool) */}
+            <div className="border border-[#27272a] bg-[#0A0A0A]">
+                <div className="px-6 py-4 border-b border-[#27272a] flex justify-between items-center">
+                    <h3 className="text-xs font-bold text-white uppercase tracking-widest">Server Cache Statistics</h3>
+                    <span className="text-[9px] font-mono text-zinc-600 uppercase">Analytics Cache</span>
+                </div>
+                <div className="p-6">
+                    {cacheLoading ? (
+                        <div className="animate-pulse flex gap-4">
+                            <div className="h-12 w-24 bg-zinc-800" />
+                            <div className="h-12 w-24 bg-zinc-800" />
+                            <div className="h-12 w-24 bg-zinc-800" />
+                        </div>
+                    ) : cacheStats ? (
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div className="p-4 bg-zinc-900/50 border border-zinc-800">
+                                <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold mb-2">Cache Hits</p>
+                                <p className="text-xl text-emerald-400 font-mono font-medium">{(cacheStats.hits || 0).toLocaleString()}</p>
+                            </div>
+                            <div className="p-4 bg-zinc-900/50 border border-zinc-800">
+                                <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold mb-2">Cache Misses</p>
+                                <p className="text-xl text-amber-400 font-mono font-medium">{(cacheStats.misses || 0).toLocaleString()}</p>
+                            </div>
+                            <div className="p-4 bg-zinc-900/50 border border-zinc-800">
+                                <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold mb-2">Cached Keys</p>
+                                <p className="text-xl text-white font-mono font-medium">{(cacheStats.keys || 0).toLocaleString()}</p>
+                            </div>
+                            <div className="p-4 bg-zinc-900/50 border border-zinc-800">
+                                <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold mb-2">Hit Rate</p>
+                                <p className="text-xl text-white font-mono font-medium">
+                                    {cacheStats.hits + cacheStats.misses > 0
+                                        ? Math.round((cacheStats.hits / (cacheStats.hits + cacheStats.misses)) * 100)
+                                        : 0}%
+                                </p>
+                            </div>
+                        </div>
+                    ) : (
+                        <p className="text-xs text-zinc-500 font-mono">No cache data available</p>
+                    )}
+                    {cacheStats?.description && (
+                        <p className="text-[10px] text-zinc-600 font-mono mt-4">{cacheStats.description}</p>
+                    )}
                 </div>
             </div>
         </div>

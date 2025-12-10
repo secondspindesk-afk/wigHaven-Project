@@ -54,19 +54,45 @@ import DiscountForm from '@/pages/admin/discounts/DiscountForm';
 import BannerList from '@/pages/admin/banners/BannerList';
 import BannerForm from '@/pages/admin/banners/BannerForm';
 import Settings from '@/pages/admin/settings/Settings';
+import AdminProfile from '@/pages/admin/settings/Profile';
 import MediaLibrary from '@/pages/admin/media/MediaLibrary';
 import EmailList from '@/pages/admin/emails/EmailList';
 import ImageKitManager from '@/pages/admin/imagekit/ImageKitManager';
 import SupportTicketList from '@/pages/admin/support/TicketList';
 
+import { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+
 import ScrollToTop from '@/components/common/ScrollToTop';
 import BackToTop from '@/components/common/BackToTop';
 import RouteProgress from '@/components/common/RouteProgress';
+
+// Handles auth:logout events from axios interceptor - uses React Router instead of full page reload
+function AuthRedirectListener() {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const handleAuthLogout = (event: CustomEvent) => {
+      const redirect = event.detail?.redirect || '/login';
+      if (!window.location.pathname.includes('/login')) {
+        navigate(redirect, { replace: true });
+      }
+    };
+
+    window.addEventListener('auth:logout', handleAuthLogout as EventListener);
+    return () => {
+      window.removeEventListener('auth:logout', handleAuthLogout as EventListener);
+    };
+  }, [navigate]);
+
+  return null;
+}
 
 function App() {
   return (
     <ErrorBoundary>
       <Router>
+        <AuthRedirectListener />
         <RouteProgress />
         <ScrollToTop />
         <BackToTop />
@@ -148,6 +174,7 @@ function App() {
             <Route path="banners/new" element={<BannerForm />} />
             <Route path="banners/:id" element={<BannerForm />} />
             <Route path="settings" element={<Settings />} />
+            <Route path="profile" element={<AdminProfile />} />
             <Route path="media" element={<MediaLibrary />} />
             <Route path="emails" element={<EmailList />} />
             <Route path="support" element={<SupportTicketList />} />

@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api/axios';
 import { Product } from '@/lib/types/product';
 import { useToast } from '@/contexts/ToastContext';
+import { useUser } from '@/lib/hooks/useUser';
 
 interface WishlistItem {
     id: string;
@@ -14,13 +15,16 @@ interface WishlistItem {
 export function useWishlist() {
     const queryClient = useQueryClient();
     const { showToast } = useToast();
+    const { data: user } = useUser();
 
+    // Only fetch wishlist when user is authenticated
     const { data: wishlist = [], isLoading } = useQuery({
         queryKey: ['wishlist'],
         queryFn: async () => {
             const response = await api.get<{ data: WishlistItem[] }>('/wishlist');
             return response.data.data;
         },
+        enabled: !!user, // Only fetch when user is logged in
     });
 
     const addToWishlist = useMutation({

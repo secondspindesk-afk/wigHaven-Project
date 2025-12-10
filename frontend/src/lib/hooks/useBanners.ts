@@ -6,7 +6,8 @@ export function useBanners() {
     return useQuery({
         queryKey: ['admin', 'banners'],
         queryFn: bannerApi.getAllBanners,
-        staleTime: 0
+        staleTime: 2 * 60 * 1000, // 2 minutes
+        gcTime: 10 * 60 * 1000,
     });
 }
 
@@ -28,7 +29,7 @@ export function useBanner(id: string | undefined) {
         queryKey: ['admin', 'banner', id],
         queryFn: () => bannerApi.getBanner(id!),
         enabled: !!id,
-        staleTime: 0
+        staleTime: 1 * 60 * 1000, // 1 minute
     });
 }
 

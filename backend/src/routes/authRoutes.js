@@ -110,6 +110,18 @@ router.post(
 );
 
 /**
+ * @route   POST /api/auth/verify-password
+ * @desc    Verify current password (for re-authentication)
+ * @access  Private
+ */
+router.post(
+    '/verify-password',
+    authenticateToken,
+    changePasswordLimiter, // Reuse same limiter to prevent brute force
+    authController.verifyPassword
+);
+
+/**
  * @route   POST /api/auth/verify-email
  * @desc    Verify email with token
  * @access  Public

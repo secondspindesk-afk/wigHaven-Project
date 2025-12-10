@@ -135,7 +135,7 @@ export function AdminLayout() {
                                     />
                                     <div className="absolute right-0 top-full mt-2 w-48 bg-[#0A0A0A] border border-[#27272a] z-[60] py-1">
                                         <Link
-                                            to="/account"
+                                            to="/admin/profile"
                                             className="flex items-center gap-3 px-4 py-3 text-[10px] uppercase tracking-wider text-zinc-400 hover:bg-zinc-900 hover:text-white transition-colors"
                                             onClick={() => setUserMenuOpen(false)}
                                         >

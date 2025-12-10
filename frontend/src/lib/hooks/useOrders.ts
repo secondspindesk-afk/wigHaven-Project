@@ -73,7 +73,8 @@ export function useAdminOrders(filters?: OrderFilters) {
         queryKey: ['admin', 'orders', filters],
         queryFn: () => ordersApi.getOrders(filters),
         placeholderData: (previousData) => previousData,
-        staleTime: 0,
+        staleTime: 1 * 60 * 1000, // 1 minute - orders need fresher data
+        gcTime: 5 * 60 * 1000,
     });
 }
 
@@ -170,6 +171,24 @@ export function useExportOrders() {
             a.click();
             document.body.removeChild(a);
             window.URL.revokeObjectURL(url);
+        },
+    });
+}
+
+/**
+ * Manually verify payment (Admin)
+ * Supports Paystack verification or force-pay for manual orders
+ */
+export function useVerifyPayment() {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: ({ orderNumber, force = false }: { orderNumber: string; force?: boolean }) =>
+            ordersApi.verifyPayment(orderNumber, force),
+        onSuccess: (_, variables) => {
+            queryClient.invalidateQueries({ queryKey: ['admin', 'orders'] });
+            queryClient.invalidateQueries({ queryKey: ['admin', 'order', variables.orderNumber] });
+            queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard'] });
         },
     });
 }

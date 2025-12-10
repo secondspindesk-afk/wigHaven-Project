@@ -4,7 +4,9 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { usePublicBanners } from '@/lib/hooks/useBanners';
 
 export default function HeroSlider() {
-    const { data: banners = [], isLoading } = usePublicBanners();
+    const { data: bannersData, isLoading } = usePublicBanners();
+    // Ensure banners is ALWAYS an array, even if API returns undefined, null, or object
+    const banners = Array.isArray(bannersData) ? bannersData : [];
     const [currentIndex, setCurrentIndex] = useState(0);
     const [isPaused, setIsPaused] = useState(false);
 

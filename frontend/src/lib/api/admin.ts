@@ -116,6 +116,15 @@ export interface AdminActivity {
     timestamp: string;
 }
 
+export interface CacheStats {
+    hits: number;
+    misses: number;
+    keys: number;
+    ksize: number;
+    vsize: number;
+    description: string;
+}
+
 // Helper to extract data from API response wrapper { success: true, data: ... }
 function extractData<T>(response: { data: { success: boolean; data: T } | T }): T {
     const outerData = response.data;
@@ -256,6 +265,12 @@ export const adminApi = {
     // Unified Admin Search
     search: async (query: string, limit: number = 5): Promise<AdminSearchResponse> => {
         const response = await api.get(`/admin/dashboard/search?q=${encodeURIComponent(query)}&limit=${limit}`);
+        return extractData(response);
+    },
+
+    // Cache Stats (for monitoring server-side cache performance)
+    getCacheStats: async (): Promise<CacheStats> => {
+        const response = await api.get('/admin/dashboard/cache-stats');
         return extractData(response);
     }
 };

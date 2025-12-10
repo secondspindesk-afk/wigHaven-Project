@@ -6,7 +6,8 @@ export function useMedia(params?: MediaFilter) {
     return useQuery({
         queryKey: ['admin', 'media', params],
         queryFn: () => mediaApi.listMedia(params),
-        staleTime: 0
+        staleTime: 2 * 60 * 1000, // 2 minutes
+        gcTime: 10 * 60 * 1000,
     });
 }
 

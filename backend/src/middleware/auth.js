@@ -11,9 +11,9 @@ import logger from '../utils/logger.js';
  */
 export const authenticateToken = async (req, res, next) => {
     try {
-        // Extract token from Authorization header
         const authHeader = req.headers.authorization;
-        const token = extractTokenFromHeader(authHeader);
+        // Check custom header first (Hybrid Arch support) or standard header
+        const token = req.headers['x-auth-token'] || extractTokenFromHeader(authHeader);
 
         if (!token) {
             throw new UnauthorizedError('Access token required');
@@ -90,7 +90,7 @@ export const authenticateToken = async (req, res, next) => {
 export const optionalAuth = async (req, res, next) => {
     try {
         const authHeader = req.headers.authorization;
-        const token = extractTokenFromHeader(authHeader);
+        const token = req.headers['x-auth-token'] || extractTokenFromHeader(authHeader);
 
         if (!token) {
             // No token provided, continue without user

@@ -6,7 +6,8 @@ export function useEmailLogs(params?: EmailFilter) {
     return useQuery({
         queryKey: ['admin', 'emails', 'logs', params],
         queryFn: () => emailApi.getLogs(params),
-        staleTime: 0
+        staleTime: 1 * 60 * 1000, // 1 minute - logs update frequently
+        gcTime: 5 * 60 * 1000,
     });
 }
 
@@ -15,7 +16,8 @@ export function useEmailStats() {
     return useQuery({
         queryKey: ['admin', 'emails', 'stats'],
         queryFn: emailApi.getStats,
-        staleTime: 0
+        staleTime: 1 * 60 * 1000, // 1 minute
+        gcTime: 5 * 60 * 1000,
     });
 }
 

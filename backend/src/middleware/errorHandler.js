@@ -18,14 +18,23 @@ const errorHandler = (err, req, res, next) => {
     };
 
     // Log the error with sanitized details
-    logger.logError(err, {
-        method: req.method,
-        url: req.originalUrl,
-        ip: req.ip,
-        userAgent: req.get('user-agent'),
-        // Only log body in development, and always sanitized
-        body: process.env.NODE_ENV === 'development' ? sanitizeBody(req.body) : undefined,
-    });
+    // Skip verbose logging for expected auth errors (401/403)
+    const isExpectedAuthError = err.statusCode === 401 || err.statusCode === 403 ||
+        err.name === 'UnauthorizedError' || err.name === 'ForbiddenError';
+
+    if (isExpectedAuthError) {
+        // Simple warning log for auth errors - no stack trace
+        logger.warn(`${req.method} ${req.originalUrl} - ${err.statusCode || 401} - ${err.message}`);
+    } else {
+        logger.logError(err, {
+            method: req.method,
+            url: req.originalUrl,
+            ip: req.ip,
+            userAgent: req.get('user-agent'),
+            // Only log body in development, and always sanitized
+            body: process.env.NODE_ENV === 'development' ? sanitizeBody(req.body) : undefined,
+        });
+    }
 
     // Default error status and message
     let statusCode = err.statusCode || 500;

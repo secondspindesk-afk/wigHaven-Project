@@ -19,7 +19,9 @@ export function useAdminSettings() {
                 throw error;
             }
         },
-        staleTime: 0,
+        staleTime: 2 * 60 * 1000, // 2 minutes - admin settings don't change often
+        gcTime: 10 * 60 * 1000, // 10 minutes garbage collection
+        refetchOnWindowFocus: true,
         retry: false // Don't retry on permission errors
     });
 }

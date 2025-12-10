@@ -35,9 +35,15 @@ const productApi = {
     },
 
     // Public categories (storefront)
+    // NEVER returns undefined - always returns at least an empty array
     getCategories: async (): Promise<{ id: string; label: string; count: number; image?: string | null }[]> => {
-        const response = await axios.get<{ success: boolean; data: { id: string; label: string; count: number; image?: string | null }[] }>('/products/categories');
-        return response.data.data;
+        try {
+            const response = await axios.get<{ success: boolean; data: { id: string; label: string; count: number; image?: string | null }[] }>('/products/categories');
+            return response.data?.data ?? [];
+        } catch (error) {
+            console.error('Failed to fetch categories:', error);
+            return []; // Safe fallback
+        }
     },
 
     getProduct: async (id: string): Promise<Product> => {

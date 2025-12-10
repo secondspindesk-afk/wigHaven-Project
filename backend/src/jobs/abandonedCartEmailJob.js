@@ -28,8 +28,8 @@ export const runAbandonedCartEmailLogic = async () => {
                     gte: sevenDaysAgo  // Within last 7 days
                 }
             },
-            select: { cartId: true }
-        }).then(carts => carts.map(c => c.cartId));
+            select: { cartData: true }
+        }).then(carts => carts.map(c => c.cartData?.id).filter(Boolean));
 
         // Find abandoned carts (authenticated users only) that haven't been emailed
         const abandonedCarts = await prisma.cart.findMany({
@@ -105,7 +105,9 @@ export const runAbandonedCartEmailLogic = async () => {
                 // CRITICAL FIX: Log in AbandonedCart table to prevent duplicate emails
                 await prisma.abandonedCart.upsert({
                     where: {
-                        cartId: cart.id
+                        // AbandonedCart model uses id, but we need to match by cart ID from cartData or relationship
+                        // Since schema doesn't have unique cartId field, we might need to rely on session/user
+                        email: cart.user.email
                     },
                     update: {
                         emailSentAt: new Date(),
@@ -113,8 +115,9 @@ export const runAbandonedCartEmailLogic = async () => {
                         total: total
                     },
                     create: {
-                        cartId: cart.id,
-                        userId: cart.userId,
+                        user: { connect: { id: cart.userId } },
+                        email: cart.user.email,
+                        cartData: { id: cart.id, items: formattedItems, total },
                         items: formattedItems,
                         total: total,
                         emailSentAt: new Date()

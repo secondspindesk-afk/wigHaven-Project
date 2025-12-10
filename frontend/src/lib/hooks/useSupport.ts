@@ -5,19 +5,20 @@ import { useToast } from '@/contexts/ToastContext';
 
 export function useSupportTickets(page = 1) {
     return useQuery({
-        queryKey: ['support-tickets', page],
+        queryKey: ['support', 'tickets', page],
         queryFn: () => supportApi.getTickets(page),
-        staleTime: 0,
+        staleTime: 1 * 60 * 1000, // 1 minute
+        gcTime: 5 * 60 * 1000,
     });
 }
 
 export function useSupportTicket(id: string) {
     return useQuery({
-        queryKey: ['support-ticket', id],
+        queryKey: ['support', 'ticket', id],
         queryFn: () => supportApi.getTicket(id),
         enabled: !!id,
         refetchInterval: 10000, // Poll every 10 seconds for new messages
-        staleTime: 0,
+        staleTime: 5 * 1000, // 5 seconds - ticket details need to be fresh for polling
     });
 }
 
@@ -28,7 +29,7 @@ export function useCreateTicket() {
     return useMutation({
         mutationFn: (data: CreateTicketData) => supportApi.createTicket(data),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['support-tickets'] });
+            queryClient.invalidateQueries({ queryKey: ['support', 'tickets'] });
             showToast('Ticket created successfully', 'success');
         },
         onError: (error: any) => {
@@ -73,7 +74,7 @@ export function useReplyTicket(ticketId: string) {
     return useMutation({
         mutationFn: (data: ReplyTicketData) => supportApi.replyTicket(ticketId, data),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['support-ticket', ticketId] });
+            queryClient.invalidateQueries({ queryKey: ['support', 'ticket', ticketId] });
             showToast('Reply sent', 'success');
         },
         onError: (error: any) => {
@@ -86,9 +87,10 @@ export function useReplyTicket(ticketId: string) {
 
 export function useAdminSupportTickets(params: { page?: number; status?: string; priority?: string } = {}) {
     return useQuery({
-        queryKey: ['admin-support-tickets', params],
+        queryKey: ['admin', 'support', params],
         queryFn: () => supportApi.getAllTicketsAdmin({ page: params.page || 1, limit: 20, status: params.status, priority: params.priority }),
-        staleTime: 0,
+        staleTime: 1 * 60 * 1000, // 1 minute
+        gcTime: 5 * 60 * 1000,
     });
 }
 
@@ -100,8 +102,8 @@ export function useUpdateTicketStatus() {
         mutationFn: ({ id, status }: { id: string; status: 'open' | 'pending' | 'closed' }) =>
             supportApi.updateTicketStatus(id, status),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['admin-support-tickets'] });
-            queryClient.invalidateQueries({ queryKey: ['support-ticket'] });
+            queryClient.invalidateQueries({ queryKey: ['admin', 'support'] });
+            queryClient.invalidateQueries({ queryKey: ['support', 'ticket'] });
             showToast('Ticket status updated', 'success');
         },
         onError: (error: any) => {
@@ -118,8 +120,8 @@ export function useAdminReplyTicket() {
         mutationFn: ({ id, message }: { id: string; message: string }) =>
             supportApi.adminReplyTicket(id, message),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['admin-support-tickets'] });
-            queryClient.invalidateQueries({ queryKey: ['support-ticket'] });
+            queryClient.invalidateQueries({ queryKey: ['admin', 'support'] });
+            queryClient.invalidateQueries({ queryKey: ['support', 'ticket'] });
             showToast('Reply sent', 'success');
         },
         onError: (error: any) => {

@@ -7,6 +7,7 @@ import * as emailService from '../services/emailService.js';
 import { ConflictError, UnauthorizedError, NotFoundError, ValidationError, ServiceUnavailableError } from '../middleware/errorHandler.js';
 import cartService from '../services/cartService.js';
 import logger from '../utils/logger.js';
+import cache from '../utils/cache.js';
 
 const SALT_ROUNDS = 10;
 const RESET_TOKEN_EXPIRY_HOURS = 1;
@@ -349,7 +350,10 @@ export const logout = async (req, res, next) => {
             const expirationSeconds = getTokenExpiration(token);
 
             // Blacklist token
-            await blacklistToken(token, expirationSeconds || 3600);
+            // Blacklist token asynchronously - don't block response
+            blacklistToken(token, expirationSeconds || 3600).catch(err =>
+                logger.error('Background blacklist failed:', err)
+            );
         }
 
         logger.info(`User logged out: ${req.user.email}`);
@@ -490,11 +494,26 @@ export const confirmPasswordReset = async (req, res, next) => {
  * Get current user
  * GET /api/auth/me
  */
+/**
+ * Get current user
+ * GET /api/auth/me
+ * Cached for 60 seconds to improve performance on navigation
+ */
 export const getCurrentUser = async (req, res, next) => {
     try {
         const userId = req.user.id; // Set by authenticateToken middleware
+        const cacheKey = `auth:me:${userId}`;
 
-        // Direct database fetch (no caching needed for this endpoint)
+        // 1. Check Cache
+        const cachedUser = cache.get(cacheKey);
+        if (cachedUser) {
+            return res.json({
+                success: true,
+                data: { user: cachedUser }
+            });
+        }
+
+        // 2. Direct database fetch
         const user = await userRepository.findUserById(userId);
 
         if (!user) {
@@ -516,10 +535,13 @@ export const getCurrentUser = async (req, res, next) => {
             // Only allow admins and super_admins to access /me during maintenance
             if (user.role !== 'admin' && user.role !== 'super_admin') {
                 logger.warn(`[MAINTENANCE] Force logout for user ${user.email}`);
-                // Return 401 to trigger frontend auto-logout (frontend doesn't handle 503 as logout)
                 throw new UnauthorizedError('Maintenance Mode - Please login again later');
             }
         }
+
+        // 3. Cache the result (Short TTL: 60s)
+        // Short cache allows for relatively quick role/status updates while handling rapid navs
+        cache.set(cacheKey, user, 60);
 
         res.json({
             success: true,
@@ -585,6 +607,45 @@ export const changePassword = async (req, res, next) => {
         res.json({
             success: true,
             message: 'Password changed successfully',
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * Verify password (for re-authentication)
+ * POST /api/auth/verify-password
+ * Used by Admin Profile to verify identity before sensitive operations
+ */
+export const verifyPassword = async (req, res, next) => {
+    try {
+        const { password } = req.body;
+        const userId = req.user.id;
+
+        if (!password) {
+            throw new ValidationError('Password is required');
+        }
+
+        // Get user with password
+        const user = await userRepository.findUserById(userId, true);
+
+        if (!user) {
+            throw new NotFoundError('User not found');
+        }
+
+        // Verify password
+        const isPasswordValid = await bcrypt.compare(password, user.password);
+
+        if (!isPasswordValid) {
+            throw new UnauthorizedError('Invalid password');
+        }
+
+        logger.info(`Password verified for: ${user.email}`);
+
+        res.json({
+            success: true,
+            message: 'Password verified successfully',
         });
     } catch (error) {
         next(error);
@@ -750,6 +811,7 @@ export default {
     confirmPasswordReset,
     getCurrentUser,
     changePassword,
+    verifyPassword,
     verifyEmail,
     resendVerificationEmail,
     checkEmailAvailability,
