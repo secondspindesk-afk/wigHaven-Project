@@ -55,7 +55,9 @@ export const notificationService = {
 
     // Subscribe to SSE (This returns the EventSource URL)
     getSubscriptionUrl: () => {
-        const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+        const baseURL = import.meta.env.VITE_API_URL
+            ? `${import.meta.env.VITE_API_URL}/api`
+            : '/api';
         return `${baseURL}/notifications/subscribe`;
     }
 };

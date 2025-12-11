@@ -89,8 +89,11 @@ api.interceptors.response.use(
                     throw new Error('No refresh token available');
                 }
 
-                // Call refresh endpoint
-                const response = await axios.post('/api/auth/refresh', { refreshToken });
+                // Call refresh endpoint using configured base URL
+                const baseUrl = import.meta.env.VITE_API_URL
+                    ? `${import.meta.env.VITE_API_URL}/api`
+                    : '/api';
+                const response = await axios.post(`${baseUrl}/auth/refresh`, { refreshToken });
 
                 const { accessToken: newAccessToken, refreshToken: newRefreshToken } = response.data.data;
 
