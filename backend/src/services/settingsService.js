@@ -1,5 +1,6 @@
 import { getPrisma } from '../config/database.js';
 import { broadcastForceLogout } from '../config/websocket.js';
+import { invalidateMaintenanceCache } from '../middleware/maintenanceMode.js';
 import logger from '../utils/logger.js';
 
 import cache from '../utils/cache.js';
@@ -101,6 +102,11 @@ export const updateSetting = async (key, value, userId) => {
 
     // INVALIDATE CACHE after updating a setting
     invalidateSettingsCache();
+
+    // Always invalidate maintenance cache when maintenance mode setting changes
+    if (key === 'maintenanceMode' || key === 'maintenance_mode') {
+        invalidateMaintenanceCache();
+    }
 
     // If enabling maintenance mode, record the start time and force logout non-admin users
     if ((key === 'maintenanceMode' || key === 'maintenance_mode') && String(value) === 'true') {

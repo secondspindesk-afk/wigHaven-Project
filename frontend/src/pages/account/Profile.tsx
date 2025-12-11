@@ -5,7 +5,8 @@ import { z } from 'zod';
 import { useUser } from '@/lib/hooks/useUser';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { useToast } from '@/contexts/ToastContext';
-import { Loader2 } from 'lucide-react';
+import { Loader2, ChevronDown } from 'lucide-react';
+import { useIsMobile } from '@/lib/hooks/useIsMobile';
 
 const profileSchema = z.object({
     firstName: z.string().min(2, 'First name is required'),
@@ -29,6 +30,7 @@ export default function Profile() {
     const { data: user } = useUser();
     const { updateProfile, changePassword, deactivateAccount } = useProfile();
     const { showConfirm } = useToast();
+    const isMobile = useIsMobile();
 
     const {
         register: registerProfile,
@@ -63,7 +65,6 @@ export default function Profile() {
         });
     };
 
-    // CRITICAL FIX: Repopulate form when user data loads
     useEffect(() => {
         if (user) {
             reset({
@@ -74,6 +75,134 @@ export default function Profile() {
         }
     }, [user, reset]);
 
+    // Mobile Layout
+    if (isMobile) {
+        return (
+            <div className="space-y-6">
+                <h1 className="text-xl font-bold text-white">Profile Settings</h1>
+
+                {/* Profile Details */}
+                <div className="bg-zinc-900 rounded-xl p-5">
+                    <h2 className="text-sm font-bold text-white mb-4">Personal Info</h2>
+
+                    <form onSubmit={handleProfileSubmit(onProfileSubmit)} className="space-y-4">
+                        <div>
+                            <label className="text-xs text-zinc-500 mb-1 block">First Name</label>
+                            <input
+                                {...registerProfile('firstName')}
+                                className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-zinc-500"
+                            />
+                            {profileErrors.firstName && <p className="text-xs text-red-400 mt-1">{profileErrors.firstName.message}</p>}
+                        </div>
+
+                        <div>
+                            <label className="text-xs text-zinc-500 mb-1 block">Last Name</label>
+                            <input
+                                {...registerProfile('lastName')}
+                                className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-zinc-500"
+                            />
+                            {profileErrors.lastName && <p className="text-xs text-red-400 mt-1">{profileErrors.lastName.message}</p>}
+                        </div>
+
+                        <div>
+                            <label className="text-xs text-zinc-500 mb-1 block">Email</label>
+                            <input
+                                value={user?.email}
+                                disabled
+                                className="w-full bg-zinc-800/50 border border-zinc-700 rounded-lg px-4 py-3 text-sm text-zinc-500"
+                            />
+                        </div>
+
+                        <div>
+                            <label className="text-xs text-zinc-500 mb-1 block">Phone</label>
+                            <input
+                                {...registerProfile('phone')}
+                                className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-zinc-500"
+                            />
+                        </div>
+
+                        <button
+                            type="submit"
+                            disabled={isProfileSubmitting}
+                            className="w-full bg-white text-black py-3 text-sm font-bold rounded-lg flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                            {isProfileSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                            Save Changes
+                        </button>
+                    </form>
+                </div>
+
+                {/* Change Password */}
+                <div className="bg-zinc-900 rounded-xl p-5">
+                    <h2 className="text-sm font-bold text-white mb-4">Change Password</h2>
+
+                    <form onSubmit={handlePasswordSubmit(onPasswordSubmit)} className="space-y-4">
+                        <div>
+                            <label className="text-xs text-zinc-500 mb-1 block">Current Password</label>
+                            <input
+                                type="password"
+                                {...registerPassword('currentPassword')}
+                                className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-zinc-500"
+                            />
+                            {passwordErrors.currentPassword && <p className="text-xs text-red-400 mt-1">{passwordErrors.currentPassword.message}</p>}
+                        </div>
+
+                        <div>
+                            <label className="text-xs text-zinc-500 mb-1 block">New Password</label>
+                            <input
+                                type="password"
+                                {...registerPassword('newPassword')}
+                                className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-zinc-500"
+                            />
+                            {passwordErrors.newPassword && <p className="text-xs text-red-400 mt-1">{passwordErrors.newPassword.message}</p>}
+                        </div>
+
+                        <div>
+                            <label className="text-xs text-zinc-500 mb-1 block">Confirm Password</label>
+                            <input
+                                type="password"
+                                {...registerPassword('confirmPassword')}
+                                className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-zinc-500"
+                            />
+                            {passwordErrors.confirmPassword && <p className="text-xs text-red-400 mt-1">{passwordErrors.confirmPassword.message}</p>}
+                        </div>
+
+                        <button
+                            type="submit"
+                            disabled={isPasswordSubmitting}
+                            className="w-full bg-zinc-800 text-white py-3 text-sm font-bold rounded-lg flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                            {isPasswordSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                            Update Password
+                        </button>
+                    </form>
+                </div>
+
+                {/* Danger Zone */}
+                <div className="bg-red-900/10 border border-red-900/30 rounded-xl p-5">
+                    <h2 className="text-sm font-bold text-red-400 mb-2">Danger Zone</h2>
+                    <p className="text-xs text-zinc-500 mb-4">Once you delete your account, there is no going back.</p>
+
+                    <button
+                        onClick={() => {
+                            showConfirm({
+                                title: 'Delete Account',
+                                message: 'Are you sure you want to delete your account? This action cannot be undone.',
+                                onConfirm: () => deactivateAccount.mutate(),
+                                confirmText: 'Delete',
+                                cancelText: 'Cancel'
+                            });
+                        }}
+                        className="w-full border border-red-900/50 text-red-400 py-3 text-sm font-bold rounded-lg active:bg-red-900/20"
+                    >
+                        Delete Account
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
+    // Desktop Layout
     return (
         <div className="space-y-8 max-w-2xl">
             {/* Profile Details */}

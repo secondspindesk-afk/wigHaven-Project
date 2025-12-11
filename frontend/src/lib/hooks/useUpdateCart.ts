@@ -11,9 +11,10 @@ interface UpdateCartVariables {
 }
 
 /**
- * LocalStorage-First Update Cart Hook
+ * LocalStorage-First Update Cart Hook with Stock Validation
  * 
  * - INSTANT: Updates LocalStorage immediately
+ * - STOCK-VALIDATED: Caps quantity at available stock
  * - DEBOUNCED: Syncs to server after 500ms of no changes
  * - NON-BLOCKING: Server errors don't affect local state
  */
@@ -28,14 +29,20 @@ export function useUpdateCart() {
 
     const mutation = useMutation({
         mutationFn: async ({ variantId, quantity }: UpdateCartVariables) => {
-            // 1. INSTANT: Update LocalStorage
-            const localCart = localCartService.updateLocalCartItem(variantId, quantity);
-            const fullCart = localCartService.localCartToFullCart(localCart);
+            // 1. INSTANT: Update LocalStorage with stock validation
+            const result = localCartService.updateLocalCartItem(variantId, quantity);
+            const fullCart = localCartService.localCartToFullCart(result.cart);
 
             // 2. Update React Query cache immediately
             queryClient.setQueryData(['cart'], fullCart);
 
-            return fullCart;
+            return { cart: fullCart, wasLimited: result.wasLimited, actualQuantity: result.actualQuantity };
+        },
+
+        onSuccess: (data) => {
+            if (data.wasLimited) {
+                showToast(`Limited to ${data.actualQuantity} (max available)`, 'warning');
+            }
         },
 
         onError: (error: any) => {
@@ -49,10 +56,15 @@ export function useUpdateCart() {
      * This prevents API spam when user rapidly clicks +/-
      */
     const updateDebounced = useCallback((variantId: string, quantity: number) => {
-        // 1. INSTANT: Update LocalStorage and UI
-        const localCart = localCartService.updateLocalCartItem(variantId, quantity);
-        const fullCart = localCartService.localCartToFullCart(localCart);
+        // 1. INSTANT: Update LocalStorage and UI with stock validation
+        const result = localCartService.updateLocalCartItem(variantId, quantity);
+        const fullCart = localCartService.localCartToFullCart(result.cart);
         queryClient.setQueryData(['cart'], fullCart);
+
+        // Show warning if stock-limited
+        if (result.wasLimited) {
+            showToast(`Limited to ${result.actualQuantity} (max available)`, 'warning');
+        }
 
         // 2. DEBOUNCED: Schedule server sync (500ms delay)
         if (isLoggedIn) {
@@ -62,9 +74,9 @@ export function useUpdateCart() {
                 clearTimeout(existingTimeout);
             }
 
-            // Schedule new sync
+            // Schedule new sync with actual quantity
             const timeout = setTimeout(() => {
-                cartService.updateCartItem(variantId, { quantity }).catch(error => {
+                cartService.updateCartItem(variantId, { quantity: result.actualQuantity }).catch(error => {
                     console.warn('[UpdateCart] Background sync failed:', error);
                 });
                 syncTimeouts.current.delete(variantId);
@@ -72,7 +84,7 @@ export function useUpdateCart() {
 
             syncTimeouts.current.set(variantId, timeout);
         }
-    }, [isLoggedIn, queryClient]);
+    }, [isLoggedIn, queryClient, showToast]);
 
     return {
         ...mutation,

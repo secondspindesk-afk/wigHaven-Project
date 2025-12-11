@@ -12,6 +12,7 @@ export default function BestSellers() {
             title="Customer Favorites"
             subtitle="Most loved by our community"
             isLoading={isLoading}
+            viewAllLink="/shop?sort=popular"
         />
     );
 }

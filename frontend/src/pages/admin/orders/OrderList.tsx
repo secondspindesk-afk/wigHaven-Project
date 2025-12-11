@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import {
     Search, Filter, Download, RefreshCw, ChevronLeft, ChevronRight,
     Eye, Package, Truck, CheckCircle, XCircle, Clock, AlertCircle,
-    LayoutGrid, List as ListIcon, X
+    LayoutGrid, List as ListIcon, X, ChevronDown, MoreVertical
 } from 'lucide-react';
 import { useAdminOrders, useUpdateOrderStatus, useBulkUpdateStatus, useExportOrders } from '@/lib/hooks/useOrders';
 import { OrderStatus } from '@/lib/api/orders';
@@ -11,6 +11,7 @@ import { useToast } from '@/contexts/ToastContext';
 import { formatCurrency } from '@/lib/utils/currency';
 import OrderKanban from './OrderKanban';
 import { useDebounce } from '@/lib/hooks/useDebounce';
+import { useIsMobile } from '@/lib/hooks/useIsMobile';
 
 const STATUS_OPTIONS: { value: OrderStatus | ''; label: string }[] = [
     { value: '', label: 'All Statuses' },
@@ -38,15 +39,139 @@ const PAYMENT_STYLES: Record<string, { bg: string; text: string }> = {
     refunded: { bg: 'bg-zinc-500/10', text: 'text-zinc-500' },
 };
 
+// ==================== MOBILE ORDER CARD ====================
+interface MobileOrderCardProps {
+    order: any;
+    onStatusChange: (orderNumber: string, status: OrderStatus) => void;
+    isUpdating: boolean;
+}
+
+function MobileOrderCard({ order, onStatusChange, isUpdating }: MobileOrderCardProps) {
+    const [showStatusPicker, setShowStatusPicker] = useState(false);
+    const statusStyle = STATUS_STYLES[order.status as OrderStatus] || STATUS_STYLES.pending;
+    const paymentStyle = PAYMENT_STYLES[order.payment_status] || PAYMENT_STYLES.pending;
+
+    const formatDateShort = (dateString: string) => {
+        try {
+            const date = new Date(dateString);
+            return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+        } catch {
+            return 'N/A';
+        }
+    };
+
+    return (
+        <Link
+            to={`/admin/orders/${order.order_number}`}
+            className="block p-4 bg-zinc-900 rounded-xl border border-zinc-800 relative"
+        >
+            {/* Header Row */}
+            <div className="flex justify-between items-start mb-3">
+                <div>
+                    <p className="text-sm font-mono text-white">#{order.order_number}</p>
+                    <p className="text-[10px] text-zinc-500 font-mono mt-0.5">
+                        {formatDateShort(order.created_at)}
+                    </p>
+                </div>
+                <div className="flex flex-col items-end gap-1.5">
+                    {/* Status Badge - Tappable */}
+                    <button
+                        onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setShowStatusPicker(true);
+                        }}
+                        className={`flex items-center gap-1.5 px-2 py-1 ${statusStyle.bg} ${statusStyle.text} rounded text-[10px] font-bold uppercase`}
+                    >
+                        {statusStyle.icon}
+                        {order.status}
+                        <ChevronDown size={10} />
+                    </button>
+                    {/* Payment Badge */}
+                    <span className={`px-2 py-0.5 ${paymentStyle.bg} ${paymentStyle.text} rounded text-[9px] font-bold uppercase`}>
+                        {order.payment_status}
+                    </span>
+                </div>
+            </div>
+
+            {/* Customer & Total */}
+            <div className="flex justify-between items-end">
+                <div className="min-w-0 flex-1">
+                    <p className="text-sm text-zinc-300 truncate">
+                        {order.shipping_address?.name || 'Guest'}
+                    </p>
+                    <p className="text-[10px] text-zinc-600 font-mono truncate">
+                        {order.customer_email}
+                    </p>
+                </div>
+                <div className="text-right ml-4">
+                    <p className="text-base font-medium text-white">{formatCurrency(order.total)}</p>
+                    {order.discount_amount > 0 && (
+                        <p className="text-[9px] text-emerald-400 font-mono">
+                            {order.coupon_code || 'Discounted'}
+                        </p>
+                    )}
+                </div>
+            </div>
+
+            {/* Status Picker Bottom Sheet */}
+            {showStatusPicker && (
+                <>
+                    <div
+                        className="fixed inset-0 bg-black/80 z-50"
+                        onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setShowStatusPicker(false);
+                        }}
+                    />
+                    <div
+                        className="fixed bottom-0 left-0 right-0 z-50 bg-zinc-900 rounded-t-2xl p-4 safe-area-pb"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="w-12 h-1 bg-zinc-700 rounded-full mx-auto mb-4" />
+                        <h3 className="text-sm font-semibold text-white mb-3">Update Status</h3>
+                        <div className="space-y-2">
+                            {STATUS_OPTIONS.filter(o => o.value).map(opt => {
+                                const style = STATUS_STYLES[opt.value as OrderStatus];
+                                return (
+                                    <button
+                                        key={opt.value}
+                                        disabled={isUpdating}
+                                        onClick={() => {
+                                            onStatusChange(order.order_number, opt.value as OrderStatus);
+                                            setShowStatusPicker(false);
+                                        }}
+                                        className={`w-full flex items-center gap-3 p-3 rounded-xl ${order.status === opt.value ? 'bg-zinc-800 border border-zinc-600' : 'bg-zinc-800/50 border border-transparent'} active:bg-zinc-700`}
+                                    >
+                                        <span className={style.text}>{style.icon}</span>
+                                        <span className="text-sm text-white">{opt.label}</span>
+                                        {order.status === opt.value && (
+                                            <CheckCircle size={16} className="ml-auto text-emerald-500" />
+                                        )}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </>
+            )}
+        </Link>
+    );
+}
+
+// ==================== MAIN COMPONENT ====================
 export default function OrderList() {
     const { showToast } = useToast();
+    const isMobile = useIsMobile();
 
     // Filters
     const [search, setSearch] = useState('');
-    const debouncedSearch = useDebounce(search, 300); // Debounce 300ms
+    const debouncedSearch = useDebounce(search, 300);
     const [statusFilter, setStatusFilter] = useState<OrderStatus | ''>('');
     const [page, setPage] = useState(1);
     const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
+    const [showFilters, setShowFilters] = useState(false);
     const limit = 20;
 
     // Selection
@@ -61,7 +186,7 @@ export default function OrderList() {
         status: '' as OrderStatus | ''
     });
 
-    // API - use debounced search
+    // API
     const { data, isLoading, refetch } = useAdminOrders({
         page,
         limit,
@@ -97,9 +222,9 @@ export default function OrderList() {
     const handleStatusUpdate = async (orderNumber: string, status: OrderStatus) => {
         try {
             await updateStatusMutation.mutateAsync({ orderNumber, status });
-            showToast(`Order ${orderNumber} updated to ${status}`, 'success');
+            showToast(`Order updated to ${status}`, 'success');
         } catch (error: any) {
-            showToast(error.message || 'Failed to update status', 'error');
+            showToast(error.message || 'Failed to update', 'error');
         }
     };
 
@@ -119,10 +244,6 @@ export default function OrderList() {
         }
     };
 
-    const handleExportClick = () => {
-        setShowExportModal(true);
-    };
-
     const confirmExport = async () => {
         try {
             await exportMutation.mutateAsync({
@@ -130,19 +251,18 @@ export default function OrderList() {
                 endDate: exportFilters.endDate || undefined,
                 status: exportFilters.status || undefined
             });
-            showToast('Orders exported successfully', 'success');
+            showToast('Orders exported', 'success');
             setShowExportModal(false);
         } catch (error: any) {
             showToast('Export failed', 'error');
         }
     };
 
-    // Format date
     const formatDate = (dateString: string) => {
         if (!dateString) return 'N/A';
         try {
             const date = new Date(dateString);
-            if (isNaN(date.getTime())) return 'Invalid Date';
+            if (isNaN(date.getTime())) return 'Invalid';
             return date.toLocaleDateString('en-US', {
                 month: 'short',
                 day: 'numeric',
@@ -150,11 +270,200 @@ export default function OrderList() {
                 hour: '2-digit',
                 minute: '2-digit'
             });
-        } catch (e) {
+        } catch {
             return 'Error';
         }
     };
 
+    // ==================== MOBILE LAYOUT ====================
+    if (isMobile) {
+        return (
+            <div className="space-y-4 pb-8">
+                {/* Mobile Header */}
+                <div className="flex justify-between items-center">
+                    <div>
+                        <h1 className="text-lg text-white font-semibold">Orders</h1>
+                        <p className="text-[10px] text-zinc-500 font-mono">{pagination.total} total</p>
+                    </div>
+                    <div className="flex gap-2">
+                        <button
+                            onClick={() => refetch()}
+                            className="p-2.5 bg-zinc-800 rounded-lg text-zinc-400 active:bg-zinc-700"
+                        >
+                            <RefreshCw size={18} className={isLoading ? 'animate-spin' : ''} />
+                        </button>
+                        <button
+                            onClick={() => setShowExportModal(true)}
+                            className="p-2.5 bg-zinc-800 rounded-lg text-zinc-400 active:bg-zinc-700"
+                        >
+                            <Download size={18} />
+                        </button>
+                    </div>
+                </div>
+
+                {/* Mobile Search */}
+                <div className="relative">
+                    <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+                    <input
+                        type="text"
+                        placeholder="Search orders..."
+                        value={search}
+                        onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+                        className="w-full h-11 pl-10 pr-12 bg-zinc-900 border border-zinc-800 rounded-xl text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-600"
+                    />
+                    <button
+                        onClick={() => setShowFilters(!showFilters)}
+                        className={`absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg ${showFilters || statusFilter ? 'bg-white text-black' : 'text-zinc-500'}`}
+                    >
+                        <Filter size={16} />
+                    </button>
+                </div>
+
+                {/* Mobile Filter Pills */}
+                {showFilters && (
+                    <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4">
+                        {STATUS_OPTIONS.map(opt => (
+                            <button
+                                key={opt.value}
+                                onClick={() => { setStatusFilter(opt.value as OrderStatus | ''); setPage(1); }}
+                                className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium ${statusFilter === opt.value
+                                    ? 'bg-white text-black'
+                                    : 'bg-zinc-800 text-zinc-400'
+                                    }`}
+                            >
+                                {opt.label}
+                            </button>
+                        ))}
+                    </div>
+                )}
+
+                {/* Divider */}
+                <div className="h-px bg-zinc-800/50 -mx-4" />
+
+                {/* Order Cards */}
+                <div className="space-y-3">
+                    {isLoading ? (
+                        [...Array(5)].map((_, i) => (
+                            <div key={i} className="h-28 bg-zinc-900 rounded-xl animate-pulse" />
+                        ))
+                    ) : orders.length === 0 ? (
+                        <div className="text-center py-12">
+                            <Package size={40} className="mx-auto text-zinc-700 mb-4" />
+                            <p className="text-zinc-500 text-sm">No orders found</p>
+                        </div>
+                    ) : (
+                        orders.map(order => (
+                            <MobileOrderCard
+                                key={order.id}
+                                order={order}
+                                onStatusChange={handleStatusUpdate}
+                                isUpdating={updateStatusMutation.isPending}
+                            />
+                        ))
+                    )}
+                </div>
+
+                {/* Mobile Pagination */}
+                {pagination.pages > 1 && (
+                    <div className="flex items-center justify-between pt-4">
+                        <button
+                            onClick={() => setPage(p => Math.max(1, p - 1))}
+                            disabled={page === 1}
+                            className="p-3 bg-zinc-800 text-zinc-400 rounded-xl disabled:opacity-50"
+                        >
+                            <ChevronLeft size={20} />
+                        </button>
+                        <span className="text-sm text-zinc-400">
+                            {page} / {pagination.pages}
+                        </span>
+                        <button
+                            onClick={() => setPage(p => Math.min(pagination.pages, p + 1))}
+                            disabled={page === pagination.pages}
+                            className="p-3 bg-zinc-800 text-zinc-400 rounded-xl disabled:opacity-50"
+                        >
+                            <ChevronRight size={20} />
+                        </button>
+                    </div>
+                )}
+
+                {/* Mobile Export Modal */}
+                {showExportModal && (
+                    <div className="fixed inset-0 z-50 flex items-end justify-center">
+                        <div className="absolute inset-0 bg-black/80" onClick={() => setShowExportModal(false)} />
+                        <div className="relative w-full bg-zinc-900 rounded-t-2xl p-5 safe-area-pb">
+                            <div className="w-12 h-1 bg-zinc-700 rounded-full mx-auto mb-4" />
+                            <h3 className="text-base font-semibold text-white mb-4">Export Orders</h3>
+
+                            <div className="grid grid-cols-2 gap-3 mb-4">
+                                <div>
+                                    <label className="block text-xs text-zinc-500 mb-1">Start Date</label>
+                                    <input
+                                        type="date"
+                                        value={exportFilters.startDate}
+                                        onChange={(e) => setExportFilters({ ...exportFilters, startDate: e.target.value })}
+                                        className="w-full h-11 px-3 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs text-zinc-500 mb-1">End Date</label>
+                                    <input
+                                        type="date"
+                                        value={exportFilters.endDate}
+                                        onChange={(e) => setExportFilters({ ...exportFilters, endDate: e.target.value })}
+                                        className="w-full h-11 px-3 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Quick Date Buttons */}
+                            <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
+                                {[
+                                    { label: 'Today', days: 0 },
+                                    { label: '7 Days', days: 7 },
+                                    { label: '30 Days', days: 30 },
+                                ].map(({ label, days }) => (
+                                    <button
+                                        key={label}
+                                        onClick={() => {
+                                            const end = new Date();
+                                            const start = new Date();
+                                            start.setDate(end.getDate() - days);
+                                            setExportFilters({
+                                                ...exportFilters,
+                                                startDate: start.toISOString().split('T')[0],
+                                                endDate: end.toISOString().split('T')[0]
+                                            });
+                                        }}
+                                        className="flex-shrink-0 px-3 py-2 bg-zinc-800 text-zinc-400 rounded-lg text-xs font-medium active:bg-zinc-700"
+                                    >
+                                        {label}
+                                    </button>
+                                ))}
+                            </div>
+
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={() => setShowExportModal(false)}
+                                    className="flex-1 py-3 bg-zinc-800 text-white rounded-xl text-sm font-medium"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={confirmExport}
+                                    disabled={exportMutation.isPending}
+                                    className="flex-1 py-3 bg-white text-black rounded-xl text-sm font-medium"
+                                >
+                                    {exportMutation.isPending ? 'Exporting...' : 'Download'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    }
+
+    // ==================== DESKTOP LAYOUT ====================
     return (
         <div className="min-h-screen bg-[#050505] p-8">
             {/* Header */}
@@ -173,7 +482,7 @@ export default function OrderList() {
                         <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
                     </button>
                     <button
-                        onClick={handleExportClick}
+                        onClick={() => setShowExportModal(true)}
                         disabled={exportMutation.isPending}
                         className="px-4 py-2 bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800 text-[10px] font-bold font-mono uppercase transition-colors flex items-center gap-2"
                     >
@@ -290,7 +599,6 @@ export default function OrderList() {
                             </thead>
                             <tbody>
                                 {isLoading ? (
-                                    // Loading skeleton
                                     [...Array(5)].map((_, i) => (
                                         <tr key={i} className="border-b border-[#27272a]">
                                             {[...Array(8)].map((_, j) => (
@@ -308,7 +616,7 @@ export default function OrderList() {
                                     </tr>
                                 ) : (
                                     orders.map((order) => {
-                                        const statusStyle = STATUS_STYLES[order.status];
+                                        const statusStyle = STATUS_STYLES[order.status as OrderStatus] || STATUS_STYLES.pending;
                                         const paymentStyle = PAYMENT_STYLES[order.payment_status] || PAYMENT_STYLES.pending;
 
                                         return (
@@ -421,6 +729,7 @@ export default function OrderList() {
                     )}
                 </div>
             )}
+
             {/* Export Modal */}
             {showExportModal && (
                 <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
@@ -456,60 +765,20 @@ export default function OrderList() {
 
                             {/* Quick Select Buttons */}
                             <div className="flex flex-wrap gap-2">
-                                <button
-                                    onClick={() => {
-                                        const today = new Date().toISOString().split('T')[0];
-                                        setExportFilters({ ...exportFilters, startDate: today, endDate: today });
-                                    }}
-                                    className="px-3 py-1.5 bg-zinc-800 text-zinc-400 text-[10px] font-bold uppercase hover:bg-zinc-700 hover:text-white transition-colors"
-                                >
-                                    Today
-                                </button>
-                                <button
-                                    onClick={() => {
-                                        const end = new Date();
-                                        const start = new Date();
-                                        start.setDate(end.getDate() - 7);
-                                        setExportFilters({
-                                            ...exportFilters,
-                                            startDate: start.toISOString().split('T')[0],
-                                            endDate: end.toISOString().split('T')[0]
-                                        });
-                                    }}
-                                    className="px-3 py-1.5 bg-zinc-800 text-zinc-400 text-[10px] font-bold uppercase hover:bg-zinc-700 hover:text-white transition-colors"
-                                >
-                                    Last 7 Days
-                                </button>
-                                <button
-                                    onClick={() => {
-                                        const end = new Date();
-                                        const start = new Date();
-                                        start.setDate(end.getDate() - 30);
-                                        setExportFilters({
-                                            ...exportFilters,
-                                            startDate: start.toISOString().split('T')[0],
-                                            endDate: end.toISOString().split('T')[0]
-                                        });
-                                    }}
-                                    className="px-3 py-1.5 bg-zinc-800 text-zinc-400 text-[10px] font-bold uppercase hover:bg-zinc-700 hover:text-white transition-colors"
-                                >
-                                    Last 30 Days
-                                </button>
-                                <button
-                                    onClick={() => {
-                                        const date = new Date();
-                                        const start = new Date(date.getFullYear(), date.getMonth(), 1);
-                                        const end = new Date(date.getFullYear(), date.getMonth() + 1, 0);
-                                        setExportFilters({
-                                            ...exportFilters,
-                                            startDate: start.toISOString().split('T')[0],
-                                            endDate: end.toISOString().split('T')[0]
-                                        });
-                                    }}
-                                    className="px-3 py-1.5 bg-zinc-800 text-zinc-400 text-[10px] font-bold uppercase hover:bg-zinc-700 hover:text-white transition-colors"
-                                >
-                                    This Month
-                                </button>
+                                {[
+                                    { label: 'Today', fn: () => { const t = new Date().toISOString().split('T')[0]; return { startDate: t, endDate: t }; } },
+                                    { label: 'Last 7 Days', fn: () => { const e = new Date(); const s = new Date(); s.setDate(e.getDate() - 7); return { startDate: s.toISOString().split('T')[0], endDate: e.toISOString().split('T')[0] }; } },
+                                    { label: 'Last 30 Days', fn: () => { const e = new Date(); const s = new Date(); s.setDate(e.getDate() - 30); return { startDate: s.toISOString().split('T')[0], endDate: e.toISOString().split('T')[0] }; } },
+                                    { label: 'This Month', fn: () => { const d = new Date(); const s = new Date(d.getFullYear(), d.getMonth(), 1); const e = new Date(d.getFullYear(), d.getMonth() + 1, 0); return { startDate: s.toISOString().split('T')[0], endDate: e.toISOString().split('T')[0] }; } },
+                                ].map(({ label, fn }) => (
+                                    <button
+                                        key={label}
+                                        onClick={() => setExportFilters({ ...exportFilters, ...fn() })}
+                                        className="px-3 py-1.5 bg-zinc-800 text-zinc-400 text-[10px] font-bold uppercase hover:bg-zinc-700 hover:text-white transition-colors"
+                                    >
+                                        {label}
+                                    </button>
+                                ))}
                             </div>
 
                             <div>

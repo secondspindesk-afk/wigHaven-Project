@@ -1,9 +1,10 @@
 import { useSearchParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Search, X } from 'lucide-react';
+import { Search, X, Package, ChevronRight } from 'lucide-react';
 import axios from '@/lib/api/axios';
 import { useState } from 'react';
 import { useCurrencyContext } from '@/lib/context/CurrencyContext';
+import { useIsMobile } from '@/lib/hooks/useIsMobile';
 
 interface SearchProduct {
     id: string;
@@ -30,14 +31,13 @@ export default function SearchPage() {
     const query = searchParams.get('q') || '';
     const [sortBy, setSortBy] = useState<string>('relevance');
     const { formatPrice } = useCurrencyContext();
+    const isMobile = useIsMobile();
 
-    // Fetch search results
     const { data, isLoading } = useQuery({
         queryKey: ['deep_search', query, sortBy],
         queryFn: async () => {
             const params = new URLSearchParams({ q: query });
             if (sortBy && sortBy !== 'relevance') params.append('sort', sortBy);
-
             const response = await axios.get(`/products/search?${params.toString()}`);
             return response.data.data.products;
         },
@@ -45,17 +45,115 @@ export default function SearchPage() {
     });
 
     const results: SearchProduct[] = data || [];
+    const popularSearches = ['Lace Front', 'Body Wave', 'Blonde', '30 Inch', 'HD Lace'];
 
+    // ==================== MOBILE ====================
+    if (isMobile) {
+        return (
+            <div className="min-h-screen bg-[#050505] pb-20">
+                {/* Header */}
+                <section className="px-4 pt-6 pb-4">
+                    <div className="flex items-center gap-2 mb-2">
+                        <Search size={18} className="text-zinc-500" />
+                        <h1 className="text-lg font-bold text-white">Search Results</h1>
+                    </div>
+                    <p className="text-zinc-500 text-xs">
+                        Results for <span className="text-white font-medium">"{query}"</span>
+                        {results.length > 0 && ` • ${results.length} found`}
+                    </p>
+                </section>
+
+                {/* Sort & Clear */}
+                <section className="px-4 pb-4 flex gap-2">
+                    <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="flex-1 px-3 py-2.5 bg-zinc-900/50 border border-zinc-800/50 rounded-xl text-xs text-white">
+                        <option value="relevance">Relevance</option>
+                        <option value="price_asc">Price: Low → High</option>
+                        <option value="price_desc">Price: High → Low</option>
+                        <option value="newest">Newest First</option>
+                    </select>
+                    {query && (
+                        <button onClick={() => setSearchParams({})} className="px-3 py-2.5 bg-zinc-900/50 border border-zinc-800/50 rounded-xl text-xs text-zinc-400 flex items-center gap-1">
+                            <X size={14} />Clear
+                        </button>
+                    )}
+                </section>
+
+                {/* Divider */}
+                <div className="h-px bg-zinc-800/50 mx-4 mb-4" />
+
+                {/* Loading */}
+                {isLoading && (
+                    <div className="px-4 grid grid-cols-2 gap-3">
+                        {[1, 2, 3, 4].map((i) => (
+                            <div key={i} className="animate-pulse">
+                                <div className="bg-zinc-900 aspect-[4/5] rounded-xl mb-2" />
+                                <div className="h-3 bg-zinc-900 rounded w-3/4 mb-1" />
+                                <div className="h-3 bg-zinc-900 rounded w-1/2" />
+                            </div>
+                        ))}
+                    </div>
+                )}
+
+                {/* No Results */}
+                {!isLoading && results.length === 0 && (
+                    <div className="px-4">
+                        <div className="p-8 bg-zinc-900/50 border border-zinc-800/50 rounded-xl text-center">
+                            <Search size={40} className="text-zinc-700 mx-auto mb-4" />
+                            <h2 className="text-lg font-bold text-white mb-2">No Matches</h2>
+                            <p className="text-zinc-500 text-sm mb-6">Nothing found for "{query}"</p>
+                            <p className="text-[10px] text-zinc-600 uppercase tracking-widest font-bold mb-3">Try</p>
+                            <div className="flex flex-wrap justify-center gap-2">
+                                {popularSearches.map(term => (
+                                    <button key={term} onClick={() => setSearchParams({ q: term })} className="px-3 py-2 bg-zinc-800 rounded-lg text-xs text-zinc-400">{term}</button>
+                                ))}
+                            </div>
+                            <Link to="/shop" className="inline-block mt-6 px-6 py-3 bg-white text-black text-xs font-bold uppercase rounded-xl">Browse All</Link>
+                        </div>
+                    </div>
+                )}
+
+                {/* Results - Card Grid */}
+                {!isLoading && results.length > 0 && (
+                    <div className="px-4 grid grid-cols-2 gap-3">
+                        {results.map((product) => {
+                            const image = product.variants?.[0]?.images?.[0];
+                            const minPrice = Math.min(...product.variants.map(v => v.price));
+                            const hasStock = product.variants.some(v => v.stock > 0);
+                            return (
+                                <Link key={product.id} to={`/products/${product.id}`} className="group">
+                                    <div className="bg-zinc-900/50 border border-zinc-800/50 rounded-xl overflow-hidden">
+                                        <div className="aspect-[4/5] bg-zinc-800 relative">
+                                            {image ? (
+                                                <img src={image} alt={product.name} className="w-full h-full object-cover" />
+                                            ) : (
+                                                <div className="w-full h-full flex items-center justify-center"><Package size={24} className="text-zinc-700" /></div>
+                                            )}
+                                            {!hasStock && <div className="absolute inset-0 bg-black/60 flex items-center justify-center"><span className="text-[9px] text-red-400 font-bold uppercase">Sold Out</span></div>}
+                                        </div>
+                                        <div className="p-3">
+                                            <p className="text-[9px] text-zinc-500 uppercase mb-0.5">{product.category?.name || 'Wig'}</p>
+                                            <h3 className="text-xs text-white font-medium truncate mb-1">{product.name}</h3>
+                                            <p className="text-sm text-white font-bold">{formatPrice(minPrice)}</p>
+                                        </div>
+                                    </div>
+                                </Link>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
+        );
+    }
+
+    // ==================== DESKTOP ====================
     return (
         <div className="min-h-screen bg-[#050505] pt-16 pb-24">
-            <div className="container px-4 py-12">
+            <div className="container px-8 py-12">
                 {/* Header */}
                 <div className="mb-12">
                     <div className="flex items-center gap-3 mb-4">
                         <Search className="w-8 h-8 text-zinc-600" />
-                        <h1 className="text-3xl font-bold text-white uppercase tracking-wider">
-                            Search Results
-                        </h1>
+                        <h1 className="text-3xl font-bold text-white uppercase tracking-wider">Search Results</h1>
                     </div>
                     <p className="text-zinc-500 text-sm font-mono">
                         Showing results for <strong className="text-white">"{query}"</strong>
@@ -65,24 +163,15 @@ export default function SearchPage() {
 
                 {/* Filters */}
                 <div className="flex flex-wrap gap-4 mb-8 pb-6 border-b border-[#27272a]">
-                    <select
-                        value={sortBy}
-                        onChange={(e) => setSortBy(e.target.value)}
-                        className="bg-[#0A0A0A] border border-[#27272a] rounded-sm px-4 py-2 text-xs text-white font-mono uppercase tracking-widest focus:outline-none focus:border-zinc-500"
-                    >
+                    <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="bg-[#0A0A0A] border border-[#27272a] px-4 py-2 text-xs text-white font-mono uppercase tracking-widest focus:outline-none focus:border-zinc-500">
                         <option value="relevance">Relevance</option>
                         <option value="price_asc">Price: Low to High</option>
                         <option value="price_desc">Price: High to Low</option>
                         <option value="newest">Newest First</option>
                     </select>
-
-                    {searchParams.get('q') && (
-                        <button
-                            onClick={() => setSearchParams({})}
-                            className="flex items-center gap-2 bg-zinc-900 hover:bg-zinc-800 px-4 py-2 rounded-sm text-xs text-zinc-400 hover:text-white transition-colors font-mono uppercase tracking-widest"
-                        >
-                            <X size={14} />
-                            Clear Search
+                    {query && (
+                        <button onClick={() => setSearchParams({})} className="flex items-center gap-2 bg-zinc-900 hover:bg-zinc-800 px-4 py-2 text-xs text-zinc-400 hover:text-white transition-colors font-mono uppercase tracking-widest">
+                            <X size={14} />Clear Search
                         </button>
                     )}
                 </div>
@@ -106,146 +195,80 @@ export default function SearchPage() {
                         <Search className="w-16 h-16 text-zinc-700 mx-auto mb-6" />
                         <h2 className="text-2xl font-bold text-white uppercase tracking-wider mb-3">No Matches Found</h2>
                         <p className="text-zinc-500 text-sm font-mono mb-8 max-w-md mx-auto">
-                            We couldn't find any products matching <span className="text-white">"{query}"</span>.
-                            Try checking for typos or using broader terms like "blonde" or "curly".
+                            We couldn't find any products matching <span className="text-white">"{query}"</span>. Try checking for typos or using broader terms.
                         </p>
-
                         <div className="space-y-6">
                             <p className="text-[10px] text-zinc-600 uppercase tracking-widest font-bold">Popular Searches</p>
                             <div className="flex flex-wrap justify-center gap-2">
-                                {['Lace Front', 'Body Wave', 'Blonde', '30 Inch', 'HD Lace'].map(term => (
-                                    <button
-                                        key={term}
-                                        onClick={() => setSearchParams({ q: term })}
-                                        className="px-4 py-2 border border-[#27272a] hover:border-zinc-500 text-zinc-400 hover:text-white text-xs font-mono transition-all"
-                                    >
-                                        {term}
-                                    </button>
+                                {popularSearches.map(term => (
+                                    <button key={term} onClick={() => setSearchParams({ q: term })} className="px-4 py-2 border border-[#27272a] hover:border-zinc-500 text-zinc-400 hover:text-white text-xs font-mono transition-all">{term}</button>
                                 ))}
                             </div>
                         </div>
-
                         <div className="mt-12">
-                            <Link
-                                to="/shop"
-                                className="inline-block bg-white text-black px-8 py-3 text-xs font-bold uppercase tracking-widest hover:bg-zinc-200 transition-colors"
-                            >
-                                Browse All Products
-                            </Link>
+                            <Link to="/shop" className="inline-block bg-white text-black px-8 py-3 text-xs font-bold uppercase tracking-widest hover:bg-zinc-200 transition-colors">Browse All Products</Link>
                         </div>
                     </div>
                 )}
 
                 {/* Results Grid */}
                 {!isLoading && results.length > 0 && (
-                    <div className="space-y-8">
+                    <div className="space-y-6">
                         {results.map((product) => (
-                            <div
-                                key={product.id}
-                                className="bg-[#0A0A0A] border border-[#27272a] hover:border-zinc-700 transition-colors group"
-                            >
+                            <div key={product.id} className="bg-[#0A0A0A] border border-[#27272a] hover:border-zinc-700 transition-colors group">
                                 <div className="flex flex-col md:flex-row gap-6 p-6">
-                                    {/* Image */}
                                     <Link to={`/products/${product.id}`} className="flex-shrink-0">
                                         <div className="w-full md:w-48 aspect-[4/5] bg-zinc-900 overflow-hidden">
                                             {product.variants?.[0]?.images?.[0] ? (
-                                                <img
-                                                    src={product.variants[0].images[0]}
-                                                    alt={product.name}
-                                                    className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
-                                                />
+                                                <img src={product.variants[0].images[0]} alt={product.name} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
                                             ) : (
-                                                <div className="w-full h-full flex items-center justify-center">
-                                                    <Search className="w-12 h-12 text-zinc-800" />
-                                                </div>
+                                                <div className="w-full h-full flex items-center justify-center"><Package className="w-12 h-12 text-zinc-800" /></div>
                                             )}
                                         </div>
                                     </Link>
-
-                                    {/* Details */}
                                     <div className="flex-1 flex flex-col">
                                         <div className="flex-1">
                                             <div className="flex items-start justify-between gap-4 mb-3">
                                                 <div>
                                                     <Link to={`/products/${product.id}`}>
-                                                        <h3 className="text-lg font-bold text-white uppercase tracking-wide group-hover:text-zinc-300 transition-colors mb-1">
-                                                            {product.name}
-                                                        </h3>
+                                                        <h3 className="text-lg font-bold text-white uppercase tracking-wide group-hover:text-zinc-300 transition-colors mb-1">{product.name}</h3>
                                                     </Link>
-                                                    <p className="text-xs text-zinc-500 font-mono uppercase tracking-widest">
-                                                        {product.category?.name || 'WIG'}
-                                                    </p>
+                                                    <p className="text-xs text-zinc-500 font-mono uppercase tracking-widest">{product.category?.name || 'WIG'}</p>
                                                 </div>
-                                                <p className="text-lg font-bold text-white font-mono flex-shrink-0">
-                                                    {formatPrice(product.basePrice)}
-                                                </p>
+                                                <p className="text-lg font-bold text-white font-mono flex-shrink-0">{formatPrice(product.basePrice)}</p>
                                             </div>
-
-                                            <p className="text-sm text-zinc-400 mb-4 line-clamp-2 leading-relaxed">
-                                                {product.description}
-                                            </p>
+                                            <p className="text-sm text-zinc-400 mb-4 line-clamp-2 leading-relaxed">{product.description}</p>
                                         </div>
-
-                                        {/* Variants */}
                                         {product.variants && product.variants.length > 0 && (
                                             <div className="border-t border-[#27272a] pt-4">
-                                                <p className="text-[10px] text-zinc-600 uppercase tracking-widest font-mono mb-3">
-                                                    Available Variants ({product.variants.filter(v => v.isActive).length})
-                                                </p>
+                                                <p className="text-[10px] text-zinc-600 uppercase tracking-widest font-mono mb-3">Available Variants ({product.variants.filter(v => v.isActive).length})</p>
                                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                                                     {product.variants.filter(v => v.isActive).slice(0, 6).map((variant) => (
-                                                        <div
-                                                            key={variant.id}
-                                                            className="bg-zinc-900/50 border border-[#27272a] p-3 text-xs"
-                                                        >
+                                                        <div key={variant.id} className="bg-zinc-900/50 border border-[#27272a] p-3 text-xs">
                                                             <div className="flex items-center justify-between gap-2 mb-1">
-                                                                <span className="text-zinc-400 font-mono text-[10px]">
-                                                                    {variant.sku}
-                                                                </span>
+                                                                <span className="text-zinc-400 font-mono text-[10px]">{variant.sku}</span>
                                                                 <span className={`text-[10px] font-bold font-mono ${variant.stock > 5 ? 'text-green-400' : variant.stock > 0 ? 'text-yellow-400' : 'text-red-400'}`}>
                                                                     {variant.stock > 0 ? `${variant.stock} in stock` : 'Out of Stock'}
                                                                 </span>
                                                             </div>
                                                             <div className="flex items-center gap-2 flex-wrap">
-                                                                {variant.color && (
-                                                                    <span className="text-[10px] text-zinc-500 px-2 py-1 bg-zinc-900 rounded-sm font-mono">
-                                                                        {variant.color}
-                                                                    </span>
-                                                                )}
-                                                                {variant.length && (
-                                                                    <span className="text-[10px] text-zinc-500 px-2 py-1 bg-zinc-900 rounded-sm font-mono">
-                                                                        {variant.length}
-                                                                    </span>
-                                                                )}
-                                                                {variant.texture && (
-                                                                    <span className="text-[10px] text-zinc-500 px-2 py-1 bg-zinc-900 rounded-sm font-mono">
-                                                                        {variant.texture}
-                                                                    </span>
-                                                                )}
+                                                                {variant.color && <span className="text-[10px] text-zinc-500 px-2 py-1 bg-zinc-900 rounded-sm font-mono">{variant.color}</span>}
+                                                                {variant.length && <span className="text-[10px] text-zinc-500 px-2 py-1 bg-zinc-900 rounded-sm font-mono">{variant.length}</span>}
+                                                                {variant.texture && <span className="text-[10px] text-zinc-500 px-2 py-1 bg-zinc-900 rounded-sm font-mono">{variant.texture}</span>}
                                                             </div>
-                                                            <p className="text-xs font-bold text-white mt-2 font-mono">
-                                                                {formatPrice(variant.price)}
-                                                            </p>
+                                                            <p className="text-xs font-bold text-white mt-2 font-mono">{formatPrice(variant.price)}</p>
                                                         </div>
                                                     ))}
                                                 </div>
                                                 {product.variants.filter(v => v.isActive).length > 6 && (
-                                                    <Link
-                                                        to={`/products/${product.id}`}
-                                                        className="inline-block mt-3 text-[10px] text-blue-400 hover:text-blue-300 uppercase tracking-wide font-mono"
-                                                    >
-                                                        + {product.variants.filter(v => v.isActive).length - 6} More Variants →
+                                                    <Link to={`/products/${product.id}`} className="inline-flex items-center gap-1 mt-3 text-[10px] text-cyan-400 hover:text-cyan-300 uppercase tracking-wide font-mono">
+                                                        + {product.variants.filter(v => v.isActive).length - 6} More Variants <ChevronRight size={12} />
                                                     </Link>
                                                 )}
                                             </div>
                                         )}
-
-                                        {/* CTA */}
-                                        <Link
-                                            to={`/products/${product.id}`}
-                                            className="inline-flex items-center justify-center gap-2 bg-white text-black px-6 py-3 text-xs font-bold uppercase tracking-widest hover:bg-zinc-200 transition-colors mt-4"
-                                        >
-                                            View Full Details →
+                                        <Link to={`/products/${product.id}`} className="inline-flex items-center justify-center gap-2 bg-white text-black px-6 py-3 text-xs font-bold uppercase tracking-widest hover:bg-zinc-200 transition-colors mt-4">
+                                            View Full Details <ChevronRight size={14} />
                                         </Link>
                                     </div>
                                 </div>

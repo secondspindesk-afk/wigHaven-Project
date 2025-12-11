@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { RefreshCw, Clock, Package } from 'lucide-react';
+import { RefreshCw, Clock, Package, TrendingUp, TrendingDown, AlertTriangle, ChevronRight } from 'lucide-react';
+import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import {
     useAdminSummary,
     useSalesTrends,
@@ -9,7 +10,8 @@ import {
     useOrderStatusBreakdown,
     useInventoryStatus,
     useLowStockAlerts,
-    useCacheStats
+    useCacheStats,
+    useAdminActivity
 } from '@/lib/hooks/useAdminDashboard';
 import SalesChart from '@/components/admin/SalesChart';
 import OrderStatusChart from '@/components/admin/OrderStatusChart';
@@ -43,38 +45,36 @@ function StatusBadge({ status }: StatusBadgeProps) {
     };
 
     return (
-        <span className={`inline-flex items-center px-2 py-1 text-[9px] font-bold uppercase tracking-wider border ${getStyles()}`}>
+        <span className={`inline-flex items-center px-2 py-1 text-[9px] font-bold uppercase tracking-wider border rounded ${getStyles()}`}>
             {status}
         </span>
     );
 }
 
 // ==================== ACTIVITY FEED ====================
-import { useAdminActivity } from '@/lib/hooks/useAdminDashboard';
-
-function ActivityFeed() {
+function ActivityFeed({ isMobile }: { isMobile: boolean }) {
     const { data, isLoading } = useAdminActivity(1);
     const activities = data?.activities || [];
 
     if (isLoading) {
-        return <div className="text-center py-8 text-zinc-500 text-xs font-mono">LOADING_LOGS...</div>;
+        return <div className="text-center py-8 text-zinc-500 text-xs font-mono">LOADING...</div>;
     }
 
     if (activities.length === 0) {
-        return <div className="text-center py-8 text-zinc-500 text-xs font-mono">NO_ACTIVITY_DETECTED</div>;
+        return <div className="text-center py-8 text-zinc-500 text-xs font-mono">NO ACTIVITY</div>;
     }
 
     return (
-        <div className="space-y-4">
-            {activities.slice(0, 5).map((activity) => (
-                <div key={activity.id} className="flex items-start gap-4 group">
-                    <div className="w-8 h-8 bg-zinc-900 border border-zinc-800 flex items-center justify-center shrink-0">
-                        <span className="text-[10px] font-bold text-zinc-500 font-mono">
+        <div className="space-y-3">
+            {activities.slice(0, isMobile ? 3 : 5).map((activity) => (
+                <div key={activity.id} className={`flex items-start gap-3 ${isMobile ? 'p-2 bg-zinc-900/30 rounded-lg' : ''}`}>
+                    <div className={`${isMobile ? 'w-8 h-8' : 'w-8 h-8'} bg-zinc-800 rounded-full flex items-center justify-center shrink-0`}>
+                        <span className="text-[10px] font-bold text-zinc-400 font-mono">
                             {activity.adminName.charAt(0)}
                         </span>
                     </div>
                     <div className="flex-1 min-w-0">
-                        <p className="text-xs text-zinc-300">
+                        <p className={`${isMobile ? 'text-xs' : 'text-xs'} text-zinc-300 leading-relaxed`}>
                             <span className="text-white font-medium">{activity.adminName}</span>
                             {' '}{activity.action}{' '}
                             <span className="text-white font-medium">{activity.target}</span>
@@ -89,9 +89,72 @@ function ActivityFeed() {
     );
 }
 
+// ==================== MOBILE ORDER CARD ====================
+interface OrderCardProps {
+    order: {
+        order_number: string;
+        customer: string;
+        created_at: string;
+        status: string;
+        total: number;
+    };
+    formatCurrency: (amount: number) => string;
+}
+
+function MobileOrderCard({ order, formatCurrency }: OrderCardProps) {
+    return (
+        <Link
+            to={`/admin/orders/${order.order_number}`}
+            className="block p-4 bg-zinc-900/50 rounded-xl border border-zinc-800 active:bg-zinc-800"
+        >
+            <div className="flex justify-between items-start mb-3">
+                <div>
+                    <p className="text-sm font-mono text-white">#{order.order_number}</p>
+                    <p className="text-xs text-zinc-400 mt-0.5">{order.customer}</p>
+                </div>
+                <StatusBadge status={order.status} />
+            </div>
+            <div className="flex justify-between items-center">
+                <p className="text-[10px] text-zinc-500 font-mono">
+                    {new Date(order.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toUpperCase()}
+                </p>
+                <p className="text-sm font-mono text-white">{formatCurrency(order.total)}</p>
+            </div>
+        </Link>
+    );
+}
+
+// ==================== MOBILE TOP PRODUCT CARD ====================
+interface ProductCardProps {
+    product: {
+        product_id: string;
+        product_name: string;
+        units_sold: number;
+        revenue: number;
+    };
+    rank: number;
+    formatCurrency: (amount: number) => string;
+}
+
+function MobileProductCard({ product, rank, formatCurrency }: ProductCardProps) {
+    return (
+        <div className="flex items-center gap-3 p-3 bg-zinc-900/50 rounded-xl border border-zinc-800">
+            <div className="w-8 h-8 bg-zinc-800 rounded-full flex items-center justify-center">
+                <span className="text-xs font-mono text-zinc-400">{String(rank).padStart(2, '0')}</span>
+            </div>
+            <div className="flex-1 min-w-0">
+                <p className="text-xs text-white font-medium truncate">{product.product_name}</p>
+                <p className="text-[10px] text-zinc-500 font-mono">{product.units_sold} sold</p>
+            </div>
+            <p className="text-xs font-mono text-emerald-400">{formatCurrency(product.revenue)}</p>
+        </div>
+    );
+}
+
 // ==================== MAIN DASHBOARD ====================
 export default function AdminDashboard() {
     const [trendDays, setTrendDays] = useState<7 | 30 | 90>(30);
+    const isMobile = useIsMobile();
 
     const { data: summary, isLoading: summaryLoading, refetch: refetchSummary } = useAdminSummary();
     const { data: salesTrends, isLoading: trendsLoading } = useSalesTrends(trendDays);
@@ -121,6 +184,203 @@ export default function AdminDashboard() {
     } : undefined;
 
     const salesChartData = salesTrends?.daily || [];
+
+    // ==================== MOBILE LAYOUT ====================
+    if (isMobile) {
+        return (
+            <div className="space-y-4 pb-8">
+                {/* Mobile Header */}
+                <div className="flex justify-between items-center">
+                    <div>
+                        <h1 className="text-lg text-white font-semibold">Dashboard</h1>
+                        <p className="text-[10px] text-zinc-500 font-mono">Overview</p>
+                    </div>
+                    <button
+                        onClick={() => refetchSummary()}
+                        className="p-2.5 bg-zinc-800 rounded-lg text-zinc-400 active:bg-zinc-700"
+                    >
+                        <RefreshCw size={18} />
+                    </button>
+                </div>
+
+                {/* Mobile Stats Grid - 2x2 */}
+                <div className="grid grid-cols-2 gap-3">
+                    {/* Revenue */}
+                    <div className="p-4 bg-zinc-900 rounded-xl border border-zinc-800">
+                        <div className="flex items-center gap-2 mb-2">
+                            <span className="text-[10px] text-zinc-500 uppercase font-medium">Revenue</span>
+                            {summary?.change?.revenue_percent !== undefined && (
+                                <span className={`text-[9px] font-mono flex items-center gap-0.5 ${summary.change.revenue_percent >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                    {summary.change.revenue_percent >= 0 ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
+                                    {Math.abs(summary.change.revenue_percent).toFixed(1)}%
+                                </span>
+                            )}
+                        </div>
+                        <p className="text-xl text-white font-mono font-semibold">
+                            {summaryLoading ? '---' : (summary?.today?.revenue || 0).toLocaleString()}
+                        </p>
+                        <p className="text-[9px] text-zinc-600 font-mono">GHS / TODAY</p>
+                    </div>
+
+                    {/* Orders */}
+                    <div className="p-4 bg-zinc-900 rounded-xl border border-zinc-800">
+                        <div className="flex items-center gap-2 mb-2">
+                            <Package size={14} className="text-zinc-500" />
+                            <span className="text-[10px] text-zinc-500 uppercase font-medium">Orders</span>
+                        </div>
+                        <p className="text-xl text-white font-mono font-semibold">
+                            {summaryLoading ? '--' : String(summary?.today?.orders || 0).padStart(2, '0')}
+                        </p>
+                        <p className="text-[9px] text-zinc-600 font-mono">TODAY</p>
+                    </div>
+
+                    {/* Pending */}
+                    <div className="p-4 bg-zinc-900 rounded-xl border border-zinc-800">
+                        <div className="flex items-center gap-2 mb-2">
+                            <Clock size={14} className="text-yellow-500" />
+                            <span className="text-[10px] text-zinc-500 uppercase font-medium">Pending</span>
+                        </div>
+                        <p className="text-xl text-yellow-500 font-mono font-semibold">
+                            {summaryLoading ? '--' : String(summary?.stats?.pending_orders || 0).padStart(2, '0')}
+                        </p>
+                        <p className="text-[9px] text-zinc-600 font-mono">ACTION REQ</p>
+                    </div>
+
+                    {/* Low Stock */}
+                    <div className="p-4 bg-zinc-900 rounded-xl border border-zinc-800">
+                        <div className="flex items-center gap-2 mb-2">
+                            <AlertTriangle size={14} className="text-red-500" />
+                            <span className="text-[10px] text-zinc-500 uppercase font-medium">Low Stock</span>
+                        </div>
+                        <p className="text-xl text-red-500 font-mono font-semibold">
+                            {lowStockLoading ? '--' : String(safeArray(lowStock).length).padStart(2, '0')}
+                        </p>
+                        <p className="text-[9px] text-zinc-600 font-mono">ITEMS</p>
+                    </div>
+                </div>
+
+                {/* Sales Chart */}
+                <div className="bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden">
+                    <SalesChart
+                        data={salesChartData}
+                        isLoading={trendsLoading}
+                        range={trendDays}
+                        onRangeChange={setTrendDays}
+                    />
+                </div>
+
+                {/* Pie Charts Row - Horizontal scroll */}
+                <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4">
+                    <div className="flex-shrink-0 w-[70vw] bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden">
+                        <OrderStatusChart
+                            data={orderStatusArray}
+                            isLoading={statusLoading}
+                        />
+                    </div>
+                    <div className="flex-shrink-0 w-[70vw] bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden">
+                        <InventoryChart
+                            data={inventoryChartData}
+                            isLoading={inventoryLoading}
+                        />
+                    </div>
+                </div>
+
+                {/* Divider */}
+                <div className="h-px bg-zinc-800/50 -mx-4" />
+
+                {/* Recent Orders - Cards */}
+                <div className="bg-zinc-900 rounded-xl border border-zinc-800">
+                    <div className="p-4 border-b border-zinc-800 flex justify-between items-center">
+                        <h3 className="text-sm font-semibold text-white">Recent Orders</h3>
+                        <Link to="/admin/orders" className="text-[10px] text-zinc-400 flex items-center gap-1">
+                            View All <ChevronRight size={12} />
+                        </Link>
+                    </div>
+                    <div className="p-3 space-y-2">
+                        {ordersLoading ? (
+                            [...Array(3)].map((_, i) => (
+                                <div key={i} className="h-20 bg-zinc-800/50 rounded-xl animate-pulse" />
+                            ))
+                        ) : safeArray(recentOrders).length === 0 ? (
+                            <p className="text-center text-zinc-500 font-mono text-xs py-8">No orders yet</p>
+                        ) : (
+                            safeArray(recentOrders).slice(0, 5).map((order) => (
+                                <MobileOrderCard key={order.order_number} order={order} formatCurrency={formatCurrency} />
+                            ))
+                        )}
+                    </div>
+                </div>
+
+                {/* Top Products - Cards */}
+                <div className="bg-zinc-900 rounded-xl border border-zinc-800">
+                    <div className="p-4 border-b border-zinc-800 flex justify-between items-center">
+                        <h3 className="text-sm font-semibold text-white">Top Products</h3>
+                        <Link to="/admin/products" className="text-[10px] text-zinc-400 flex items-center gap-1">
+                            View All <ChevronRight size={12} />
+                        </Link>
+                    </div>
+                    <div className="p-3 space-y-2">
+                        {productsLoading ? (
+                            [...Array(3)].map((_, i) => (
+                                <div key={i} className="h-14 bg-zinc-800/50 rounded-xl animate-pulse" />
+                            ))
+                        ) : safeArray(topProducts).length === 0 ? (
+                            <p className="text-center text-zinc-500 font-mono text-xs py-8">No products yet</p>
+                        ) : (
+                            safeArray(topProducts).slice(0, 5).map((product, idx) => (
+                                <MobileProductCard key={product.product_id} product={product} rank={idx + 1} formatCurrency={formatCurrency} />
+                            ))
+                        )}
+                    </div>
+                </div>
+
+                {/* Low Stock Alert */}
+                {!lowStockLoading && safeArray(lowStock).length > 0 && (
+                    <div className="bg-red-950/30 border border-red-900/30 rounded-xl p-4">
+                        <div className="flex justify-between items-center mb-3">
+                            <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 bg-red-500 animate-pulse rounded-full" />
+                                <h3 className="text-sm font-semibold text-red-400">
+                                    Low Stock ({safeArray(lowStock).length})
+                                </h3>
+                            </div>
+                            <Link to="/admin/inventory" className="text-[10px] text-red-400 flex items-center gap-1">
+                                Resolve <ChevronRight size={12} />
+                            </Link>
+                        </div>
+                        <div className="space-y-2">
+                            {safeArray(lowStock).slice(0, 3).map((item) => (
+                                <div key={item.id} className="flex justify-between items-center p-3 bg-zinc-900/50 rounded-lg">
+                                    <div className="min-w-0 flex-1">
+                                        <p className="text-xs text-zinc-300 truncate">{item.product_name}</p>
+                                        <p className="text-[10px] text-zinc-600 font-mono">SKU: {item.sku}</p>
+                                    </div>
+                                    <span className="font-mono text-sm text-red-500 ml-3">
+                                        {item.stock} left
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* Activity Feed */}
+                <div className="bg-zinc-900 rounded-xl border border-zinc-800">
+                    <div className="p-4 border-b border-zinc-800 flex justify-between items-center">
+                        <h3 className="text-sm font-semibold text-white">Activity</h3>
+                        <Link to="/admin/settings" className="text-[10px] text-zinc-400 flex items-center gap-1">
+                            View All <ChevronRight size={12} />
+                        </Link>
+                    </div>
+                    <div className="p-4">
+                        <ActivityFeed isMobile={true} />
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    // ==================== DESKTOP LAYOUT ====================
     const now = new Date();
     const syncTime = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
 
@@ -370,6 +630,7 @@ export default function AdminDashboard() {
                     </div>
                 </div>
             )}
+
             {/* Admin Activity Feed */}
             <div className="border border-[#27272a] bg-[#0A0A0A]">
                 <div className="px-6 py-4 border-b border-[#27272a] flex justify-between items-center">
@@ -379,11 +640,11 @@ export default function AdminDashboard() {
                     </Link>
                 </div>
                 <div className="p-6">
-                    <ActivityFeed />
+                    <ActivityFeed isMobile={false} />
                 </div>
             </div>
 
-            {/* Cache Stats (for all admins - debugging tool) */}
+            {/* Cache Stats */}
             <div className="border border-[#27272a] bg-[#0A0A0A]">
                 <div className="px-6 py-4 border-b border-[#27272a] flex justify-between items-center">
                     <h3 className="text-xs font-bold text-white uppercase tracking-widest">Server Cache Statistics</h3>

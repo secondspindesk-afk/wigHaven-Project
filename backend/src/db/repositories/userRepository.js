@@ -348,23 +348,28 @@ export const getAllUsers = async ({ page = 1, limit = 20, search = '' } = {}) =>
             prisma.user.count({ where }),
         ]);
 
-        // Get total spent for each user
-        const usersWithStats = await Promise.all(
-            users.map(async (user) => {
-                const totalSpent = await prisma.order.aggregate({
-                    where: {
-                        userId: user.id,
-                        paymentStatus: 'paid'
-                    },
-                    _sum: { total: true }
-                });
-                return {
-                    ...user,
-                    order_count: user._count.orders,
-                    total_spent: totalSpent._sum.total || 0,
-                };
-            })
+        // Get total spent for all users in a SINGLE query (fixes N+1)
+        const userIds = users.map(u => u.id);
+        const totalSpentByUser = await prisma.order.groupBy({
+            by: ['userId'],
+            where: {
+                userId: { in: userIds },
+                paymentStatus: 'paid'
+            },
+            _sum: { total: true }
+        });
+
+        // Create a lookup map for O(1) access
+        const totalSpentMap = new Map(
+            totalSpentByUser.map(row => [row.userId, row._sum.total || 0])
         );
+
+        // Map users with their stats
+        const usersWithStats = users.map(user => ({
+            ...user,
+            order_count: user._count.orders,
+            total_spent: totalSpentMap.get(user.id) || 0,
+        }));
 
         return {
             users: usersWithStats,
@@ -390,50 +395,54 @@ export const getUserDetails = async (userId) => {
     try {
         const prisma = getPrisma();
 
-        const user = await prisma.user.findUnique({
-            where: { id: userId },
-            select: {
-                id: true,
-                email: true,
-                firstName: true,
-                lastName: true,
-                phone: true,
-                role: true,
-                emailVerified: true,
-                isActive: true,
-                createdAt: true,
-                updatedAt: true,
-                addresses: true,
-                orders: {
-                    orderBy: { createdAt: 'desc' },
-                    take: 10, // Limit to last 10 orders
-                    select: {
-                        id: true,
-                        orderNumber: true,
-                        status: true,
-                        paymentStatus: true,
-                        total: true,
-                        createdAt: true,
+        // Run both queries in parallel (was 3 sequential queries)
+        const [user, totalSpent] = await Promise.all([
+            prisma.user.findUnique({
+                where: { id: userId },
+                select: {
+                    id: true,
+                    email: true,
+                    firstName: true,
+                    lastName: true,
+                    phone: true,
+                    role: true,
+                    emailVerified: true,
+                    isActive: true,
+                    createdAt: true,
+                    updatedAt: true,
+                    addresses: true,
+                    orders: {
+                        orderBy: { createdAt: 'desc' },
+                        take: 10, // Limit to last 10 orders
+                        select: {
+                            id: true,
+                            orderNumber: true,
+                            status: true,
+                            paymentStatus: true,
+                            total: true,
+                            createdAt: true,
+                        }
+                    },
+                    _count: {
+                        select: { orders: true }
                     }
                 }
-            }
-        });
+            }),
+            prisma.order.aggregate({
+                where: {
+                    userId: userId,
+                    paymentStatus: 'paid'
+                },
+                _sum: { total: true }
+            })
+        ]);
 
         if (!user) return null;
-
-        // Calculate total spent
-        const totalSpent = await prisma.order.aggregate({
-            where: {
-                userId: userId,
-                paymentStatus: 'paid'
-            },
-            _sum: { total: true }
-        });
 
         return {
             ...user,
             total_spent: totalSpent._sum.total || 0,
-            order_count: await prisma.order.count({ where: { userId } })
+            order_count: user._count.orders
         };
     } catch (error) {
         logger.error('Failed to get user details:', error);

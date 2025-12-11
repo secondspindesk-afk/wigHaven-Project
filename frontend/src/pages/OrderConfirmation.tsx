@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useOrder } from '@/lib/hooks/useOrders';
 import { Loader2, Check, ShoppingBag, Package } from 'lucide-react';
+import { useIsMobile } from '@/lib/hooks/useIsMobile';
 
 export default function OrderConfirmation() {
     const { orderNumber } = useParams<{ orderNumber: string }>();
     const [searchParams] = useSearchParams();
     const navigate = useNavigate();
     const email = searchParams.get('email') || undefined;
+    const isMobile = useIsMobile();
 
     const [isConfirmed, setIsConfirmed] = useState(false);
     const [hasTimedOut, setHasTimedOut] = useState(false);
@@ -17,23 +19,19 @@ export default function OrderConfirmation() {
     const { data: order, isLoading, error } = useOrder(orderNumber!, {
         // @ts-ignore - refetchInterval accepts function returning false
         refetchInterval: (data: any) => {
-            // Check timeout (5 minutes = 300,000ms)
             const elapsed = Date.now() - pollingStartTime;
             if (elapsed > 300000) {
                 setHasTimedOut(true);
                 return false;
             }
-
-            // Stop polling if payment is confirmed or failed
             if (data?.payment_status === 'paid' || data?.payment_status === 'failed') {
-                return false; // Stop polling
+                return false;
             }
-            return 3000; // Continue polling every 3 seconds
+            return 3000;
         },
         email: email
     });
 
-    // Check if payment is confirmed
     useEffect(() => {
         if (order?.payment_status === 'paid') {
             setIsConfirmed(true);
@@ -51,8 +49,8 @@ export default function OrderConfirmation() {
     if (error || !order) {
         return (
             <div className="min-h-screen bg-[#050505] flex items-center justify-center p-4">
-                <div className="max-w-md w-full bg-[#0A0A0A] border border-red-500/30 rounded-lg p-8 text-center">
-                    <h1 className="text-2xl font-bold text-red-400 uppercase tracking-wider mb-4">
+                <div className={`w-full bg-[#0A0A0A] border border-red-500/30 p-8 text-center ${isMobile ? 'rounded-2xl' : 'max-w-md rounded-lg'}`}>
+                    <h1 className={`font-bold text-red-400 mb-4 ${isMobile ? 'text-xl' : 'text-2xl uppercase tracking-wider'}`}>
                         Order Not Found
                     </h1>
                     <p className="text-zinc-500 text-sm mb-8">
@@ -60,7 +58,7 @@ export default function OrderConfirmation() {
                     </p>
                     <button
                         onClick={() => navigate('/shop')}
-                        className="w-full bg-white text-black font-bold text-xs uppercase tracking-widest py-4 rounded-sm hover:bg-zinc-200 transition-colors"
+                        className={`w-full bg-white text-black font-bold py-4 hover:bg-zinc-200 transition-colors ${isMobile ? 'text-sm rounded-xl' : 'text-xs uppercase tracking-widest rounded-sm'}`}
                     >
                         Back to Shop
                     </button>
@@ -73,24 +71,24 @@ export default function OrderConfirmation() {
     if (isConfirmed) {
         return (
             <div className="min-h-screen bg-[#050505] flex items-center justify-center p-4">
-                <div className="max-w-md w-full bg-[#0A0A0A] border border-[#27272a] rounded-lg p-8 text-center animate-in zoom-in duration-300">
-                    <div className="w-20 h-20 bg-green-500/10 rounded-full flex items-center justify-center mx-auto mb-6 text-green-400">
-                        <Check size={40} className="stroke-[3]" />
+                <div className={`w-full bg-[#0A0A0A] border border-[#27272a] p-8 text-center animate-in zoom-in duration-300 ${isMobile ? 'rounded-2xl' : 'max-w-md rounded-lg'}`}>
+                    <div className={`bg-green-500/10 rounded-full flex items-center justify-center mx-auto mb-6 text-green-400 ${isMobile ? 'w-16 h-16' : 'w-20 h-20'}`}>
+                        <Check size={isMobile ? 32 : 40} className="stroke-[3]" />
                     </div>
 
-                    <h1 className="text-2xl font-bold text-white uppercase tracking-wider mb-2">
+                    <h1 className={`font-bold text-white mb-2 ${isMobile ? 'text-xl' : 'text-2xl uppercase tracking-wider'}`}>
                         Payment Confirmed!
                     </h1>
-                    <p className="text-zinc-500 text-sm mb-8">
+                    <p className="text-zinc-500 text-sm mb-6">
                         Your order has been confirmed and is being processed.
                     </p>
 
-                    <div className="bg-zinc-900/50 rounded-lg p-4 mb-8 border border-zinc-800">
+                    <div className={`bg-zinc-900/50 p-4 mb-6 border border-zinc-800 ${isMobile ? 'rounded-xl' : 'rounded-lg'}`}>
                         <p className="text-zinc-500 text-xs font-mono mb-1 uppercase tracking-widest">Order Number</p>
-                        <p className="text-xl font-mono text-white font-bold">{order.order_number}</p>
+                        <p className={`font-mono text-white font-bold ${isMobile ? 'text-lg' : 'text-xl'}`}>{order.order_number}</p>
                     </div>
 
-                    <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 mb-8">
+                    <div className={`bg-blue-500/10 border border-blue-500/30 p-4 mb-6 ${isMobile ? 'rounded-xl' : 'rounded-lg'}`}>
                         <p className="text-blue-400 text-xs font-bold uppercase tracking-wider mb-2">
                             📧 Confirmation Email Sent
                         </p>
@@ -102,7 +100,7 @@ export default function OrderConfirmation() {
                     <div className="space-y-3">
                         <button
                             onClick={() => navigate('/account/orders')}
-                            className="w-full bg-white text-black font-bold text-xs uppercase tracking-widest py-4 rounded-sm hover:bg-zinc-200 transition-colors flex items-center justify-center gap-2"
+                            className={`w-full bg-white text-black font-bold py-4 hover:bg-zinc-200 transition-colors flex items-center justify-center gap-2 ${isMobile ? 'text-sm rounded-xl' : 'text-xs uppercase tracking-widest rounded-sm'}`}
                         >
                             <Package size={16} />
                             View Order Details
@@ -110,7 +108,7 @@ export default function OrderConfirmation() {
 
                         <button
                             onClick={() => navigate('/shop')}
-                            className="w-full text-zinc-500 font-bold text-xs uppercase tracking-widest py-4 hover:text-white transition-colors flex items-center justify-center gap-2"
+                            className={`w-full text-zinc-500 font-bold py-4 hover:text-white transition-colors flex items-center justify-center gap-2 ${isMobile ? 'text-sm' : 'text-xs uppercase tracking-widest'}`}
                         >
                             <ShoppingBag size={16} />
                             Continue Shopping
@@ -124,27 +122,27 @@ export default function OrderConfirmation() {
     // WAITING FOR CONFIRMATION
     return (
         <div className="min-h-screen bg-[#050505] flex items-center justify-center p-4">
-            <div className="max-w-md w-full bg-[#0A0A0A] border border-[#27272a] rounded-lg p-8 text-center">
+            <div className={`w-full bg-[#0A0A0A] border border-[#27272a] p-8 text-center ${isMobile ? 'rounded-2xl' : 'max-w-md rounded-lg'}`}>
                 {hasTimedOut ? (
                     // TIMEOUT STATE
                     <>
-                        <div className="w-16 h-16 bg-orange-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                            <Loader2 className="w-8 h-8 text-orange-400" />
+                        <div className={`bg-orange-500/10 rounded-full flex items-center justify-center mx-auto mb-6 ${isMobile ? 'w-14 h-14' : 'w-16 h-16'}`}>
+                            <Loader2 className={`text-orange-400 ${isMobile ? 'w-6 h-6' : 'w-8 h-8'}`} />
                         </div>
 
-                        <h1 className="text-2xl font-bold text-white uppercase tracking-wider mb-2">
+                        <h1 className={`font-bold text-white mb-2 ${isMobile ? 'text-lg' : 'text-2xl uppercase tracking-wider'}`}>
                             Payment Verification Taking Longer
                         </h1>
-                        <p className="text-zinc-500 text-sm mb-8">
+                        <p className="text-zinc-500 text-sm mb-6">
                             We're still waiting for payment confirmation. This can sometimes take a few minutes.
                         </p>
 
-                        <div className="bg-zinc-900/50 rounded-lg p-4 mb-8 border border-zinc-800">
+                        <div className={`bg-zinc-900/50 p-4 mb-6 border border-zinc-800 ${isMobile ? 'rounded-xl' : 'rounded-lg'}`}>
                             <p className="text-zinc-500 text-xs font-mono mb-1 uppercase tracking-widest">Order Number</p>
-                            <p className="text-xl font-mono text-white font-bold">{order?.order_number}</p>
+                            <p className={`font-mono text-white font-bold ${isMobile ? 'text-lg' : 'text-xl'}`}>{order?.order_number}</p>
                         </div>
 
-                        <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg p-6 mb-6">
+                        <div className={`bg-orange-500/10 border border-orange-500/30 p-4 mb-6 ${isMobile ? 'rounded-xl' : 'rounded-lg'}`}>
                             <p className="text-orange-400 text-xs leading-relaxed">
                                 If payment was successful, you'll receive an email confirmation shortly.
                                 <br /><br />
@@ -155,13 +153,13 @@ export default function OrderConfirmation() {
                         <div className="space-y-3">
                             <button
                                 onClick={() => navigate('/account/orders')}
-                                className="w-full bg-white text-black font-bold text-xs uppercase tracking-widest py-4 rounded-sm hover:bg-zinc-200 transition-colors"
+                                className={`w-full bg-white text-black font-bold py-4 hover:bg-zinc-200 transition-colors ${isMobile ? 'text-sm rounded-xl' : 'text-xs uppercase tracking-widest rounded-sm'}`}
                             >
                                 View Order History
                             </button>
                             <button
                                 onClick={() => navigate('/shop')}
-                                className="w-full text-zinc-500 font-bold text-xs uppercase tracking-widest py-4 hover:text-white transition-colors"
+                                className={`w-full text-zinc-500 font-bold py-4 hover:text-white transition-colors ${isMobile ? 'text-sm' : 'text-xs uppercase tracking-widest'}`}
                             >
                                 Continue Shopping
                             </button>
@@ -170,26 +168,26 @@ export default function OrderConfirmation() {
                 ) : (
                     // NORMAL WAITING STATE
                     <>
-                        <div className="w-16 h-16 bg-yellow-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                            <Loader2 className="w-8 h-8 animate-spin text-yellow-400" />
+                        <div className={`bg-yellow-500/10 rounded-full flex items-center justify-center mx-auto mb-6 ${isMobile ? 'w-14 h-14' : 'w-16 h-16'}`}>
+                            <Loader2 className={`animate-spin text-yellow-400 ${isMobile ? 'w-6 h-6' : 'w-8 h-8'}`} />
                         </div>
 
-                        <h1 className="text-2xl font-bold text-white uppercase tracking-wider mb-2">
+                        <h1 className={`font-bold text-white mb-2 ${isMobile ? 'text-lg' : 'text-2xl uppercase tracking-wider'}`}>
                             Processing Payment
                         </h1>
-                        <p className="text-zinc-500 text-sm mb-8">
+                        <p className="text-zinc-500 text-sm mb-6">
                             Please wait while we confirm your payment...
                         </p>
 
-                        <div className="bg-zinc-900/50 rounded-lg p-4 mb-8 border border-zinc-800">
+                        <div className={`bg-zinc-900/50 p-4 mb-6 border border-zinc-800 ${isMobile ? 'rounded-xl' : 'rounded-lg'}`}>
                             <p className="text-zinc-500 text-xs font-mono mb-1 uppercase tracking-widest">Order Number</p>
-                            <p className="text-xl font-mono text-white font-bold">{order?.order_number}</p>
+                            <p className={`font-mono text-white font-bold ${isMobile ? 'text-lg' : 'text-xl'}`}>{order?.order_number}</p>
                         </div>
 
-                        <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-6 mb-6">
-                            <div className="flex items-center gap-3 mb-3">
-                                <div className="w-3 h-3 bg-yellow-500 rounded-full animate-pulse"></div>
-                                <p className="text-yellow-400 font-bold uppercase tracking-wider text-sm">
+                        <div className={`bg-yellow-500/10 border border-yellow-500/30 p-4 mb-6 ${isMobile ? 'rounded-xl' : 'rounded-lg'}`}>
+                            <div className="flex items-center justify-center gap-3 mb-3">
+                                <div className="w-3 h-3 bg-yellow-500 rounded-full animate-pulse" />
+                                <p className={`text-yellow-400 font-bold uppercase tracking-wider ${isMobile ? 'text-xs' : 'text-sm'}`}>
                                     Waiting for Confirmation
                                 </p>
                             </div>
@@ -200,9 +198,9 @@ export default function OrderConfirmation() {
                             </p>
                         </div>
 
-                        <div className="p-4 bg-zinc-900/30 rounded border border-zinc-800">
+                        <div className={`p-4 bg-zinc-900/30 border border-zinc-800 ${isMobile ? 'rounded-xl' : 'rounded'}`}>
                             <div className="flex items-center justify-center gap-2 mb-2">
-                                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
                                 <p className="text-xs text-zinc-400 uppercase tracking-wider">
                                     Real-time updates active
                                 </p>

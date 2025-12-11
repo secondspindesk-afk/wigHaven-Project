@@ -54,33 +54,51 @@ export const saveLocalCart = (cart: LocalCart): void => {
 };
 
 /**
- * Add item to local cart (INSTANT)
+ * Add item to local cart (INSTANT) with stock validation
+ * Returns { cart, cappedQuantity } - cappedQuantity is the actual quantity added after stock check
  */
 export const addToLocalCart = (
     variantId: string,
     quantity: number,
     productInfo: Partial<CartItem>
-): LocalCart => {
+): { cart: LocalCart; cappedQuantity: number; wasLimited: boolean } => {
     const cart = getLocalCart();
+    const stockAvailable = productInfo.stock_available || 0;
 
     const existingIndex = cart.items.findIndex(item => item.variant_id === variantId);
 
     if (existingIndex >= 0) {
-        // Update existing item
-        cart.items[existingIndex].quantity += quantity;
-        cart.items[existingIndex].subtotal =
-            cart.items[existingIndex].quantity * cart.items[existingIndex].unit_price;
+        // Update existing item - check stock limit
+        const currentQty = cart.items[existingIndex].quantity;
+        const itemStock = cart.items[existingIndex].stock_available || stockAvailable;
+        const maxCanAdd = Math.max(0, itemStock - currentQty);
+        const actualAdd = Math.min(quantity, maxCanAdd);
+
+        if (actualAdd > 0) {
+            cart.items[existingIndex].quantity += actualAdd;
+            cart.items[existingIndex].subtotal =
+                cart.items[existingIndex].quantity * cart.items[existingIndex].unit_price;
+            // Update stock_available in case it changed
+            if (stockAvailable > 0) {
+                cart.items[existingIndex].stock_available = stockAvailable;
+            }
+        }
+
+        saveLocalCart(cart);
+        return { cart, cappedQuantity: actualAdd, wasLimited: actualAdd < quantity };
     } else {
-        // Add new item
+        // Add new item - cap at available stock
+        const actualQuantity = stockAvailable > 0 ? Math.min(quantity, stockAvailable) : quantity;
+
         const newItem: CartItem = {
             variant_id: variantId,
             product_id: productInfo.product_id || '',
             product_name: productInfo.product_name || 'Product',
             sku: productInfo.sku || '',
-            quantity,
+            quantity: actualQuantity,
             unit_price: productInfo.unit_price || 0,
-            subtotal: quantity * (productInfo.unit_price || 0),
-            stock_available: productInfo.stock_available || 0,
+            subtotal: actualQuantity * (productInfo.unit_price || 0),
+            stock_available: stockAvailable,
             stock_status: productInfo.stock_status || 'in_stock',
             images: productInfo.images || [],
             attributes: productInfo.attributes || {},
@@ -88,16 +106,17 @@ export const addToLocalCart = (
             category: productInfo.category || 'uncategorized',
         };
         cart.items.push(newItem);
-    }
 
-    saveLocalCart(cart);
-    return cart;
+        saveLocalCart(cart);
+        return { cart, cappedQuantity: actualQuantity, wasLimited: actualQuantity < quantity };
+    }
 };
 
 /**
- * Update item quantity in local cart (INSTANT)
+ * Update item quantity in local cart (INSTANT) with stock validation
+ * Returns { cart, actualQuantity, wasLimited }
  */
-export const updateLocalCartItem = (variantId: string, quantity: number): LocalCart => {
+export const updateLocalCartItem = (variantId: string, quantity: number): { cart: LocalCart; actualQuantity: number; wasLimited: boolean } => {
     const cart = getLocalCart();
 
     const itemIndex = cart.items.findIndex(item => item.variant_id === variantId);
@@ -106,15 +125,20 @@ export const updateLocalCartItem = (variantId: string, quantity: number): LocalC
         if (quantity <= 0) {
             // Remove item
             cart.items.splice(itemIndex, 1);
+            saveLocalCart(cart);
+            return { cart, actualQuantity: 0, wasLimited: false };
         } else {
-            // Update quantity
-            cart.items[itemIndex].quantity = quantity;
-            cart.items[itemIndex].subtotal = quantity * cart.items[itemIndex].unit_price;
+            // Update quantity - cap at stock_available
+            const stockAvailable = cart.items[itemIndex].stock_available || Infinity;
+            const actualQuantity = Math.min(quantity, stockAvailable);
+            cart.items[itemIndex].quantity = actualQuantity;
+            cart.items[itemIndex].subtotal = actualQuantity * cart.items[itemIndex].unit_price;
+            saveLocalCart(cart);
+            return { cart, actualQuantity, wasLimited: actualQuantity < quantity };
         }
-        saveLocalCart(cart);
     }
 
-    return cart;
+    return { cart, actualQuantity: 0, wasLimited: false };
 };
 
 /**

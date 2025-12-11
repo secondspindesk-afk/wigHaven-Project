@@ -13,8 +13,10 @@ export const calculateCartTotals = (items, settings = {}) => {
         return sum + (parseFloat(price) * item.quantity);
     }, 0);
 
-    // Tax (6.25% - example rate)
-    const taxRate = 0.0625;
+    // Tax rate - configurable via settings, defaults to 0% if not set
+    // NOTE: Many jurisdictions require different tax handling (e.g., tax-inclusive pricing, regional rates)
+    // For simplicity, we apply a flat rate if configured. Set 'taxRate' in settings as a percentage (e.g., 6.25)
+    const taxRate = settings.taxRate !== undefined ? parseFloat(settings.taxRate) / 100 : 0;
     const tax = subtotal * taxRate;
 
     // Shipping

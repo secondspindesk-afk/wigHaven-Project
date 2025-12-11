@@ -74,14 +74,13 @@ export const runAbandonedCartEmailLogic = async () => {
         });
 
         context.recordsChecked = abandonedCarts.length;
-        let processed = 0;
-        let failed = 0;
 
-        for (const cart of abandonedCarts) {
-            try {
+        // Process carts in parallel (was sequential - N round trips)
+        const results = await Promise.allSettled(
+            abandonedCarts.map(async (cart) => {
                 // Skip if no items
                 if (!cart.items || cart.items.length === 0) {
-                    continue;
+                    return { skipped: true };
                 }
 
                 // Calculate cart total
@@ -124,9 +123,18 @@ export const runAbandonedCartEmailLogic = async () => {
                     }
                 });
 
+                return { success: true, cartId: cart.id };
+            })
+        );
+
+        // Count results
+        let processed = 0;
+        let failed = 0;
+        for (const result of results) {
+            if (result.status === 'fulfilled' && result.value?.success) {
                 processed++;
-            } catch (error) {
-                logRecordError('abandoned_cart_emails', cart.id, error);
+            } else if (result.status === 'rejected') {
+                logRecordError('abandoned_cart_emails', 'batch', result.reason);
                 failed++;
             }
         }

@@ -1,12 +1,118 @@
 import { useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Search, Filter, Edit, Trash2, Copy, Upload, Loader2, FileSpreadsheet, CheckSquare, Square, X } from 'lucide-react';
+import { Plus, Search, Filter, Edit, Trash2, Copy, Upload, Loader2, FileSpreadsheet, CheckSquare, Square, X, ChevronRight, Package, MoreVertical } from 'lucide-react';
 import { useAdminProducts, useDeleteProduct, useDuplicateProduct, useBulkUploadProducts, useCategories, useBulkDeleteProducts, useBulkUpdateProductStatus } from '@/lib/hooks/useProducts';
 import { useDebounce } from '@/lib/hooks/useDebounce';
 import { useToast } from '@/contexts/ToastContext';
+import { useIsMobile } from '@/lib/hooks/useIsMobile';
 
+// ==================== MOBILE PRODUCT CARD ====================
+interface MobileProductCardProps {
+    product: any;
+    isSelected: boolean;
+    onToggleSelect: () => void;
+    onEdit: () => void;
+    onDuplicate: () => void;
+    onDelete: () => void;
+}
+
+function MobileProductCard({ product, isSelected, onToggleSelect, onEdit, onDuplicate, onDelete }: MobileProductCardProps) {
+    const [showActions, setShowActions] = useState(false);
+
+    return (
+        <div className={`p-4 bg-zinc-900 rounded-xl border ${isSelected ? 'border-white' : 'border-zinc-800'} relative`}>
+            <div className="flex gap-3">
+                {/* Checkbox */}
+                <button
+                    onClick={onToggleSelect}
+                    className={`mt-1 ${isSelected ? 'text-white' : 'text-zinc-600'}`}
+                >
+                    {isSelected ? <CheckSquare size={18} /> : <Square size={18} />}
+                </button>
+
+                {/* Image */}
+                <div className="w-16 h-16 bg-zinc-800 rounded-lg overflow-hidden flex-shrink-0">
+                    {product.variants?.[0]?.images?.[0] ? (
+                        <img src={product.variants[0].images[0]} alt={product.name} className="w-full h-full object-cover" />
+                    ) : (
+                        <div className="w-full h-full flex items-center justify-center text-zinc-600">
+                            <Package size={20} />
+                        </div>
+                    )}
+                </div>
+
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                            <h3 className="text-sm text-white font-medium truncate">{product.name}</h3>
+                            <p className="text-[10px] text-zinc-500 font-mono mt-0.5">
+                                {product.variantCount ?? 0} variants · {product.category?.name || 'Uncategorized'}
+                            </p>
+                        </div>
+                        <button
+                            onClick={() => setShowActions(!showActions)}
+                            className="p-1.5 text-zinc-500 active:bg-zinc-800 rounded-lg"
+                        >
+                            <MoreVertical size={16} />
+                        </button>
+                    </div>
+
+                    {/* Price & Stock */}
+                    <div className="flex items-center justify-between mt-2">
+                        <span className="text-sm font-mono text-white">GHS {(product.basePrice ?? 0).toLocaleString()}</span>
+                        <div className="flex items-center gap-2">
+                            <span className={`text-xs font-mono ${(product.totalStock ?? 0) === 0 ? 'text-red-500' :
+                                (product.totalStock ?? 0) < 10 ? 'text-yellow-500' : 'text-emerald-500'
+                                }`}>
+                                {product.totalStock ?? 0} in stock
+                            </span>
+                            <span className={`px-1.5 py-0.5 text-[9px] font-bold uppercase rounded ${product.isActive
+                                ? 'bg-emerald-500/10 text-emerald-500'
+                                : 'bg-zinc-500/10 text-zinc-500'
+                                }`}>
+                                {product.isActive ? 'Active' : 'Draft'}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Actions Dropdown */}
+            {showActions && (
+                <>
+                    <div className="fixed inset-0 z-40" onClick={() => setShowActions(false)} />
+                    <div className="absolute top-12 right-4 z-50 bg-zinc-800 border border-zinc-700 rounded-xl shadow-2xl overflow-hidden min-w-[140px]">
+                        <Link
+                            to={`/admin/products/${product.id}/edit`}
+                            className="flex items-center gap-3 px-4 py-3 text-sm text-zinc-300 active:bg-zinc-700"
+                            onClick={() => setShowActions(false)}
+                        >
+                            <Edit size={16} /> Edit
+                        </Link>
+                        <button
+                            onClick={() => { onDuplicate(); setShowActions(false); }}
+                            className="w-full flex items-center gap-3 px-4 py-3 text-sm text-zinc-300 active:bg-zinc-700"
+                        >
+                            <Copy size={16} /> Duplicate
+                        </button>
+                        <button
+                            onClick={() => { onDelete(); setShowActions(false); }}
+                            className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-400 active:bg-red-900/20"
+                        >
+                            <Trash2 size={16} /> Delete
+                        </button>
+                    </div>
+                </>
+            )}
+        </div>
+    );
+}
+
+// ==================== MAIN COMPONENT ====================
 export default function ProductList() {
     const { showToast, showConfirm } = useToast();
+    const isMobile = useIsMobile();
     const [searchQuery, setSearchQuery] = useState('');
     const debouncedSearch = useDebounce(searchQuery, 300);
     const [selectedCategory, setSelectedCategory] = useState<string>('');
@@ -14,6 +120,7 @@ export default function ProductList() {
     const [deleteId, setDeleteId] = useState<string | null>(null);
     const [isUploading, setIsUploading] = useState(false);
     const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
+    const [showFilters, setShowFilters] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // API Hooks
@@ -37,18 +144,18 @@ export default function ProductList() {
         try {
             await deleteMutation.mutateAsync(id);
             setDeleteId(null);
-            showToast('Product deleted successfully', 'success');
+            showToast('Product deleted', 'success');
         } catch (error: any) {
-            showToast(error.response?.data?.message || 'Failed to delete product', 'error');
+            showToast(error.response?.data?.message || 'Failed to delete', 'error');
         }
     };
 
     const handleDuplicate = async (id: string) => {
         try {
             await duplicateMutation.mutateAsync(id);
-            showToast('Product duplicated successfully', 'success');
+            showToast('Product duplicated', 'success');
         } catch (error: any) {
-            showToast(error.response?.data?.message || 'Failed to duplicate product', 'error');
+            showToast(error.response?.data?.message || 'Failed to duplicate', 'error');
         }
     };
 
@@ -61,12 +168,10 @@ export default function ProductList() {
             const result = await bulkUploadMutation.mutateAsync(file);
             showToast(`Processed ${result.processed} products`, 'success');
             if (result.errors && result.errors.length > 0) {
-                showToast(`Failed to import ${result.errors.length} products`, 'error');
-                console.error('Bulk upload errors:', result.errors);
+                showToast(`Failed: ${result.errors.length}`, 'error');
             }
         } catch (error: any) {
-            showToast(error.response?.data?.message || 'Bulk upload failed', 'error');
-            console.error(error);
+            showToast(error.response?.data?.message || 'Upload failed', 'error');
         } finally {
             setIsUploading(false);
             if (fileInputRef.current) fileInputRef.current.value = '';
@@ -92,15 +197,15 @@ export default function ProductList() {
     const handleBulkDelete = () => {
         showConfirm({
             title: 'Delete Products',
-            message: `Are you sure you want to delete ${selectedProducts.length} products?`,
-            confirmText: 'DELETE ALL',
+            message: `Delete ${selectedProducts.length} products?`,
+            confirmText: 'DELETE',
             onConfirm: async () => {
                 try {
                     await bulkDeleteMutation.mutateAsync(selectedProducts);
                     setSelectedProducts([]);
                     showToast(`Deleted ${selectedProducts.length} products`, 'success');
                 } catch (error: any) {
-                    showToast('Failed to delete products', 'error');
+                    showToast('Failed to delete', 'error');
                 }
             }
         });
@@ -112,10 +217,174 @@ export default function ProductList() {
             setSelectedProducts([]);
             showToast(`Updated ${selectedProducts.length} products`, 'success');
         } catch (error: any) {
-            showToast('Failed to update status', 'error');
+            showToast('Failed to update', 'error');
         }
     };
 
+    // ==================== MOBILE LAYOUT ====================
+    if (isMobile) {
+        return (
+            <div className="space-y-4 pb-24">
+                {/* Mobile Header */}
+                <div className="flex justify-between items-center">
+                    <div>
+                        <h1 className="text-lg text-white font-semibold">Products</h1>
+                        <p className="text-[10px] text-zinc-500 font-mono">{products.length} items</p>
+                    </div>
+                    <Link
+                        to="/admin/products/new"
+                        className="p-2.5 bg-white text-black rounded-lg"
+                    >
+                        <Plus size={20} strokeWidth={2} />
+                    </Link>
+                </div>
+
+                {/* Mobile Search */}
+                <div className="relative">
+                    <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+                    <input
+                        type="text"
+                        placeholder="Search products..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full h-11 pl-10 pr-12 bg-zinc-900 border border-zinc-800 rounded-xl text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-600"
+                    />
+                    <button
+                        onClick={() => setShowFilters(!showFilters)}
+                        className={`absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg ${showFilters ? 'bg-white text-black' : 'text-zinc-500'}`}
+                    >
+                        <Filter size={16} />
+                    </button>
+                </div>
+
+                {/* Mobile Filters */}
+                {showFilters && (
+                    <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4">
+                        <select
+                            value={selectedCategory}
+                            onChange={(e) => setSelectedCategory(e.target.value)}
+                            className="h-9 px-3 bg-zinc-800 border border-zinc-700 rounded-lg text-xs text-white appearance-none"
+                        >
+                            <option value="">All Categories</option>
+                            {categories.map(cat => (
+                                <option key={cat.id} value={cat.slug}>{cat.name}</option>
+                            ))}
+                        </select>
+                        <select
+                            value={sortBy}
+                            onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+                            className="h-9 px-3 bg-zinc-800 border border-zinc-700 rounded-lg text-xs text-white appearance-none"
+                        >
+                            <option value="newest">Newest</option>
+                            <option value="name">Name</option>
+                            <option value="price_asc">Price ↑</option>
+                            <option value="price_desc">Price ↓</option>
+                        </select>
+                    </div>
+                )}
+
+                {/* Divider */}
+                <div className="h-px bg-zinc-800/50 -mx-4" />
+
+                {/* Bulk Actions (Fixed Bottom Bar when items selected) */}
+                {selectedProducts.length > 0 && (
+                    <div className="fixed bottom-0 left-0 right-0 z-40 p-4 bg-zinc-900 border-t border-zinc-800 safe-area-pb">
+                        <div className="flex items-center justify-between mb-3">
+                            <span className="text-sm text-white font-medium">{selectedProducts.length} selected</span>
+                            <button onClick={() => setSelectedProducts([])} className="text-xs text-zinc-500">
+                                <X size={16} />
+                            </button>
+                        </div>
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => handleBulkStatus(true)}
+                                disabled={bulkStatusMutation.isPending}
+                                className="flex-1 py-2.5 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded-lg text-xs font-bold"
+                            >
+                                Activate
+                            </button>
+                            <button
+                                onClick={() => handleBulkStatus(false)}
+                                disabled={bulkStatusMutation.isPending}
+                                className="flex-1 py-2.5 bg-zinc-800 text-zinc-300 border border-zinc-700 rounded-lg text-xs font-bold"
+                            >
+                                Deactivate
+                            </button>
+                            <button
+                                onClick={handleBulkDelete}
+                                disabled={bulkDeleteMutation.isPending}
+                                className="py-2.5 px-4 bg-red-500/10 text-red-500 border border-red-500/20 rounded-lg"
+                            >
+                                {bulkDeleteMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* Product Cards */}
+                <div className="space-y-3">
+                    {isLoading ? (
+                        [...Array(5)].map((_, i) => (
+                            <div key={i} className="h-24 bg-zinc-900 rounded-xl animate-pulse" />
+                        ))
+                    ) : products.length === 0 ? (
+                        <div className="text-center py-12">
+                            <Package size={40} className="mx-auto text-zinc-700 mb-4" />
+                            <p className="text-zinc-500 text-sm mb-4">No products yet</p>
+                            <Link
+                                to="/admin/products/new"
+                                className="inline-flex items-center gap-2 px-4 py-2.5 bg-white text-black rounded-lg text-sm font-medium"
+                            >
+                                <Plus size={16} /> Add Product
+                            </Link>
+                        </div>
+                    ) : (
+                        products.map(product => (
+                            <MobileProductCard
+                                key={product.id}
+                                product={product}
+                                isSelected={selectedProducts.includes(product.id)}
+                                onToggleSelect={() => toggleSelectProduct(product.id)}
+                                onEdit={() => { }}
+                                onDuplicate={() => handleDuplicate(product.id)}
+                                onDelete={() => setDeleteId(product.id)}
+                            />
+                        ))
+                    )}
+                </div>
+
+                {/* Delete Modal */}
+                {deleteId && (
+                    <div className="fixed inset-0 z-50 flex items-end justify-center p-4">
+                        <div className="absolute inset-0 bg-black/80" onClick={() => setDeleteId(null)} />
+                        <div className="relative w-full bg-zinc-900 rounded-2xl p-6 text-center safe-area-pb">
+                            <div className="w-14 h-14 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <Trash2 size={24} className="text-red-500" />
+                            </div>
+                            <h3 className="text-base font-semibold text-white mb-2">Delete Product?</h3>
+                            <p className="text-sm text-zinc-500 mb-6">This cannot be undone.</p>
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={() => setDeleteId(null)}
+                                    className="flex-1 py-3 bg-zinc-800 text-white rounded-xl text-sm font-medium"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={() => handleDelete(deleteId)}
+                                    className="flex-1 py-3 bg-red-600 text-white rounded-xl text-sm font-medium"
+                                >
+                                    {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    }
+
+    // ==================== DESKTOP LAYOUT ====================
     return (
         <div className="space-y-6">
             {/* Header */}
@@ -265,6 +534,7 @@ export default function ProductList() {
                             {isLoading ? (
                                 [...Array(5)].map((_, i) => (
                                     <tr key={i} className="animate-pulse">
+                                        <td className="px-6 py-4"><div className="w-4 h-4 bg-zinc-800" /></td>
                                         <td className="px-6 py-4"><div className="w-12 h-12 bg-zinc-800" /></td>
                                         <td className="px-6 py-4"><div className="h-3 w-32 bg-zinc-800" /></td>
                                         <td className="px-6 py-4"><div className="h-3 w-20 bg-zinc-800" /></td>
@@ -276,7 +546,7 @@ export default function ProductList() {
                                 ))
                             ) : products.length === 0 ? (
                                 <tr>
-                                    <td colSpan={7} className="px-6 py-12 text-center">
+                                    <td colSpan={8} className="px-6 py-12 text-center">
                                         <p className="text-zinc-600 font-mono text-xs uppercase">No products found</p>
                                         <Link
                                             to="/admin/products/new"

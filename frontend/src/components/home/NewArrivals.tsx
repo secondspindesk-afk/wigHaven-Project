@@ -12,6 +12,7 @@ export default function NewArrivals() {
             title="New Arrivals"
             subtitle="Fresh styles just added"
             isLoading={isLoading}
+            viewAllLink="/shop?sort=newest"
         />
     );
 }

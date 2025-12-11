@@ -18,9 +18,9 @@ export default function Checkout() {
 
 
     const { data: user } = useUser();
-    const { data: cart } = useCart();
+    const { data: cart, clearCart } = useCart();
     const { addresses } = useAddresses();
-    const { createOrder, validateCart } = useCheckout();
+    const { createOrder } = useCheckout();
     const navigate = useNavigate();
 
     // Auto-select default address when addresses load
@@ -39,14 +39,10 @@ export default function Checkout() {
         const selectedAddress = addresses.find(a => a.id === selectedAddressId);
         if (!selectedAddress) return;
 
-        // 1. Validate cart stock before creating order
-        const validation = await validateCart.refetch();
-        if (!validation.data?.success) {
-            // Stock validation failed - errors will be shown via toast
-            return;
-        }
+        // Note: With LocalStorage-first pattern, server cart may be empty
+        // Stock validation happens during order creation on the backend
 
-        // 2. Create order data
+        // Create order data
         const orderData = {
             shipping_address: {
                 name: selectedAddress.name,
@@ -65,6 +61,9 @@ export default function Checkout() {
         // 3. Create order
         createOrder.mutate(orderData, {
             onSuccess: (data) => {
+                // Clear cart immediately after order creation
+                clearCart();
+
                 // Navigate to dedicated confirmation page
                 const orderNumber = data.order.order_number;
                 const email = data.order.customer_email;
@@ -105,6 +104,7 @@ export default function Checkout() {
                     setPhoneNumber={setPhoneNumber}
                     paymentProvider={paymentProvider}
                     setPaymentProvider={setPaymentProvider}
+                    isProcessing={createOrder.isPending}
                 />
             )}
 

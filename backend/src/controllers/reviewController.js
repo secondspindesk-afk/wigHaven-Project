@@ -1,4 +1,6 @@
 import reviewService from '../services/reviewService.js';
+import productService from '../services/productService.js';
+import notificationService from '../services/notificationService.js';
 import logger from '../utils/logger.js';
 import { notifyReviewsChanged } from '../utils/adminBroadcast.js';
 
@@ -52,12 +54,9 @@ export const createReview = async (req, res) => {
         const review = await reviewService.createReview(userId, req.body, req.user);
 
         // Fetch product for notifications
-        const productService = (await import('../services/productService.js')).default;
         const product = await productService.getProductById(productId);
 
         if (product) {
-            const notificationService = (await import('../services/notificationService.js')).default;
-
             // Notify user
             await notificationService.notifyReviewSubmitted(
                 { userId: userId },

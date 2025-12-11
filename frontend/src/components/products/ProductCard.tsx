@@ -10,9 +10,10 @@ import { useCurrencyContext } from '@/lib/context/CurrencyContext';
 
 interface ProductCardProps {
     product: Product;
+    compact?: boolean; // Compact mode for mobile carousels
 }
 
-export default function ProductCard({ product }: ProductCardProps) {
+export default function ProductCard({ product, compact = false }: ProductCardProps) {
     const addToCartMutation = useAddToCart();
     const { data: cart } = useCart();
     const { formatPrice } = useCurrencyContext();
@@ -93,6 +94,87 @@ export default function ProductCard({ product }: ProductCardProps) {
         }
     };
 
+    // Compact card for mobile carousels
+    if (compact) {
+        return (
+            <Link
+                to={`/products/${product.id}${defaultVariant ? `?variant=${defaultVariant.id}` : ''}`}
+                className="block bg-[#0A0A0A] rounded-xl overflow-hidden border border-zinc-800 active:scale-95 transition-transform"
+                onTouchStart={() => prefetchProduct(product.id)}
+            >
+                {/* Image */}
+                <div className="aspect-[3/4] bg-zinc-900 relative overflow-hidden">
+                    {primaryImage ? (
+                        <img
+                            src={primaryImage}
+                            alt={product.name}
+                            className="w-full h-full object-cover"
+                            loading="lazy"
+                        />
+                    ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                            <ShoppingBag className="w-8 h-8 text-white/10" />
+                        </div>
+                    )}
+
+                    {/* Wishlist Heart */}
+                    <button
+                        onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            if (inWishlist) {
+                                removeFromWishlist.mutate(product.id);
+                            } else {
+                                addToWishlist.mutate(product.id);
+                            }
+                        }}
+                        className="absolute top-2 right-2 p-2 bg-black/50 backdrop-blur-sm rounded-full"
+                    >
+                        <Heart
+                            size={14}
+                            className={inWishlist ? 'fill-white text-white' : 'text-white/70'}
+                        />
+                    </button>
+
+                    {/* Stock Badge */}
+                    {!isInStock && (
+                        <div className="absolute top-2 left-2">
+                            <span className="px-2 py-1 bg-zinc-900/90 text-white text-[8px] font-bold uppercase rounded">
+                                Sold Out
+                            </span>
+                        </div>
+                    )}
+
+                    {/* Quick Add for mobile */}
+                    {isInStock && defaultVariant && (
+                        <button
+                            onClick={handleQuickAdd}
+                            disabled={!canQuickAdd || addToCartMutation.isPending}
+                            className="absolute bottom-2 right-2 w-8 h-8 bg-white text-black rounded-full flex items-center justify-center shadow-lg active:scale-90 transition-transform disabled:opacity-50"
+                        >
+                            {isAtMaxStock ? (
+                                <Check size={14} />
+                            ) : (
+                                <ShoppingBag size={14} />
+                            )}
+                        </button>
+                    )}
+                </div>
+
+                {/* Info */}
+                <div className="p-3">
+                    <h3 className="text-sm font-medium text-white mb-1 line-clamp-1">
+                        {product.name}
+                    </h3>
+                    <p className="text-sm font-bold text-white">
+                        {displayPrice}
+                    </p>
+                </div>
+            </Link>
+        );
+    }
+
+    // Full card for desktop/grid layouts
     return (
         <div
             className="bg-[#050505] group/card relative hover:bg-[#0A0A0A] transition-colors h-full flex flex-col"
@@ -103,7 +185,7 @@ export default function ProductCard({ product }: ProductCardProps) {
                 className="flex-1 flex flex-col"
             >
                 {/* Image Container */}
-                <div className="aspect-[4/5] bg-zinc-900 mb-6 overflow-hidden relative">
+                <div className="aspect-[4/5] bg-zinc-900 mb-3 md:mb-6 overflow-hidden relative">
                     {primaryImage ? (
                         <img
                             src={primaryImage}
@@ -183,7 +265,7 @@ export default function ProductCard({ product }: ProductCardProps) {
                 </div>
 
                 {/* Product Info */}
-                <div className="mt-auto px-6 pb-6">
+                <div className="mt-auto px-2 pb-3 md:px-6 md:pb-6">
                     <div className="flex justify-between items-start mb-2">
                         <h3 className="text-sm font-medium text-white tracking-wide uppercase">
                             {product.name}

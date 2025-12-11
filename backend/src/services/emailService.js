@@ -2,6 +2,7 @@ import { queueEmail } from '../jobs/emailQueue.js';
 import { validateEmailData } from '../utils/emailValidator.js';
 import { sendEmailDirectly } from '../utils/emailSender.js';
 import { renderEmailTemplate } from './emailTemplates.js';
+import { getPrisma } from '../config/database.js';
 import logger from '../utils/logger.js';
 
 /**
@@ -133,7 +134,6 @@ export const sendPaymentFailed = async (order) => {
  */
 export const sendAbandonedCartEmail = async (user, cart) => {
   try {
-    const { getPrisma } = await import('../config/database.js');
     const prisma = getPrisma();
 
     const prefs = await prisma.emailPreferences.findUnique({ where: { email: user.email } });
@@ -167,7 +167,6 @@ export const sendAbandonedCartEmail = async (user, cart) => {
  */
 export const sendBackInStockAlert = async (user, variant) => {
   try {
-    const { getPrisma } = await import('../config/database.js');
     const prisma = getPrisma();
 
     const prefs = await prisma.emailPreferences.findUnique({ where: { email: user.email } });

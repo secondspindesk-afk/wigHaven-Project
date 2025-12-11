@@ -5,6 +5,8 @@ import { refundPayment } from './paystackService.js';
 import { clearCart } from './cartService.js';
 import * as discountService from './discountService.js';
 import settingsService from './settingsService.js';
+import notificationService from './notificationService.js';
+import emailService from './emailService.js';
 import { getPrisma } from '../config/database.js';
 import logger from '../utils/logger.js';
 
@@ -25,9 +27,11 @@ export const createOrder = async (cart, orderData) => {
             throw error;
         }
 
-        // 1b. Validate order limits from settings
-        const minOrderAmount = await settingsService.getSetting('minOrderAmount');
-        const maxOrderAmount = await settingsService.getSetting('maxOrderAmount');
+        // 1b. Validate order limits from settings (parallelized for efficiency)
+        const [minOrderAmount, maxOrderAmount] = await Promise.all([
+            settingsService.getSetting('minOrderAmount'),
+            settingsService.getSetting('maxOrderAmount')
+        ]);
 
         if (minOrderAmount && Number(minOrderAmount) > 0 && cart.total < Number(minOrderAmount)) {
             const error = new Error(`Minimum order amount is ₵${Number(minOrderAmount).toFixed(2)}`);
@@ -113,25 +117,38 @@ export const createOrder = async (cart, orderData) => {
                 data: itemsData
             });
 
-            // D. Increment Discount Usage (if applicable) - INSIDE TRANSACTION
-            // This ensures if the transaction fails, usage is not incremented
+            // D. Re-validate and Increment Discount Usage (if applicable) - INSIDE TRANSACTION
+            // This ensures coupon is still valid at checkout time
             if (cart.discount?.code) {
-                try {
-                    const discountRecord = await tx.discountCode.findUnique({
-                        where: { code: cart.discount.code }
-                    });
-                    if (discountRecord) {
-                        await tx.discountCode.update({
-                            where: { id: discountRecord.id },
-                            data: { usedCount: { increment: 1 } }
-                        });
-                        logger.info(`Discount usage incremented for code: ${cart.discount.code}`);
-                    }
-                } catch (err) {
-                    logger.error(`Failed to increment usage for discount ${cart.discount.code}:`, err);
-                    // Throw to rollback the entire transaction
-                    throw new Error(`Failed to apply discount code: ${err.message}`);
+                const discountRecord = await tx.discountCode.findUnique({
+                    where: { code: cart.discount.code }
+                });
+
+                if (!discountRecord) {
+                    throw new Error(`Coupon code "${cart.discount.code}" not found. Please remove it and try again.`);
                 }
+
+                // Re-validate coupon is still active
+                if (!discountRecord.isActive) {
+                    throw new Error(`Coupon code "${cart.discount.code}" is no longer active.`);
+                }
+
+                // Re-validate expiration
+                if (discountRecord.expiresAt && new Date(discountRecord.expiresAt) < new Date()) {
+                    throw new Error(`Coupon code "${cart.discount.code}" has expired.`);
+                }
+
+                // Re-validate usage limit
+                if (discountRecord.usageLimit !== null && discountRecord.usedCount >= discountRecord.usageLimit) {
+                    throw new Error(`Coupon code "${cart.discount.code}" has reached its usage limit.`);
+                }
+
+                // All validations passed - increment usage
+                await tx.discountCode.update({
+                    where: { id: discountRecord.id },
+                    data: { usedCount: { increment: 1 } }
+                });
+                logger.info(`Discount usage incremented for code: ${cart.discount.code}`);
             }
 
             return { order: newOrder, orderItems: itemsData };
@@ -405,7 +422,6 @@ export const refundOrder = async (orderId) => {
 
         // Notify user about refund
         if (updatedOrder.userId) {
-            const notificationService = (await import('./notificationService.js')).default;
             await notificationService.notifyOrderRefunded({
                 userId: updatedOrder.userId,
                 orderNumber: updatedOrder.orderNumber,
@@ -414,7 +430,6 @@ export const refundOrder = async (orderId) => {
         }
 
         // Send Refund Email
-        const emailService = (await import('./emailService.js')).default;
         await emailService.sendOrderRefund({
             customerEmail: updatedOrder.customerEmail,
             orderNumber: updatedOrder.orderNumber,
@@ -449,6 +464,29 @@ export const updateStatus = async (orderNumber, status) => {
         const validStatuses = ['pending', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'];
         if (!validStatuses.includes(status)) {
             const error = new Error(`Invalid status. Must be one of: ${validStatuses.join(', ')}`);
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // State machine: Define valid transitions
+        // Key = current status, Value = array of allowed next statuses
+        const validTransitions = {
+            'pending': ['processing', 'cancelled'],
+            'processing': ['shipped', 'cancelled'],
+            'shipped': ['delivered', 'cancelled'],
+            'delivered': ['refunded'], // Can only refund after delivered
+            'cancelled': [], // Terminal state (admin can force override below)
+            'refunded': []   // Terminal state
+        };
+
+        const currentStatus = order.status;
+        const allowedNextStatuses = validTransitions[currentStatus] || [];
+
+        if (!allowedNextStatuses.includes(status) && currentStatus !== status) {
+            const error = new Error(
+                `Invalid status transition: ${currentStatus} → ${status}. ` +
+                `Allowed transitions from "${currentStatus}": ${allowedNextStatuses.length > 0 ? allowedNextStatuses.join(', ') : 'none (terminal state)'}`
+            );
             error.statusCode = 400;
             throw error;
         }

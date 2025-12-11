@@ -1,6 +1,7 @@
 import notificationRepository from '../db/repositories/notificationRepository.js';
 import logger from '../utils/logger.js';
 import { broadcastNotification } from '../config/websocket.js';
+import { getPrisma } from '../config/database.js';
 
 /**
  * Notification Types Constant
@@ -193,7 +194,6 @@ export const notifyBackInStock = async (user, variant) => {
  */
 const notifyAllAdmins = async (type, title, message, link = null) => {
     try {
-        const { getPrisma } = await import('../config/database.js');
         const prisma = getPrisma();
         const admins = await prisma.user.findMany({
             where: {
@@ -227,7 +227,6 @@ const notifyAllAdmins = async (type, title, message, link = null) => {
  */
 const broadcastToAllUsers = async (type, title, message, link = null) => {
     try {
-        const { getPrisma } = await import('../config/database.js');
         const prisma = getPrisma();
 
         // Get count first

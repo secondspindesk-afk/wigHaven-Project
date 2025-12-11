@@ -217,25 +217,28 @@ export const syncCart = async (req, res, next) => {
             });
         }
 
-        // Sync each item to the cart (best effort, don't fail on individual items)
-        let synced = 0;
-        for (const item of items) {
-            if (!item.variant_id || !item.quantity) continue;
+        // Sync each item to the cart in parallel (best effort, don't fail on individual items)
+        const validItems = items.filter(item => item.variant_id && item.quantity);
 
-            try {
-                await cartService.addToCart(
+        const results = await Promise.allSettled(
+            validItems.map(item =>
+                cartService.addToCart(
                     req.cart,
                     item.variant_id,
                     parseInt(item.quantity)
-                );
-                synced++;
-            } catch (err) {
-                // Log but don't fail - best effort sync
-                logger.warn(`[syncCart] Failed to sync item ${item.variant_id}:`, err.message);
-            }
-        }
+                )
+            )
+        );
 
-        logger.info(`[syncCart] Synced ${synced}/${items.length} items for user ${req.user.id}`);
+        const synced = results.filter(r => r.status === 'fulfilled').length;
+        const failed = results.filter(r => r.status === 'rejected');
+
+        // Log failures for debugging
+        failed.forEach((result, index) => {
+            logger.warn(`[syncCart] Failed to sync item ${validItems[index]?.variant_id}:`, result.reason?.message);
+        });
+
+        logger.info(`[syncCart] Synced ${synced}/${validItems.length} items for user ${req.user.id}`);
 
         res.status(200).json({
             success: true,

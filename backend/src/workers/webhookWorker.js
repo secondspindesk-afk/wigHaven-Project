@@ -242,33 +242,22 @@ export async function processWebhookPayload(webhookData) {
                 return;
             }
 
-            // 3. Broadcast WebSocket Notification + Create Persistent In-App Notification
+            // 3. Create Persistent In-App Notification (also broadcasts via WebSocket)
+            // NOTE: notifyPaymentSuccess() internally calls createNotification() which already
+            // broadcasts to WebSocket, so we don't need a separate broadcastNotification() call.
+            // This prevents duplicate WebSocket messages to the user ("notification blast").
             try {
-                const { broadcastNotification } = await import('../config/websocket.js');
                 const order = await prisma.order.findUnique({
                     where: { paystackReference: reference }
                 });
 
                 if (order && order.userId) {
-                    // Ephemeral WebSocket notification (real-time)
-                    broadcastNotification(order.userId, {
-                        type: 'order_payment_confirmed',
-                        message: `Payment received for Order #${order.orderNumber}`,
-                        data: {
-                            orderNumber: order.orderNumber,
-                            status: order.status,
-                            paymentStatus: order.paymentStatus
-                        }
-                    });
-                    logger.info(`📡 WebSocket notification sent to user ${order.userId}`);
-
-                    // Persistent in-app notification (stored in DB)
                     const notificationService = (await import('../services/notificationService.js')).default;
                     await notificationService.notifyPaymentSuccess(order);
-                    logger.info(`🔔 In-app notification created for user ${order.userId}`);
+                    logger.info(`🔔 Payment notification sent to user ${order.userId} (WebSocket + In-App)`);
                 }
             } catch (wsError) {
-                logger.error(`Failed to send notifications for ${reference}:`, wsError);
+                logger.error(`Failed to send notification for ${reference}:`, wsError);
             }
 
             // 4. Send Confirmation Email

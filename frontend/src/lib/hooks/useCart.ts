@@ -158,9 +158,33 @@ export function useCart() {
         }
     }, [queryClient, isLoggedIn, scheduleSync]);
 
+    /**
+     * Clear cart completely (after checkout)
+     * Clears both LocalStorage and React Query cache
+     */
+    const clearCart = useCallback(() => {
+        localCartService.clearLocalCart();
+        queryClient.setQueryData(['cart'], {
+            id: null,
+            items: [],
+            items_count: 0,
+            subtotal: 0,
+            tax: 0,
+            shipping: 0,
+            total: 0,
+            discount: { amount: 0, code: null },
+            couponError: null,
+            userId: null,
+            sessionId: null,
+            type: 'guest',
+        });
+        queryClient.invalidateQueries({ queryKey: ['cart'] });
+    }, [queryClient]);
+
     return {
         ...query,
         updateLocalCart,
+        clearCart,
         isLocalFirst: true,
     };
 }

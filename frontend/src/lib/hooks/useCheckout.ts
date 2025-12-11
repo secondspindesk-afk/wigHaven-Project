@@ -39,10 +39,16 @@ export function useCheckout() {
         },
     });
 
-    // Polling function to check payment status
+    // Polling function to check payment status with proper abort mechanism
     const waitForPayment = useMutation({
         mutationFn: async (orderNumber: string) => {
-            const poll = async (): Promise<any> => {
+            const MAX_ATTEMPTS = 30; // 30 attempts × 2 seconds = 60 seconds max
+            const POLL_INTERVAL_MS = 2000;
+            let attempts = 0;
+
+            while (attempts < MAX_ATTEMPTS) {
+                attempts++;
+
                 const response = await api.get<{ data: { order: any } }>(`/orders/${orderNumber}`);
                 const order = response.data.data.order;
 
@@ -54,17 +60,14 @@ export function useCheckout() {
                     throw new Error('Payment failed');
                 }
 
-                // Wait 2 seconds and try again
-                await new Promise(resolve => setTimeout(resolve, 2000));
-                return poll();
-            };
+                // Wait 2 seconds before next attempt (except on last attempt)
+                if (attempts < MAX_ATTEMPTS) {
+                    await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS));
+                }
+            }
 
-            // Timeout after 60 seconds
-            const timeout = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('Payment verification timed out')), 60000)
-            );
-
-            return Promise.race([poll(), timeout]);
+            // Max attempts reached
+            throw new Error('Payment verification timed out. Please check your order history.');
         },
         onSuccess: () => {
             showToast('Payment successful! Order placed.', 'success');
@@ -74,6 +77,8 @@ export function useCheckout() {
         },
     });
 
+    // Cart validation - disabled by default since we use LocalStorage-first pattern
+    // The server cart may be empty, so we rely on order creation for validation
     const validateCart = useQuery({
         queryKey: ['cart-validation'],
         queryFn: async () => {
@@ -81,6 +86,7 @@ export function useCheckout() {
             const response = await api.post('/cart/validate-checkout');
             return response.data;
         },
+        enabled: false, // Don't auto-run - LocalStorage cart may not be synced
         retry: false,
     });
 

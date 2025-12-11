@@ -1,6 +1,7 @@
 import cron from 'node-cron';
 import { getPrisma } from '../config/database.js';
 import { logJobStart, logJobComplete, logJobError, logRecordError } from '../utils/cronLogger.js';
+import logger from '../utils/logger.js';
 
 /**
  * Order Cancellation Job
@@ -53,9 +54,9 @@ export const startOrderCancellationJob = () => {
                         try {
                             const discountService = (await import('../services/discountService.js')).default;
                             await discountService.decrementUsage(order.couponCode);
-                            console.log(`Discount usage decremented for cancelled order ${order.orderNumber}: ${order.couponCode}`);
+                            logger.info(`Discount usage decremented for cancelled order ${order.orderNumber}: ${order.couponCode}`);
                         } catch (discountError) {
-                            console.error(`Failed to decrement discount for order ${order.orderNumber}:`, discountError);
+                            logger.error(`Failed to decrement discount for order ${order.orderNumber}:`, discountError);
                             // Don't fail the cancellation
                         }
                     }
@@ -67,7 +68,7 @@ export const startOrderCancellationJob = () => {
                             await notificationService.default.notifyOrderCancelled(order);
                         } catch (notifError) {
                             // Log error but don't fail the job
-                            console.error(`Failed to create notification for order ${order.orderNumber}:`, notifError);
+                            logger.error(`Failed to create notification for order ${order.orderNumber}:`, notifError);
                         }
                     }
 

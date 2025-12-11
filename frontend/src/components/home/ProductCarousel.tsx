@@ -2,21 +2,25 @@ import { useRef } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import ProductCard from '@/components/products/ProductCard';
 import type { Product } from '@/lib/types/product';
+import { useIsMobile } from '@/lib/hooks/useIsMobile';
+import { Link } from 'react-router-dom';
 
 interface ProductCarouselProps {
     products: Product[];
     title: string;
     subtitle?: string;
     isLoading?: boolean;
+    viewAllLink?: string;
 }
 
-export default function ProductCarousel({ products, title, subtitle, isLoading }: ProductCarouselProps) {
+export default function ProductCarousel({ products, title, subtitle, isLoading, viewAllLink }: ProductCarouselProps) {
     const scrollContainerRef = useRef<HTMLDivElement>(null);
+    const isMobile = useIsMobile();
 
     const scroll = (direction: 'left' | 'right') => {
         if (!scrollContainerRef.current) return;
 
-        const scrollAmount = 400;
+        const scrollAmount = isMobile ? 200 : 400;
         const newScrollLeft =
             scrollContainerRef.current.scrollLeft + (direction === 'right' ? scrollAmount : -scrollAmount);
 
@@ -29,26 +33,22 @@ export default function ProductCarousel({ products, title, subtitle, isLoading }
     if (isLoading) {
         return (
             <div>
-                <div className="mb-8">
-                    <h2 className="text-xl font-bold text-white uppercase tracking-[0.2em] mb-2">
-                        {title}
-                    </h2>
-                    {subtitle && (
-                        <p className="text-zinc-500 text-xs font-mono uppercase">{subtitle}</p>
-                    )}
+                <div className="flex items-center justify-between mb-4">
+                    <div>
+                        <div className="h-5 w-32 bg-zinc-800 rounded animate-pulse mb-2" />
+                        <div className="h-3 w-24 bg-zinc-800 rounded animate-pulse" />
+                    </div>
                 </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                    {[...Array(4)].map((_, i) => (
+                <div className={`flex gap-3 overflow-hidden ${isMobile ? '-mx-4 px-4' : ''}`}>
+                    {[...Array(isMobile ? 2 : 4)].map((_, i) => (
                         <div
                             key={i}
-                            className="bg-[#0A0A0A] border border-[#27272a] rounded-sm overflow-hidden animate-pulse"
+                            className={`flex-shrink-0 ${isMobile ? 'w-40' : 'w-[calc(25%-18px)]'} bg-[#0A0A0A] border border-[#27272a] rounded-lg overflow-hidden animate-pulse`}
                         >
-                            <div className="aspect-[4/5] bg-[#050505]" />
-                            <div className="p-4 space-y-3">
-                                <div className="h-3 bg-[#050505] w-1/4" />
-                                <div className="h-4 bg-[#050505] w-3/4" />
-                                <div className="h-3 bg-[#050505] w-full" />
+                            <div className="aspect-[3/4] bg-zinc-900" />
+                            <div className="p-3 space-y-2">
+                                <div className="h-3 bg-zinc-800 w-3/4 rounded" />
+                                <div className="h-4 bg-zinc-800 w-1/2 rounded" />
                             </div>
                         </div>
                     ))}
@@ -63,28 +63,40 @@ export default function ProductCarousel({ products, title, subtitle, isLoading }
 
     return (
         <div className="relative group">
-            <div className="mb-8">
-                <h2 className="text-xl font-bold text-white uppercase tracking-[0.2em] mb-2">
-                    {title}
-                </h2>
-                {subtitle && (
-                    <p className="text-zinc-500 text-xs font-mono uppercase">{subtitle}</p>
+            {/* Header */}
+            <div className="flex items-center justify-between mb-4 md:mb-8">
+                <div>
+                    <h2 className="text-lg md:text-xl font-bold text-white uppercase tracking-widest mb-1">
+                        {title}
+                    </h2>
+                    {subtitle && (
+                        <p className="text-zinc-500 text-xs">{subtitle}</p>
+                    )}
+                </div>
+                {viewAllLink && (
+                    <Link
+                        to={viewAllLink}
+                        className="flex items-center gap-1 text-xs font-medium text-zinc-400 active:text-white transition-colors"
+                    >
+                        View All
+                        <ChevronRight className="w-4 h-4" />
+                    </Link>
                 )}
             </div>
 
-            {/* Navigation Arrows */}
-            {products.length > 4 && (
+            {/* Navigation Arrows - desktop only */}
+            {products.length > 4 && !isMobile && (
                 <>
                     <button
                         onClick={() => scroll('left')}
-                        className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-10 h-10 bg-black/80 border border-[#27272a] text-white rounded-sm opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black flex items-center justify-center -ml-5"
+                        className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-12 h-12 bg-black/80 backdrop-blur-sm border border-white/10 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all hover:bg-black hover:scale-110 flex items-center justify-center -ml-6"
                         aria-label="Scroll left"
                     >
                         <ChevronLeft className="w-5 h-5" />
                     </button>
                     <button
                         onClick={() => scroll('right')}
-                        className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-10 h-10 bg-black/80 border border-[#27272a] text-white rounded-sm opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black flex items-center justify-center -mr-5"
+                        className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-12 h-12 bg-black/80 backdrop-blur-sm border border-white/10 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all hover:bg-black hover:scale-110 flex items-center justify-center -mr-6"
                         aria-label="Scroll right"
                     >
                         <ChevronRight className="w-5 h-5" />
@@ -95,18 +107,31 @@ export default function ProductCarousel({ products, title, subtitle, isLoading }
             {/* Scrollable Container */}
             <div
                 ref={scrollContainerRef}
-                className="flex gap-6 overflow-x-auto scrollbar-hide scroll-smooth snap-x snap-mandatory"
+                className={`flex gap-3 md:gap-6 overflow-x-auto snap-x snap-mandatory scroll-smooth pb-2 ${isMobile ? '-mx-4 px-4' : ''
+                    }`}
                 style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
             >
                 {products.map((product) => (
                     <div
                         key={product.id}
-                        className="flex-shrink-0 w-full sm:w-[calc(50%-12px)] lg:w-[calc(25%-18px)] snap-start"
+                        className={`flex-shrink-0 snap-start ${isMobile
+                                ? 'w-40'
+                                : 'w-full sm:w-[calc(50%-12px)] lg:w-[calc(25%-18px)]'
+                            }`}
                     >
-                        <ProductCard product={product} />
+                        <ProductCard product={product} compact={isMobile} />
                     </div>
                 ))}
             </div>
+
+            {/* Scroll indicator for mobile */}
+            {isMobile && products.length > 2 && (
+                <div className="flex justify-center mt-4 gap-1">
+                    <div className="w-8 h-1 bg-white/30 rounded-full" />
+                    <div className="w-2 h-1 bg-white/10 rounded-full" />
+                    <div className="w-2 h-1 bg-white/10 rounded-full" />
+                </div>
+            )}
         </div>
     );
 }

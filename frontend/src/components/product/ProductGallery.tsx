@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { X, ChevronLeft, ChevronRight, ZoomIn } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { useIsMobile } from '@/lib/hooks/useIsMobile';
 
 interface ProductGalleryProps {
     images: string[];
@@ -10,6 +11,10 @@ interface ProductGalleryProps {
 export default function ProductGallery({ images, productName }: ProductGalleryProps) {
     const [selectedIndex, setSelectedIndex] = useState(0);
     const [isLightboxOpen, setIsLightboxOpen] = useState(false);
+    const isMobile = useIsMobile();
+    const scrollRef = useRef<HTMLDivElement>(null);
+    const touchStartX = useRef<number>(0);
+    const touchEndX = useRef<number>(0);
 
     // Ensure we have at least one image
     const displayImages = images.length > 0 ? images : ['/placeholder-product.jpg'];
@@ -18,6 +23,15 @@ export default function ProductGallery({ images, productName }: ProductGalleryPr
     useEffect(() => {
         setSelectedIndex(0);
     }, [images]);
+
+    // Scroll to selected thumbnail on mobile
+    useEffect(() => {
+        if (isMobile && scrollRef.current) {
+            const container = scrollRef.current;
+            const scrollTo = selectedIndex * 72; // thumbnail width + gap
+            container.scrollTo({ left: scrollTo - container.clientWidth / 2 + 36, behavior: 'smooth' });
+        }
+    }, [selectedIndex, isMobile]);
 
     const handlePrevious = (e?: React.MouseEvent) => {
         e?.stopPropagation();
@@ -29,6 +43,144 @@ export default function ProductGallery({ images, productName }: ProductGalleryPr
         setSelectedIndex((prev) => (prev === displayImages.length - 1 ? 0 : prev + 1));
     };
 
+    // Touch swipe handlers for mobile
+    const handleTouchStart = (e: React.TouchEvent) => {
+        touchStartX.current = e.touches[0].clientX;
+    };
+
+    const handleTouchMove = (e: React.TouchEvent) => {
+        touchEndX.current = e.touches[0].clientX;
+    };
+
+    const handleTouchEnd = () => {
+        const diff = touchStartX.current - touchEndX.current;
+        const threshold = 50;
+
+        if (Math.abs(diff) > threshold) {
+            if (diff > 0) {
+                handleNext();
+            } else {
+                handlePrevious();
+            }
+        }
+    };
+
+    // Mobile Gallery
+    if (isMobile) {
+        return (
+            <div className="space-y-3">
+                {/* Main Image with Swipe */}
+                <div
+                    className="relative aspect-square bg-zinc-900 overflow-hidden rounded-xl"
+                    onTouchStart={handleTouchStart}
+                    onTouchMove={handleTouchMove}
+                    onTouchEnd={handleTouchEnd}
+                    onClick={() => setIsLightboxOpen(true)}
+                >
+                    <img
+                        src={displayImages[selectedIndex]}
+                        alt={`${productName} - View ${selectedIndex + 1}`}
+                        className="w-full h-full object-cover"
+                    />
+
+                    {/* Image Counter */}
+                    {displayImages.length > 1 && (
+                        <div className="absolute top-4 right-4 bg-black/60 backdrop-blur-sm px-3 py-1.5 rounded-full">
+                            <span className="text-xs text-white font-medium">
+                                {selectedIndex + 1} / {displayImages.length}
+                            </span>
+                        </div>
+                    )}
+
+                    {/* Zoom hint */}
+                    <div className="absolute bottom-4 right-4 bg-black/60 backdrop-blur-sm p-2 rounded-full">
+                        <ZoomIn size={16} className="text-white" />
+                    </div>
+                </div>
+
+                {/* Thumbnail Strip - Horizontal Scroll */}
+                {displayImages.length > 1 && (
+                    <div
+                        ref={scrollRef}
+                        className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4"
+                        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+                    >
+                        {displayImages.map((image, index) => (
+                            <button
+                                key={index}
+                                onClick={() => setSelectedIndex(index)}
+                                className={`flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 transition-all ${selectedIndex === index
+                                        ? 'border-white'
+                                        : 'border-transparent opacity-60'
+                                    }`}
+                            >
+                                <img
+                                    src={image}
+                                    alt={`Thumbnail ${index + 1}`}
+                                    className="w-full h-full object-cover"
+                                />
+                            </button>
+                        ))}
+                    </div>
+                )}
+
+                {/* Mobile Lightbox */}
+                <AnimatePresence>
+                    {isLightboxOpen && (
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="fixed inset-0 z-[9999] bg-black flex flex-col"
+                            onClick={() => setIsLightboxOpen(false)}
+                        >
+                            {/* Header */}
+                            <div className="flex items-center justify-between p-4 absolute top-0 left-0 right-0 z-10">
+                                <span className="text-sm text-white">
+                                    {selectedIndex + 1} / {displayImages.length}
+                                </span>
+                                <button
+                                    onClick={() => setIsLightboxOpen(false)}
+                                    className="p-2 text-white"
+                                >
+                                    <X size={24} />
+                                </button>
+                            </div>
+
+                            {/* Image */}
+                            <div
+                                className="flex-1 flex items-center justify-center"
+                                onTouchStart={handleTouchStart}
+                                onTouchMove={handleTouchMove}
+                                onTouchEnd={handleTouchEnd}
+                            >
+                                <img
+                                    src={displayImages[selectedIndex]}
+                                    alt={productName}
+                                    className="max-w-full max-h-full object-contain"
+                                    onClick={(e) => e.stopPropagation()}
+                                />
+                            </div>
+
+                            {/* Bottom Thumbnails */}
+                            <div className="absolute bottom-0 left-0 right-0 p-4 pb-8 flex justify-center gap-2" onClick={(e) => e.stopPropagation()}>
+                                {displayImages.map((_, index) => (
+                                    <button
+                                        key={index}
+                                        onClick={() => setSelectedIndex(index)}
+                                        className={`w-2 h-2 rounded-full transition-all ${selectedIndex === index ? 'bg-white w-6' : 'bg-white/40'
+                                            }`}
+                                    />
+                                ))}
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+            </div>
+        );
+    }
+
+    // Desktop Gallery
     return (
         <div className="space-y-4">
             {/* Main Image */}
@@ -47,7 +199,7 @@ export default function ProductGallery({ images, productName }: ProductGalleryPr
                     <ZoomIn className="text-white drop-shadow-lg" size={32} />
                 </div>
 
-                {/* Navigation Arrows (Desktop) */}
+                {/* Navigation Arrows */}
                 {displayImages.length > 1 && (
                     <>
                         <button
@@ -88,7 +240,7 @@ export default function ProductGallery({ images, productName }: ProductGalleryPr
                 </div>
             )}
 
-            {/* Lightbox Modal */}
+            {/* Desktop Lightbox */}
             <AnimatePresence>
                 {isLightboxOpen && (
                     <motion.div
@@ -98,7 +250,6 @@ export default function ProductGallery({ images, productName }: ProductGalleryPr
                         className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-sm flex items-center justify-center"
                         onClick={() => setIsLightboxOpen(false)}
                     >
-                        {/* Close Button */}
                         <button
                             onClick={() => setIsLightboxOpen(false)}
                             className="absolute top-6 right-6 text-zinc-400 hover:text-white transition-colors p-2"
@@ -106,7 +257,6 @@ export default function ProductGallery({ images, productName }: ProductGalleryPr
                             <X size={32} />
                         </button>
 
-                        {/* Image Container */}
                         <div className="relative w-full max-w-6xl h-full max-h-screen p-4 flex items-center justify-center">
                             <motion.img
                                 key={selectedIndex}
@@ -119,7 +269,6 @@ export default function ProductGallery({ images, productName }: ProductGalleryPr
                                 onClick={(e) => e.stopPropagation()}
                             />
 
-                            {/* Navigation */}
                             {displayImages.length > 1 && (
                                 <>
                                     <button
@@ -138,7 +287,6 @@ export default function ProductGallery({ images, productName }: ProductGalleryPr
                             )}
                         </div>
 
-                        {/* Thumbnails in Lightbox */}
                         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex gap-2 overflow-x-auto max-w-[90vw] p-2" onClick={(e) => e.stopPropagation()}>
                             {displayImages.map((image, index) => (
                                 <button

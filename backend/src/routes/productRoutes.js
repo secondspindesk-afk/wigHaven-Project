@@ -4,34 +4,35 @@ import variantController from '../controllers/variantController.js';
 import * as reviewController from '../controllers/reviewController.js';
 import { authenticateToken, requireAdmin } from '../middleware/auth.js';
 import { validateRequest, createProductSchema, updateProductSchema, createVariantSchema, updateVariantSchema } from '../utils/validators.js';
+import { shortCache, mediumCache, longCache } from '../middleware/cacheControl.js';
 
 const router = express.Router();
 
-// --- PUBLIC ENDPOINTS ---
+// --- PUBLIC ENDPOINTS (with Cache-Control for Cloudflare CDN) ---
 
 // Search products (must be before :id to avoid conflict)
-router.get('/products/search', productController.searchProducts);
+router.get('/products/search', shortCache, productController.searchProducts);
 
-// Get categories with counts
-router.get('/products/categories', productController.getCategories);
+// Get categories with counts (changes rarely)
+router.get('/products/categories', longCache, productController.getCategories);
 
-// List products
-router.get('/products', productController.listProducts);
+// List products (frequently accessed, short cache)
+router.get('/products', shortCache, productController.listProducts);
 
-// Get single product
-router.get('/products/:id', productController.getProduct);
+// Get single product (semi-static, medium cache)
+router.get('/products/:id', mediumCache, productController.getProduct);
 
-// Get product variants
-router.get('/products/:id/variants', variantController.getProductVariants);
+// Get product variants (tied to product, medium cache)
+router.get('/products/:id/variants', mediumCache, variantController.getProductVariants);
 
-// Get product reviews (public route)
-router.get('/products/:id/reviews', (req, res) => {
+// Get product reviews (public route, short cache since reviews change)
+router.get('/products/:id/reviews', shortCache, (req, res) => {
     req.params.productId = req.params.id;
     return reviewController.getProductReviews(req, res);
 });
 
-// Get single variant by ID
-router.get('/variants/:id', variantController.getVariant);
+// Get single variant by ID (medium cache)
+router.get('/variants/:id', mediumCache, variantController.getVariant);
 
 
 import multer from 'multer';

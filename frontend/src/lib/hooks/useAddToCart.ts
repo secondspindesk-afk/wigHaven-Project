@@ -12,9 +12,10 @@ interface AddToCartVariables {
 }
 
 /**
- * LocalStorage-First Add to Cart Hook
+ * LocalStorage-First Add to Cart Hook with Stock Validation
  * 
  * Operations happen INSTANTLY in LocalStorage.
+ * Stock is validated locally - only adds up to available quantity.
  * Background sync to server for logged-in users.
  */
 export function useAddToCart() {
@@ -25,26 +26,40 @@ export function useAddToCart() {
 
     return useMutation({
         mutationFn: async ({ variantId, quantity, productInfo }: AddToCartVariables) => {
-            // 1. INSTANT: Update LocalStorage
-            const localCart = localCartService.addToLocalCart(variantId, quantity, productInfo || {});
-            const fullCart = localCartService.localCartToFullCart(localCart);
+            // 1. INSTANT: Update LocalStorage with stock validation
+            const result = localCartService.addToLocalCart(variantId, quantity, productInfo || {});
+            const fullCart = localCartService.localCartToFullCart(result.cart);
 
             // 2. Update React Query cache immediately
             queryClient.setQueryData(['cart'], fullCart);
 
             // 3. BACKGROUND: Sync to server (non-blocking)
-            if (isLoggedIn) {
-                cartService.addToCart({ variantId, quantity }).catch(error => {
+            if (isLoggedIn && result.cappedQuantity > 0) {
+                cartService.addToCart({ variantId, quantity: result.cappedQuantity }).catch(error => {
                     console.warn('[AddToCart] Background sync failed:', error);
                     // Don't show error - local cart is source of truth
                 });
             }
 
-            return fullCart;
+            return {
+                cart: fullCart,
+                wasLimited: result.wasLimited,
+                addedQuantity: result.cappedQuantity,
+                requestedQuantity: quantity,
+                stockAvailable: productInfo?.stock_available || 0
+            };
         },
 
-        onSuccess: () => {
-            showToast('Added to cart', 'success');
+        onSuccess: (data) => {
+            if (data.addedQuantity === 0) {
+                // No items added - already at max stock
+                showToast(`Maximum quantity already in cart (${data.stockAvailable} available)`, 'warning');
+            } else if (data.wasLimited) {
+                // Added less than requested
+                showToast(`Added ${data.addedQuantity} to cart (only ${data.stockAvailable} available)`, 'warning');
+            } else {
+                showToast('Added to cart', 'success');
+            }
         },
 
         onError: (error: any) => {

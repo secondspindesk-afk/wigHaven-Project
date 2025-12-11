@@ -24,11 +24,11 @@ export function PublicLayout() {
         <div className="min-h-screen flex flex-col bg-[#050505] text-zinc-300 font-sans">
             {/* Navigation */}
             <header className="sticky top-0 z-50 w-full border-b border-[#27272a] bg-[#050505]/80 backdrop-blur-md">
-                <div className="container flex h-16 items-center justify-between px-4">
+                <div className="container flex h-16 items-center justify-between px-2 md:px-4">
                     {/* Logo */}
-                    <Link to="/" className="flex items-center gap-3 group">
-                        <Logo size="sm" className="w-8 h-8" />
-                        <span className="font-semibold text-lg tracking-[0.2em] text-white uppercase group-hover:text-zinc-300 transition-colors">
+                    <Link to="/" className="flex items-center gap-2 md:gap-3 group">
+                        <Logo size="sm" className="w-7 h-7 md:w-8 md:h-8" />
+                        <span className="font-semibold text-sm md:text-lg tracking-[0.15em] md:tracking-[0.2em] text-white uppercase group-hover:text-zinc-300 transition-colors">
                             {siteName}
                         </span>
                     </Link>
@@ -47,7 +47,7 @@ export function PublicLayout() {
                     </nav>
 
                     {/* Actions */}
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2 md:gap-4">
                         <div className="hidden md:block">
                             <SearchBar />
                         </div>

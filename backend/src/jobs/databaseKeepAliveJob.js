@@ -1,7 +1,7 @@
 /**
  * Database Keep-Alive Job
  * Prevents Neon serverless from closing idle connections
- * Runs every 2 minutes to keep the connection pool warm
+ * Runs every 4 minutes to keep the connection pool warm
  */
 import cron from 'node-cron';
 import { keepAlive } from '../config/database.js';
@@ -9,12 +9,12 @@ import logger from '../utils/logger.js';
 
 /**
  * Start the database keep-alive job
- * Runs every 2 minutes to prevent Neon from closing idle connections
+ * Runs every 4 minutes to prevent Neon from closing idle connections
  * Neon closes connections after ~5 minutes of inactivity
  */
 export const startDatabaseKeepAliveJob = () => {
-    // Run every 2 minutes (before Neon's 5-minute timeout)
-    cron.schedule('*/2 * * * *', async () => {
+    // Run every 4 minutes (before Neon's 5-minute timeout, reduces overhead by 50%)
+    cron.schedule('*/4 * * * *', async () => {
         const startTime = Date.now();
 
         try {

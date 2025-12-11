@@ -44,13 +44,16 @@
     width: 6px;
     height: 6px;
   }
+
   ::-webkit-scrollbar-track {
     background: #050505;
   }
+
   ::-webkit-scrollbar-thumb {
     background: #27272a;
     border-radius: 0px;
   }
+
   ::-webkit-scrollbar-thumb:hover {
     background: #3f3f46;
   }
@@ -63,6 +66,12 @@
 
   body {
     @apply bg-[#050505] text-zinc-300 font-sans;
+    overflow-x: hidden;
+    width: 100%;
+  }
+
+  html {
+    overflow-x: hidden;
   }
 
   h1,
@@ -72,6 +81,22 @@
   h5,
   h6 {
     @apply font-medium tracking-tight;
+  }
+
+  /* Style select dropdowns for dark theme */
+  select {
+    background-color: #27272a;
+    color: white;
+  }
+
+  select option {
+    background-color: #18181b;
+    color: white;
+    padding: 8px;
+  }
+
+  select option:checked {
+    background-color: #3f3f46;
   }
 }
 

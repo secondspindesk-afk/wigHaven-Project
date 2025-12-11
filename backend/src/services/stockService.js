@@ -1,4 +1,9 @@
 import * as stockRepository from '../db/repositories/stockRepository.js';
+import { getPrisma } from '../config/database.js';
+import * as emailService from './emailService.js';
+import notificationService from './notificationService.js';
+import sseService from './sseService.js';
+import settingsService from './settingsService.js';
 import logger from '../utils/logger.js';
 
 /**
@@ -28,17 +33,11 @@ export const adjustStock = async (variantId, adjustment, reason, adminId) => {
             null
         );
 
+        const prisma = getPrisma();
+
         // Check if stock went from 0 to > 0 (trigger back-in-stock alerts)
         if (result.previousStock === 0 && result.newStock > 0) {
             logger.info(`Back-in-stock alert triggered for variant ${variantId}`);
-
-            // Import services dynamically to avoid circular dependencies
-            const { getPrisma } = await import('../config/database.js');
-            const emailService = await import('./emailService.js');
-            const notificationService = (await import('./notificationService.js')).default;
-            const sseService = (await import('./sseService.js')).default;
-
-            const prisma = getPrisma();
 
             // Get all users waiting for this variant
             const alerts = await prisma.backInStockAlert.findMany({
@@ -89,11 +88,6 @@ export const adjustStock = async (variantId, adjustment, reason, adminId) => {
         }
 
         // Notify admins for low/out of stock (CRITICAL)
-        const notificationService = (await import('./notificationService.js')).default;
-        const settingsService = (await import('./settingsService.js')).default;
-        const { getPrisma } = await import('../config/database.js');
-        const prisma = getPrisma();
-
         // Get low stock threshold from settings (default to 5 if not set)
         const lowStockThreshold = Number(await settingsService.getSetting('lowStockThreshold')) || 5;
 

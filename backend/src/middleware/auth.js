@@ -19,33 +19,28 @@ export const authenticateToken = async (req, res, next) => {
             throw new UnauthorizedError('Access token required');
         }
 
-        // Check if token is blacklisted (database check)
-        const isBlacklisted = await isTokenBlacklisted(token);
-        if (isBlacklisted) {
-            throw new UnauthorizedError('Token has been revoked');
-        }
-
-        // Verify token
+        // Verify token FIRST (synchronous, no DB needed)
+        // This avoids unnecessary DB calls for invalid/expired tokens
         const decoded = verifyToken(token);
 
         if (!decoded || !decoded.sub) {
             throw new UnauthorizedError('Invalid token payload');
         }
 
-        // Attach user info to request (Initial payload)
-        req.user = {
-            id: decoded.sub,
-            email: decoded.email,
-            role: decoded.role,
-        };
-
-        // PARANOID MODE: Check DB to kill "Zombie Users" (Banned but have valid token)
-        // We use a lite fetch to verify status and role
+        // PARALLELIZED: Run blacklist check and user status fetch concurrently
+        // This reduces auth middleware latency by ~50% (2 sequential DB calls → 1 parallel call)
         const prisma = getPrisma();
-        const user = await prisma.user.findUnique({
-            where: { id: decoded.sub },
-            select: { isActive: true, role: true }
-        });
+        const [isBlacklisted, user] = await Promise.all([
+            isTokenBlacklisted(token),
+            prisma.user.findUnique({
+                where: { id: decoded.sub },
+                select: { isActive: true, role: true, lastPasswordChange: true }
+            })
+        ]);
+
+        if (isBlacklisted) {
+            throw new UnauthorizedError('Token has been revoked');
+        }
 
         if (!user) {
             throw new UnauthorizedError('User no longer exists');
@@ -68,6 +63,13 @@ export const authenticateToken = async (req, res, next) => {
                 throw new UnauthorizedError('Session expired due to password change. Please login again.');
             }
         }
+
+        // Attach user info to request
+        req.user = {
+            id: decoded.sub,
+            email: decoded.email,
+            role: user.role // Use DB role (most current)
+        };
 
         // Attach token for potential blacklisting on logout
         req.token = token;

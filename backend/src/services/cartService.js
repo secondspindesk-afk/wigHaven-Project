@@ -1,6 +1,7 @@
 import cartRepository from '../db/repositories/cartRepository.js';
 import variantRepository from '../db/repositories/variantRepository.js';
 import { calculateCartTotals, enrichCartItems } from '../utils/cartUtils.js';
+import { getPrisma } from '../config/database.js';
 import logger from '../utils/logger.js';
 
 import discountService from './discountService.js';
@@ -116,7 +117,6 @@ export const getCart = async (cartContext) => {
  */
 export const addToCart = async (cartContext, variantId, quantity) => {
     try {
-        const { getPrisma } = await import('../config/database.js');
         const prisma = getPrisma();
 
         // Use transaction for atomic operation (prevents race conditions)
@@ -335,7 +335,6 @@ export const clearCart = async (cartContext) => {
  */
 export const mergeCarts = async (sessionId, userId) => {
     try {
-        const { getPrisma } = await import('../config/database.js');
         const prisma = getPrisma();
 
         // Use transaction to ensure atomicity - either all items merge or none

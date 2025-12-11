@@ -1,4 +1,5 @@
 import discountRepository from '../db/repositories/discountRepository.js';
+import { getPrisma } from '../config/database.js';
 import logger from '../utils/logger.js';
 
 /**
@@ -36,10 +37,8 @@ export const validateDiscount = async (code, cartTotal, userId = null) => {
             throw new Error(`Minimum purchase of $${discount.minimumPurchase} required`);
         }
 
-        // FIXED: Check per-customer usage limit
+        // Check per-customer usage limit
         if (userId && discount.usesPerCustomer) {
-            // Import dynamically to avoid circular dependency if any
-            const { getPrisma } = await import('../config/database.js');
             const prisma = getPrisma();
 
             // Count how many times this user has used this specific coupon code

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Heart, Share2, Minus, Plus, ShoppingBag, Bell, Check } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Heart, Share2, Minus, Plus, ShoppingBag, Bell, Check, ChevronDown } from 'lucide-react';
 import { Product, Variant, getDefaultVariant } from '@/lib/types/product';
 import { useCurrencyContext } from '@/lib/context/CurrencyContext';
 import { useMutation } from '@tanstack/react-query';
@@ -10,6 +11,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useCart } from '@/lib/hooks/useCart';
 import { useWishlist } from '@/lib/hooks/useWishlist';
 import { useAddToCart } from '@/lib/hooks/useAddToCart';
+import { useIsMobile } from '@/lib/hooks/useIsMobile';
 
 
 interface ProductInfoProps {
@@ -25,6 +27,7 @@ export default function ProductInfo({ product, onVariantChange }: ProductInfoPro
     const [searchParams] = useSearchParams();
     const variantIdFromUrl = searchParams.get('variant');
     const { showToast } = useToast();
+    const isMobile = useIsMobile();
 
     // State
     const { addToWishlist, removeFromWishlist, isInWishlist } = useWishlist();
@@ -79,7 +82,6 @@ export default function ProductInfo({ product, onVariantChange }: ProductInfoPro
         targetSize: string | null,
         priorityAttribute?: 'color' | 'length' | 'texture' | 'size'
     ) => {
-        // 1. Try exact match
         const exactMatch = product.variants.find(v => {
             const colorMatch = !targetColor || v.color === targetColor;
             const lengthMatch = !targetLength || v.length === targetLength;
@@ -90,8 +92,6 @@ export default function ProductInfo({ product, onVariantChange }: ProductInfoPro
 
         if (exactMatch) return exactMatch;
 
-        // 2. Find best fallback
-        // We MUST match the priority attribute if specified
         let candidates = product.variants;
 
         if (priorityAttribute === 'color' && targetColor) {
@@ -104,10 +104,8 @@ export default function ProductInfo({ product, onVariantChange }: ProductInfoPro
             candidates = candidates.filter(v => v.size === targetSize);
         }
 
-        // If no candidates match the priority attribute, fall back to all variants
         if (candidates.length === 0) candidates = product.variants;
 
-        // Find candidate with highest match score on OTHER attributes
         let bestMatch = candidates[0];
         let maxScore = -1;
 
@@ -127,19 +125,16 @@ export default function ProductInfo({ product, onVariantChange }: ProductInfoPro
         return bestMatch;
     };
 
-    // Update variant and notify parent
     const updateVariant = (variant: Variant) => {
         setSelectedVariant(variant);
         onVariantChange?.(variant);
     };
 
-    // Handlers for Smart Selection
     const handleColorChange = (color: string) => {
         setSelectedColor(color);
         const bestVariant = findBestVariant(color, selectedLength, selectedTexture, selectedSize, 'color');
         if (bestVariant) {
             updateVariant(bestVariant);
-            // Auto-update other selectors if they don't match the best variant
             if (bestVariant.length !== selectedLength) setSelectedLength(bestVariant.length);
             if (bestVariant.texture !== selectedTexture) setSelectedTexture(bestVariant.texture);
             if (bestVariant.size !== selectedSize) setSelectedSize(bestVariant.size);
@@ -179,7 +174,6 @@ export default function ProductInfo({ product, onVariantChange }: ProductInfoPro
         }
     };
 
-    // Use shared hook with optimistic updates
     const addToCartMutation = useAddToCart();
 
     const notifyMutation = useMutation({
@@ -187,7 +181,6 @@ export default function ProductInfo({ product, onVariantChange }: ProductInfoPro
         onSuccess: () => showToast("You'll be notified when back in stock!", 'success')
     });
 
-    // SMART CART CHECK: Calculate available stock based on cart
     const existingCartItem = selectedVariant
         ? cart?.items?.find(item => item.variant_id === selectedVariant.id)
         : null;
@@ -215,14 +208,12 @@ export default function ProductInfo({ product, onVariantChange }: ProductInfoPro
             return;
         }
 
-        // Smart validation: Check if adding would exceed stock
         if (!canAddToCart) {
             const maxMsg = isInfiniteStock ? 'Max quantity reached' : `Only ${availableStock} left!`;
             showToast(`${maxMsg} You already have ${quantityInCart} in cart.`, 'error');
             return;
         }
 
-        // Pass product info for INSTANT optimistic UI update
         addToCartMutation.mutate({
             variantId: selectedVariant.id,
             quantity,
@@ -261,7 +252,198 @@ export default function ProductInfo({ product, onVariantChange }: ProductInfoPro
 
     const isOutOfStock = selectedVariant.stock === 0;
     const isLowStock = selectedVariant.stock > 0 && selectedVariant.stock <= 5;
+    const displayPrice = formatPrice(selectedVariant.price > 0 ? selectedVariant.price : product.basePrice);
 
+    // Sticky Add to Cart Bar for Mobile
+    const StickyAddToCartBar = () => {
+        if (!isMobile) return null;
+
+        return createPortal(
+            <div className="fixed bottom-0 left-0 right-0 z-[100] bg-[#0A0A0A] border-t border-zinc-800 p-4 pb-6">
+                <div className="flex items-center gap-3">
+                    {/* Price */}
+                    <div className="flex-shrink-0">
+                        <p className="text-lg font-bold text-white">{displayPrice}</p>
+                        {isOutOfStock ? (
+                            <p className="text-xs text-red-400">Out of stock</p>
+                        ) : isLowStock ? (
+                            <p className="text-xs text-yellow-400">Only {selectedVariant.stock} left</p>
+                        ) : null}
+                    </div>
+
+                    {/* Quantity (compact) */}
+                    {!isOutOfStock && !isAtMaxInCart && (
+                        <div className="flex items-center bg-zinc-800 rounded-lg">
+                            <button
+                                onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                                className="p-3 text-zinc-400 active:text-white"
+                            >
+                                <Minus size={16} />
+                            </button>
+                            <span className="w-8 text-center font-bold text-white">{quantity}</span>
+                            <button
+                                onClick={() => setQuantity(Math.min(availableStock, quantity + 1))}
+                                className="p-3 text-zinc-400 active:text-white"
+                            >
+                                <Plus size={16} />
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Add to Cart Button */}
+                    {isOutOfStock ? (
+                        <button
+                            onClick={() => {
+                                const email = prompt('Enter your email to be notified:');
+                                if (email) notifyMutation.mutate(email);
+                            }}
+                            className="flex-1 py-4 bg-zinc-800 text-white font-bold text-sm rounded-lg flex items-center justify-center gap-2"
+                        >
+                            <Bell size={18} />
+                            Notify Me
+                        </button>
+                    ) : isAtMaxInCart ? (
+                        <div className="flex-1 py-4 bg-green-500/10 border border-green-500 text-green-400 font-bold text-sm rounded-lg flex items-center justify-center gap-2">
+                            <Check size={18} />
+                            Max in Cart
+                        </div>
+                    ) : (
+                        <button
+                            onClick={handleAddToCart}
+                            disabled={addToCartMutation.isPending}
+                            className="flex-1 py-4 bg-white text-black font-bold text-sm rounded-lg flex items-center justify-center gap-2 active:bg-zinc-200 disabled:opacity-60"
+                        >
+                            {addToCartMutation.isPending ? (
+                                <span className="animate-pulse">Adding...</span>
+                            ) : (
+                                <>
+                                    <ShoppingBag size={18} />
+                                    {quantityInCart > 0 ? 'Add More' : 'Add to Cart'}
+                                </>
+                            )}
+                        </button>
+                    )}
+                </div>
+            </div>,
+            document.body
+        );
+    };
+
+    // Variant selector component
+    const VariantSelector = ({ label, options, selected, onChange }: { label: string; options: string[]; selected: string | null; onChange: (val: string) => void }) => {
+        if (options.length === 0) return null;
+
+        if (isMobile) {
+            return (
+                <div className="space-y-2">
+                    <span className="text-xs text-zinc-400 uppercase tracking-wide">{label}</span>
+                    <div className="flex flex-wrap gap-2">
+                        {options.map(option => (
+                            <button
+                                key={option}
+                                onClick={() => onChange(option)}
+                                className={`px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${selected === option
+                                        ? 'bg-white text-black'
+                                        : 'bg-zinc-800 text-zinc-300 active:bg-zinc-700'
+                                    }`}
+                            >
+                                {option}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
+        return (
+            <div className="space-y-3">
+                <span className="text-sm text-zinc-400 uppercase tracking-widest font-mono">{label}</span>
+                <div className="flex flex-wrap gap-3">
+                    {options.map(option => (
+                        <button
+                            key={option}
+                            onClick={() => onChange(option)}
+                            className={`px-4 py-2 border text-sm font-mono transition-all ${selected === option
+                                    ? 'border-white bg-white text-black font-bold'
+                                    : 'border-[#27272a] text-zinc-400 hover:border-zinc-500'
+                                }`}
+                        >
+                            {option}
+                        </button>
+                    ))}
+                </div>
+            </div>
+        );
+    };
+
+    // Mobile layout
+    if (isMobile) {
+        return (
+            <>
+                <div className="space-y-6 pb-32">
+                    {/* Header */}
+                    <div className="space-y-3">
+                        <div className="flex justify-between items-start">
+                            <div className="flex-1">
+                                <h1 className="text-xl font-bold text-white mb-1">{product.name}</h1>
+                                <p className="text-sm text-zinc-400">{product.category?.name || 'Category'}</p>
+                            </div>
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={handleWishlist}
+                                    className={`p-3 rounded-full transition-all ${isWishlisted
+                                            ? 'bg-red-500/10 text-red-500'
+                                            : 'bg-zinc-800 text-zinc-400 active:text-white'
+                                        }`}
+                                >
+                                    <Heart size={20} fill={isWishlisted ? "currentColor" : "none"} />
+                                </button>
+                                <button className="p-3 rounded-full bg-zinc-800 text-zinc-400 active:text-white">
+                                    <Share2 size={20} />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Price & Stock */}
+                        <div className="flex items-center gap-3">
+                            <p className="text-2xl font-bold text-white">{displayPrice}</p>
+                            {isOutOfStock ? (
+                                <span className="px-2 py-1 bg-red-500/10 text-red-400 text-xs font-medium rounded">Out of Stock</span>
+                            ) : isLowStock ? (
+                                <span className="px-2 py-1 bg-yellow-500/10 text-yellow-400 text-xs font-medium rounded">Only {selectedVariant.stock} left</span>
+                            ) : (
+                                <span className="px-2 py-1 bg-green-500/10 text-green-400 text-xs font-medium rounded">In Stock</span>
+                            )}
+                        </div>
+
+                        {quantityInCart > 0 && (
+                            <div className="flex items-center gap-2 text-sm text-zinc-400 bg-zinc-800/50 px-3 py-2 rounded-lg">
+                                <Check size={16} className="text-green-400" />
+                                {quantityInCart} already in cart
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Variant Selectors */}
+                    <div className="space-y-5 pt-4 border-t border-zinc-800">
+                        <VariantSelector label="Color" options={colors} selected={selectedColor} onChange={handleColorChange} />
+                        <VariantSelector label="Length" options={lengths} selected={selectedLength} onChange={handleLengthChange} />
+                        <VariantSelector label="Texture" options={textures} selected={selectedTexture} onChange={handleTextureChange} />
+                        <VariantSelector label="Size" options={sizes} selected={selectedSize} onChange={handleSizeChange} />
+                    </div>
+
+                    {/* SKU */}
+                    <p className="text-xs text-zinc-600 pt-4 border-t border-zinc-800">
+                        SKU: {selectedVariant.sku}
+                    </p>
+                </div>
+
+                <StickyAddToCartBar />
+            </>
+        );
+    }
+
+    // Desktop layout
     return (
         <div className="space-y-8">
             {/* Header */}
@@ -294,9 +476,7 @@ export default function ProductInfo({ product, onVariantChange }: ProductInfoPro
                 </div>
 
                 <div className="flex items-end gap-4">
-                    <p className="text-4xl font-bold text-white font-mono">
-                        {formatPrice(selectedVariant.price > 0 ? selectedVariant.price : product.basePrice)}
-                    </p>
+                    <p className="text-4xl font-bold text-white font-mono">{displayPrice}</p>
                     {isOutOfStock ? (
                         <span className="text-red-500 font-bold uppercase tracking-wider mb-2">Out of Stock</span>
                     ) : isLowStock ? (
@@ -309,96 +489,16 @@ export default function ProductInfo({ product, onVariantChange }: ProductInfoPro
 
             {/* Variant Selectors */}
             <div className="space-y-6">
-                {/* Color */}
-                {colors.length > 0 && (
-                    <div className="space-y-3">
-                        <span className="text-sm text-zinc-400 uppercase tracking-widest font-mono">Color</span>
-                        <div className="flex flex-wrap gap-3">
-                            {colors.map(color => (
-                                <button
-                                    key={color}
-                                    onClick={() => handleColorChange(color)}
-                                    className={`px-4 py-2 border text-sm font-mono transition-all ${selectedColor === color
-                                        ? 'border-white bg-white text-black font-bold'
-                                        : 'border-[#27272a] text-zinc-400 hover:border-zinc-500'
-                                        }`}
-                                >
-                                    {color}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
-                {/* Length */}
-                {lengths.length > 0 && (
-                    <div className="space-y-3">
-                        <span className="text-sm text-zinc-400 uppercase tracking-widest font-mono">Length</span>
-                        <div className="flex flex-wrap gap-3">
-                            {lengths.map(length => (
-                                <button
-                                    key={length}
-                                    onClick={() => handleLengthChange(length)}
-                                    className={`px-4 py-2 border text-sm font-mono transition-all ${selectedLength === length
-                                        ? 'border-white bg-white text-black font-bold'
-                                        : 'border-[#27272a] text-zinc-400 hover:border-zinc-500'
-                                        }`}
-                                >
-                                    {length}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
-                {/* Texture */}
-                {textures.length > 0 && (
-                    <div className="space-y-3">
-                        <span className="text-sm text-zinc-400 uppercase tracking-widest font-mono">Texture</span>
-                        <div className="flex flex-wrap gap-3">
-                            {textures.map(texture => (
-                                <button
-                                    key={texture}
-                                    onClick={() => handleTextureChange(texture)}
-                                    className={`px-4 py-2 border text-sm font-mono transition-all ${selectedTexture === texture
-                                        ? 'border-white bg-white text-black font-bold'
-                                        : 'border-[#27272a] text-zinc-400 hover:border-zinc-500'
-                                        }`}
-                                >
-                                    {texture}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
-                {/* Size */}
-                {sizes.length > 0 && (
-                    <div className="space-y-3">
-                        <span className="text-sm text-zinc-400 uppercase tracking-widest font-mono">Size</span>
-                        <div className="flex flex-wrap gap-3">
-                            {sizes.map(size => (
-                                <button
-                                    key={size}
-                                    onClick={() => handleSizeChange(size)}
-                                    className={`px-4 py-2 border text-sm font-mono transition-all ${selectedSize === size
-                                        ? 'border-white bg-white text-black font-bold'
-                                        : 'border-[#27272a] text-zinc-400 hover:border-zinc-500'
-                                        }`}
-                                >
-                                    {size}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                )}
+                <VariantSelector label="Color" options={colors} selected={selectedColor} onChange={handleColorChange} />
+                <VariantSelector label="Length" options={lengths} selected={selectedLength} onChange={handleLengthChange} />
+                <VariantSelector label="Texture" options={textures} selected={selectedTexture} onChange={handleTextureChange} />
+                <VariantSelector label="Size" options={sizes} selected={selectedSize} onChange={handleSizeChange} />
             </div>
 
             {/* Actions */}
             <div className="pt-6 border-t border-[#27272a] space-y-6">
                 {!isOutOfStock ? (
                     <div className="space-y-4">
-                        {/* Smart Stock Info */}
                         {quantityInCart > 0 && (
                             <div className="text-sm text-zinc-400 flex items-center gap-2">
                                 <Check size={16} className="text-green-500" />
@@ -407,7 +507,6 @@ export default function ProductInfo({ product, onVariantChange }: ProductInfoPro
                         )}
 
                         <div className="flex gap-4">
-                            {/* Quantity */}
                             <div className="flex items-center border border-[#27272a]">
                                 <button
                                     onClick={() => setQuantity(Math.max(1, quantity - 1))}
@@ -425,7 +524,6 @@ export default function ProductInfo({ product, onVariantChange }: ProductInfoPro
                                 </button>
                             </div>
 
-                            {/* Add to Cart */}
                             {isAtMaxInCart ? (
                                 <div className="flex-1 bg-green-500/10 border border-green-500 text-green-400 font-bold uppercase tracking-widest flex items-center justify-center gap-2 py-4">
                                     <Check size={20} />
@@ -462,7 +560,6 @@ export default function ProductInfo({ product, onVariantChange }: ProductInfoPro
                     </button>
                 )}
 
-                {/* SKU */}
                 <p className="text-xs text-zinc-600 font-mono text-center">
                     SKU: {selectedVariant.sku}
                 </p>

@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { Outlet, Link, Navigate } from 'react-router-dom';
-import { LogOut, User, Settings, Menu, Search, Command } from 'lucide-react';
+import { LogOut, User, Settings, Menu, Search, Command, X } from 'lucide-react';
 import { useUser } from '@/lib/hooks/useUser';
 import { useLogout } from '@/lib/hooks/useLogout';
 import { useSystemHealth } from '@/lib/hooks/useAdminDashboard';
 import AdminSidebar from '@/components/admin/AdminSidebar';
 import AdminSearchModal from '@/components/admin/AdminSearchModal';
 import NotificationDropdown from '@/components/admin/NotificationDropdown';
+import { useIsMobile } from '@/lib/hooks/useIsMobile';
 
 export function AdminLayout() {
     const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -15,6 +16,7 @@ export function AdminLayout() {
     const { data: user, isLoading } = useUser();
     const { data: systemHealth } = useSystemHealth(!!user && (user.role === 'admin' || user.role === 'super_admin'));
     const logoutMutation = useLogout();
+    const isMobile = useIsMobile();
 
     // Global keyboard shortcut for search (Cmd/Ctrl + K)
     useEffect(() => {
@@ -28,6 +30,14 @@ export function AdminLayout() {
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, []);
+
+    // Lock body scroll when mobile sidebar is open
+    useEffect(() => {
+        if (isMobile && sidebarOpen) {
+            document.body.style.overflow = 'hidden';
+            return () => { document.body.style.overflow = ''; };
+        }
+    }, [isMobile, sidebarOpen]);
 
     // Loading state
     if (isLoading) {
@@ -46,6 +56,126 @@ export function AdminLayout() {
         return <Navigate to="/login" replace />;
     }
 
+    // ==================== MOBILE LAYOUT ====================
+    if (isMobile) {
+        return (
+            <div className="min-h-screen bg-[#050505]">
+                {/* Mobile Header - Fixed */}
+                <header className="fixed top-0 left-0 right-0 z-50 h-14 flex items-center justify-between px-4 bg-[#050505] border-b border-zinc-800">
+                    {/* Menu Toggle */}
+                    <button
+                        onClick={() => setSidebarOpen(true)}
+                        className="p-2 -ml-2 text-zinc-400 active:text-white"
+                    >
+                        <Menu size={22} />
+                    </button>
+
+                    {/* Brand */}
+                    <div className="flex items-center gap-2">
+                        <svg className="w-5 h-5 text-white" viewBox="0 0 100 100" fill="none" stroke="currentColor" strokeWidth="5">
+                            <path d="M30 20 C 15 30, 15 70, 45 90" />
+                            <path d="M38 25 C 28 35, 28 60, 40 75" />
+                            <path d="M55 35 C 55 35, 65 38, 70 50 C 72 55, 70 65, 60 75" />
+                        </svg>
+                        <span className="font-bold text-xs tracking-widest uppercase text-white">Admin</span>
+                    </div>
+
+                    {/* Right Actions */}
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => setSearchOpen(true)}
+                            className="p-2 text-zinc-400 active:text-white"
+                        >
+                            <Search size={20} />
+                        </button>
+                        <NotificationDropdown />
+                    </div>
+                </header>
+
+                {/* Mobile Sidebar Overlay */}
+                {sidebarOpen && (
+                    <div
+                        className="fixed inset-0 z-50 bg-black/80"
+                        onClick={() => setSidebarOpen(false)}
+                    />
+                )}
+
+                {/* Mobile Sidebar */}
+                <div className={`fixed inset-y-0 left-0 z-50 w-72 bg-[#050505] border-r border-zinc-800 transform transition-transform duration-300 flex flex-col ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+                    {/* Sidebar Header */}
+                    <div className="h-14 flex items-center justify-between px-4 border-b border-zinc-800 shrink-0">
+                        <div className="flex items-center gap-2">
+                            <svg className="w-5 h-5 text-white" viewBox="0 0 100 100" fill="none" stroke="currentColor" strokeWidth="5">
+                                <path d="M30 20 C 15 30, 15 70, 45 90" />
+                                <path d="M38 25 C 28 35, 28 60, 40 75" />
+                                <path d="M55 35 C 55 35, 65 38, 70 50 C 72 55, 70 65, 60 75" />
+                            </svg>
+                            <div className="flex flex-col">
+                                <span className="font-bold text-xs tracking-widest uppercase text-white">WigHaven</span>
+                                <span className="font-mono text-[9px] text-zinc-500">SYS_ADMIN v2.4</span>
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => setSidebarOpen(false)}
+                            className="p-2 text-zinc-400 active:text-white"
+                        >
+                            <X size={20} />
+                        </button>
+                    </div>
+
+                    {/* Sidebar Content - Scrollable */}
+                    <div className="flex-1 overflow-y-auto">
+                        <AdminSidebar
+                            isOpen={true}
+                            onClose={() => setSidebarOpen(false)}
+                            isMobileEmbedded={true}
+                        />
+                    </div>
+
+                    {/* User Profile (Bottom) - Fixed */}
+                    <div className="shrink-0 p-4 border-t border-zinc-800 bg-[#050505]">
+                        <div className="flex items-center gap-3 p-2 border border-zinc-800 bg-zinc-900/50 rounded-lg">
+                            <div className="w-9 h-9 bg-zinc-800 rounded-full flex items-center justify-center text-xs font-bold text-white font-mono">
+                                {user?.firstName?.[0]?.toUpperCase() || 'A'}{user?.lastName?.[0]?.toUpperCase() || 'D'}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-xs text-white font-medium truncate">
+                                    {user?.firstName || 'Admin'} {user?.lastName || 'User'}
+                                </p>
+                                <p className="text-[10px] text-zinc-500 font-mono truncate">
+                                    {user?.role?.toUpperCase() || 'ADMIN'}
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => {
+                                    setSidebarOpen(false);
+                                    logoutMutation.mutate();
+                                }}
+                                className="p-2 text-red-500 active:bg-red-500/20 rounded-lg"
+                            >
+                                <LogOut size={18} />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Main Content Area */}
+                <main className="pt-14 min-h-screen">
+                    <div className="p-4">
+                        <Outlet />
+                    </div>
+                </main>
+
+                {/* Search Modal */}
+                <AdminSearchModal
+                    open={searchOpen}
+                    onClose={() => setSearchOpen(false)}
+                />
+            </div>
+        );
+    }
+
+    // ==================== DESKTOP LAYOUT ====================
     return (
         <div className="flex h-screen overflow-hidden bg-[#050505] selection:bg-white selection:text-black">
             {/* Sidebar */}

@@ -3,6 +3,8 @@ import * as cartService from '../services/cartService.js';
 import { verifyPaystackSignature } from '../utils/webhookValidator.js';
 import { processPaymentWebhook } from '../services/paymentService.js';
 import webhookRepository from '../db/repositories/webhookRepository.js';
+import notificationService from '../services/notificationService.js';
+import milestoneService from '../services/milestoneService.js';
 import logger from '../utils/logger.js';
 import { getPrisma } from '../config/database.js';
 import settingsService from '../services/settingsService.js';
@@ -66,7 +68,6 @@ export const createOrder = async (req, res, next) => {
 
         // USER NOTIFICATION (if registered)
         if (result.order.userId) {
-            const notificationService = (await import('../services/notificationService.js')).default;
             await notificationService.notifyOrderPlaced({
                 userId: result.order.userId,
                 orderNumber: result.order.order_number,
@@ -75,9 +76,6 @@ export const createOrder = async (req, res, next) => {
         }
 
         // ADMIN NOTIFICATION (CRITICAL - new revenue)
-        const notificationService = (await import('../services/notificationService.js')).default;
-        const milestoneService = (await import('../services/milestoneService.js')).default;
-
         await notificationService.notifyAdminNewOrder({
             id: result.order.id,
             orderNumber: result.order.order_number,

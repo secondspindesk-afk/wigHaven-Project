@@ -1,6 +1,7 @@
 import cron from 'node-cron';
 import currencyService from '../services/currencyService.js';
 import { logJobStart, logJobComplete, logJobError } from '../utils/cronLogger.js';
+import logger from '../utils/logger.js';
 
 /**
  * Currency Rate Refresh Job
@@ -24,7 +25,7 @@ export const startCurrencyRateJob = () => {
         }
     });
 
-    console.log('✅ Currency rate refresh job started (runs every 6 hours)');
+    logger.info('✅ Currency rate refresh job started (runs every 6 hours)');
 };
 
 export default {

@@ -1,4 +1,5 @@
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
+import { useIsMobile } from '@/lib/hooks/useIsMobile';
 
 interface OrderStatusData {
     status: string;
@@ -25,13 +26,14 @@ const STATUS_COLORS: Record<string, string> = {
 
 export function OrderStatusChart({ data, isLoading }: OrderStatusChartProps) {
     const safeData = Array.isArray(data) ? data : [];
+    const isMobile = useIsMobile();
 
     if (isLoading) {
         return (
-            <div className="p-6 bg-[#0A0A0A] border border-[#27272a] h-full flex flex-col">
-                <div className="h-3 w-32 bg-zinc-800 animate-pulse mb-6" />
+            <div className={`${isMobile ? 'p-4' : 'p-6'} bg-[#0A0A0A] border border-[#27272a] ${isMobile ? 'rounded-xl' : ''} h-full flex flex-col`}>
+                <div className="h-3 w-32 bg-zinc-800 animate-pulse rounded mb-4" />
                 <div className="flex-1 flex items-center justify-center">
-                    <div className="w-40 h-40 rounded-full bg-zinc-800 animate-pulse" />
+                    <div className={`${isMobile ? 'w-32 h-32' : 'w-40 h-40'} rounded-full bg-zinc-800 animate-pulse`} />
                 </div>
             </div>
         );
@@ -50,18 +52,20 @@ export function OrderStatusChart({ data, isLoading }: OrderStatusChartProps) {
     const efficiency = totalOrders > 0 ? Math.round((completedOrders / totalOrders) * 100) : 0;
 
     return (
-        <div className="p-6 bg-[#0A0A0A] border border-[#27272a] h-full flex flex-col">
-            <h3 className="text-xs font-bold text-white uppercase tracking-widest mb-6">Fulfillment Ratio</h3>
+        <div className={`${isMobile ? 'p-4' : 'p-6'} bg-[#0A0A0A] border border-[#27272a] ${isMobile ? 'rounded-xl' : ''} h-full flex flex-col`}>
+            <h3 className={`${isMobile ? 'text-sm font-semibold' : 'text-xs font-bold uppercase tracking-widest'} text-white mb-4`}>
+                {isMobile ? 'Fulfillment' : 'Fulfillment Ratio'}
+            </h3>
 
-            <div className="relative flex-1 flex items-center justify-center min-h-[180px]">
+            <div className={`relative flex-1 flex items-center justify-center ${isMobile ? 'min-h-[140px]' : 'min-h-[180px]'}`}>
                 <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                         <Pie
                             data={chartData.length > 0 ? chartData : [{ name: 'Empty', value: 1, color: '#27272a' }]}
                             cx="50%"
                             cy="50%"
-                            innerRadius="75%"
-                            outerRadius="95%"
+                            innerRadius={isMobile ? '70%' : '75%'}
+                            outerRadius={isMobile ? '90%' : '95%'}
                             paddingAngle={2}
                             dataKey="value"
                             stroke="none"
@@ -75,22 +79,22 @@ export function OrderStatusChart({ data, isLoading }: OrderStatusChartProps) {
 
                 {/* Center Text */}
                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                    <span className="text-2xl font-mono text-white">{efficiency}%</span>
+                    <span className={`${isMobile ? 'text-xl' : 'text-2xl'} font-mono text-white`}>{efficiency}%</span>
                     <span className="text-[9px] text-zinc-500 uppercase tracking-wider">Efficiency</span>
                 </div>
             </div>
 
             {/* Status Bars */}
-            <div className="mt-6 space-y-3">
+            <div className={`${isMobile ? 'mt-4' : 'mt-6'} space-y-2`}>
                 {safeData.slice(0, 3).map((item) => (
                     <div key={item.status}>
                         <div className="flex justify-between text-[10px] font-mono mb-1">
                             <span className="text-zinc-400 capitalize">{item.status}</span>
                             <span className="text-white">{item.count}</span>
                         </div>
-                        <div className="w-full bg-zinc-800 h-1">
+                        <div className="w-full bg-zinc-800 h-1 rounded-full overflow-hidden">
                             <div
-                                className="h-1 transition-all"
+                                className="h-1 transition-all rounded-full"
                                 style={{
                                     width: `${item.percentage || 0}%`,
                                     backgroundColor: STATUS_COLORS[item.status.toLowerCase()] || '#71717a'

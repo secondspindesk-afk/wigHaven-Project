@@ -2,6 +2,55 @@ import { getPrisma } from '../config/database.js';
 import logger from '../utils/logger.js';
 import { ServiceUnavailableError } from './errorHandler.js';
 
+// Cache maintenance status to avoid DB query on every request
+// Short TTL (10 seconds) balances responsiveness with performance
+let maintenanceCache = {
+    value: null,
+    expiresAt: 0
+};
+const CACHE_TTL_MS = 10_000; // 10 seconds
+
+/**
+ * Get maintenance mode status with caching
+ * @returns {Promise<boolean>} true if maintenance mode is enabled
+ */
+const getMaintenanceStatus = async () => {
+    const now = Date.now();
+
+    // Return cached value if still valid
+    if (maintenanceCache.value !== null && now < maintenanceCache.expiresAt) {
+        return maintenanceCache.value;
+    }
+
+    const prisma = getPrisma();
+
+    const maintenanceSetting = await prisma.systemSetting.findFirst({
+        where: {
+            OR: [
+                { key: 'maintenance_mode' },
+                { key: 'maintenanceMode' }
+            ]
+        }
+    });
+
+    const isEnabled = maintenanceSetting?.value === 'true';
+
+    // Cache the result
+    maintenanceCache = {
+        value: isEnabled,
+        expiresAt: now + CACHE_TTL_MS
+    };
+
+    return isEnabled;
+};
+
+/**
+ * Invalidate maintenance cache (call this when setting changes)
+ */
+export const invalidateMaintenanceCache = () => {
+    maintenanceCache = { value: null, expiresAt: 0 };
+};
+
 /**
  * Maintenance Mode Middleware
  * Blocks access to API if maintenance mode is enabled
@@ -34,19 +83,10 @@ export const maintenanceMode = async (req, res, next) => {
             return next();
         }
 
-        const prisma = getPrisma();
+        // Check maintenance mode status (cached for 10 seconds)
+        const isMaintenanceMode = await getMaintenanceStatus();
 
-        // Check maintenance mode setting (support both key formats)
-        const maintenanceSetting = await prisma.systemSetting.findFirst({
-            where: {
-                OR: [
-                    { key: 'maintenance_mode' },
-                    { key: 'maintenanceMode' }
-                ]
-            }
-        });
-
-        if (maintenanceSetting && maintenanceSetting.value === 'true') {
+        if (isMaintenanceMode) {
             // For non-admins during maintenance: return 503 with Retry-After header
             // This tells the client to STOP retrying and wait
             logger.warn(`[MAINTENANCE] Blocked request to ${req.path} from ${req.ip}`);

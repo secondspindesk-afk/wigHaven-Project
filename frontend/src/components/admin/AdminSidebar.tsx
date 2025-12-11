@@ -32,9 +32,10 @@ interface NavItem {
 interface AdminSidebarProps {
     isOpen: boolean;
     onClose: () => void;
+    isMobileEmbedded?: boolean; // When true, only renders nav content (for mobile layout)
 }
 
-export function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
+export function AdminSidebar({ isOpen, onClose, isMobileEmbedded = false }: AdminSidebarProps) {
     const location = useLocation();
     const [collapsed, setCollapsed] = useState(false);
     const { data: stats, isLoading: statsLoading, error: statsError } = useSidebarStats(true);
@@ -49,29 +50,28 @@ export function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
     }, [stats, statsLoading, statsError]);
 
     const mainNavItems: NavItem[] = [
-        { label: 'Dashboard', path: '/admin', icon: <LayoutGrid size={16} strokeWidth={1.5} /> },
-        { label: 'Products', path: '/admin/products', icon: <Package size={16} strokeWidth={1.5} />, badge: stats?.products },
-        { label: 'Orders', path: '/admin/orders', icon: <ShoppingCart size={16} strokeWidth={1.5} />, badge: stats?.orders, alert: (stats?.orders || 0) > 0 },
-        { label: 'Users', path: '/admin/users', icon: <Users size={16} strokeWidth={1.5} />, badge: stats?.users },
-        { label: 'Categories', path: '/admin/categories', icon: <Tag size={16} strokeWidth={1.5} /> },
-        { label: 'Reviews', path: '/admin/reviews', icon: <Star size={16} strokeWidth={1.5} />, badge: stats?.reviews, alert: (stats?.reviews || 0) > 0 },
+        { label: 'Dashboard', path: '/admin', icon: <LayoutGrid size={18} strokeWidth={1.5} /> },
+        { label: 'Products', path: '/admin/products', icon: <Package size={18} strokeWidth={1.5} />, badge: stats?.products },
+        { label: 'Orders', path: '/admin/orders', icon: <ShoppingCart size={18} strokeWidth={1.5} />, badge: stats?.orders, alert: (stats?.orders || 0) > 0 },
+        { label: 'Users', path: '/admin/users', icon: <Users size={18} strokeWidth={1.5} />, badge: stats?.users },
+        { label: 'Categories', path: '/admin/categories', icon: <Tag size={18} strokeWidth={1.5} /> },
+        { label: 'Reviews', path: '/admin/reviews', icon: <Star size={18} strokeWidth={1.5} />, badge: stats?.reviews, alert: (stats?.reviews || 0) > 0 },
     ];
 
     const systemNavItems: NavItem[] = [
-        { label: 'Analytics', path: '/admin/analytics', icon: <BarChart3 size={16} strokeWidth={1.5} /> },
-        { label: 'Inventory', path: '/admin/inventory', icon: <Archive size={16} strokeWidth={1.5} />, alert: (stats?.inventory || 0) > 0, badge: stats?.inventory },
-        { label: 'Media', path: '/admin/media', icon: <Image size={16} strokeWidth={1.5} /> },
-        { label: 'Discounts', path: '/admin/discounts', icon: <Percent size={16} strokeWidth={1.5} /> },
-        { label: 'Banners', path: '/admin/banners', icon: <Megaphone size={16} strokeWidth={1.5} /> },
-        { label: 'Support', path: '/admin/support', icon: <Headphones size={16} strokeWidth={1.5} /> },
-
-        { label: 'Emails', path: '/admin/emails', icon: <Mail size={16} strokeWidth={1.5} /> },
-        { label: 'Settings', path: '/admin/settings', icon: <Settings size={16} strokeWidth={1.5} /> },
+        { label: 'Analytics', path: '/admin/analytics', icon: <BarChart3 size={18} strokeWidth={1.5} /> },
+        { label: 'Inventory', path: '/admin/inventory', icon: <Archive size={18} strokeWidth={1.5} />, alert: (stats?.inventory || 0) > 0, badge: stats?.inventory },
+        { label: 'Media', path: '/admin/media', icon: <Image size={18} strokeWidth={1.5} /> },
+        { label: 'Discounts', path: '/admin/discounts', icon: <Percent size={18} strokeWidth={1.5} /> },
+        { label: 'Banners', path: '/admin/banners', icon: <Megaphone size={18} strokeWidth={1.5} /> },
+        { label: 'Support', path: '/admin/support', icon: <Headphones size={18} strokeWidth={1.5} /> },
+        { label: 'Emails', path: '/admin/emails', icon: <Mail size={18} strokeWidth={1.5} /> },
+        { label: 'Settings', path: '/admin/settings', icon: <Settings size={18} strokeWidth={1.5} /> },
     ];
 
     // Super Admin only items
     const superAdminNavItems: NavItem[] = [
-        { label: 'ImageKit', path: '/admin/imagekit', icon: <HardDrive size={16} strokeWidth={1.5} /> },
+        { label: 'ImageKit', path: '/admin/imagekit', icon: <HardDrive size={18} strokeWidth={1.5} /> },
     ];
 
     const isActive = (path: string) => {
@@ -79,7 +79,42 @@ export function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
         return location.pathname.startsWith(path);
     };
 
-    const renderNavItem = (item: NavItem) => {
+    // Mobile nav item renderer - larger touch targets
+    const renderMobileNavItem = (item: NavItem) => {
+        const active = isActive(item.path);
+
+        return (
+            <Link
+                key={item.path}
+                to={item.path}
+                onClick={onClose}
+                className={`flex items-center gap-4 px-4 py-3.5 text-sm font-medium rounded-lg transition-all active:scale-[0.98] ${active
+                    ? 'bg-white text-black'
+                    : 'text-zinc-300 active:bg-zinc-800'
+                    }`}
+            >
+                <span className={active ? 'text-black' : 'text-zinc-400'}>
+                    {item.icon}
+                </span>
+                <span className="flex-1">{item.label}</span>
+                {/* Show alert badge (red, pulsing) when alert is true and badge > 0 */}
+                {item.alert && typeof item.badge === 'number' && item.badge > 0 && (
+                    <span className="px-2 py-0.5 bg-red-500/20 text-red-500 text-xs font-bold rounded-full animate-pulse">
+                        {item.badge}
+                    </span>
+                )}
+                {/* Show normal badge when NOT alert and badge > 0 */}
+                {!item.alert && typeof item.badge === 'number' && item.badge > 0 && (
+                    <span className={`text-xs font-mono ${active ? 'text-zinc-600' : 'text-zinc-500'}`}>
+                        {item.badge}
+                    </span>
+                )}
+            </Link>
+        );
+    };
+
+    // Desktop nav item renderer
+    const renderDesktopNavItem = (item: NavItem) => {
         const active = isActive(item.path);
 
         return (
@@ -115,6 +150,44 @@ export function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
         );
     };
 
+    // ==================== MOBILE EMBEDDED MODE ====================
+    if (isMobileEmbedded) {
+        return (
+            <nav className="flex-1 overflow-y-auto py-4 px-3 pb-28">
+                {/* Main Module */}
+                <p className="px-4 text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-3">
+                    Main Module
+                </p>
+                <div className="space-y-1">
+                    {mainNavItems.map(renderMobileNavItem)}
+                </div>
+
+                {/* System Config */}
+                <div className="mt-6 pt-6 border-t border-zinc-800">
+                    <p className="px-4 text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-3">
+                        System Config
+                    </p>
+                    <div className="space-y-1">
+                        {systemNavItems.map(renderMobileNavItem)}
+                    </div>
+                </div>
+
+                {/* Super Admin Only */}
+                {isSuperAdmin && (
+                    <div className="mt-6 pt-6 border-t border-zinc-800">
+                        <p className="px-4 text-[10px] font-bold text-amber-500/80 uppercase tracking-widest mb-3">
+                            Super Admin
+                        </p>
+                        <div className="space-y-1">
+                            {superAdminNavItems.map(renderMobileNavItem)}
+                        </div>
+                    </div>
+                )}
+            </nav>
+        );
+    }
+
+    // ==================== DESKTOP SIDEBAR ====================
     return (
         <>
             {/* Mobile Overlay */}
@@ -162,7 +235,7 @@ export function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
                             Main Module
                         </p>
                     )}
-                    {mainNavItems.map(renderNavItem)}
+                    {mainNavItems.map(renderDesktopNavItem)}
 
                     <div className="pt-6 pb-2">
                         {!collapsed && (
@@ -171,7 +244,7 @@ export function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
                             </p>
                         )}
                     </div>
-                    {systemNavItems.map(renderNavItem)}
+                    {systemNavItems.map(renderDesktopNavItem)}
 
                     {/* Super Admin Only */}
                     {isSuperAdmin && (
@@ -183,7 +256,7 @@ export function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
                                     </p>
                                 )}
                             </div>
-                            {superAdminNavItems.map(renderNavItem)}
+                            {superAdminNavItems.map(renderDesktopNavItem)}
                         </>
                     )}
                 </nav>

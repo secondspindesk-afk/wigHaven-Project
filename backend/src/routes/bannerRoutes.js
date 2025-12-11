@@ -3,6 +3,7 @@ import Joi from 'joi';
 import * as bannerController from '../controllers/bannerController.js';
 import { authenticateToken, requireAdmin } from '../middleware/auth.js';
 import { validateRequest } from '../utils/validators.js';
+import { longCache } from '../middleware/cacheControl.js';
 
 const router = express.Router();
 
@@ -31,8 +32,8 @@ const updateBannerSchema = Joi.object({
     notifyUsers: Joi.boolean()
 }).min(1);
 
-// Public route
-router.get('/banners', bannerController.getActiveBanners);
+// Public route (cached for 1 hour at edge)
+router.get('/banners', longCache, bannerController.getActiveBanners);
 
 // Admin routes
 router.get('/admin/banners', authenticateToken, requireAdmin, bannerController.getAllBanners);
