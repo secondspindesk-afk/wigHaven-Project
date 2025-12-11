@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Heart, Share2, Minus, Plus, ShoppingBag, Bell, Check, ChevronDown } from 'lucide-react';
+import { Heart, Share2, Minus, Plus, ShoppingBag, Bell, Check } from 'lucide-react';
 import { Product, Variant, getDefaultVariant } from '@/lib/types/product';
 import { useCurrencyContext } from '@/lib/context/CurrencyContext';
 import { useMutation } from '@tanstack/react-query';
@@ -343,8 +343,8 @@ export default function ProductInfo({ product, onVariantChange }: ProductInfoPro
                                 key={option}
                                 onClick={() => onChange(option)}
                                 className={`px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${selected === option
-                                        ? 'bg-white text-black'
-                                        : 'bg-zinc-800 text-zinc-300 active:bg-zinc-700'
+                                    ? 'bg-white text-black'
+                                    : 'bg-zinc-800 text-zinc-300 active:bg-zinc-700'
                                     }`}
                             >
                                 {option}
@@ -364,8 +364,8 @@ export default function ProductInfo({ product, onVariantChange }: ProductInfoPro
                             key={option}
                             onClick={() => onChange(option)}
                             className={`px-4 py-2 border text-sm font-mono transition-all ${selected === option
-                                    ? 'border-white bg-white text-black font-bold'
-                                    : 'border-[#27272a] text-zinc-400 hover:border-zinc-500'
+                                ? 'border-white bg-white text-black font-bold'
+                                : 'border-[#27272a] text-zinc-400 hover:border-zinc-500'
                                 }`}
                         >
                             {option}
@@ -392,8 +392,8 @@ export default function ProductInfo({ product, onVariantChange }: ProductInfoPro
                                 <button
                                     onClick={handleWishlist}
                                     className={`p-3 rounded-full transition-all ${isWishlisted
-                                            ? 'bg-red-500/10 text-red-500'
-                                            : 'bg-zinc-800 text-zinc-400 active:text-white'
+                                        ? 'bg-red-500/10 text-red-500'
+                                        : 'bg-zinc-800 text-zinc-400 active:text-white'
                                         }`}
                                 >
                                     <Heart size={20} fill={isWishlisted ? "currentColor" : "none"} />

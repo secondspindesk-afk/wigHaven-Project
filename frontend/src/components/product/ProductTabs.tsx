@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Star, ThumbsUp, X, Upload, RefreshCw, ChevronRight } from 'lucide-react';
+import { Star, ThumbsUp, X, Upload, RefreshCw } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import productApi from '@/lib/api/product';
@@ -105,8 +105,8 @@ export default function ProductTabs({ productId, description }: ProductTabsProps
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id as any)}
                             className={`flex-shrink-0 px-4 py-2.5 rounded-full text-sm font-medium transition-all ${activeTab === tab.id
-                                    ? 'bg-white text-black'
-                                    : 'bg-zinc-800 text-zinc-400 active:bg-zinc-700'
+                                ? 'bg-white text-black'
+                                : 'bg-zinc-800 text-zinc-400 active:bg-zinc-700'
                                 }`}
                         >
                             {tab.label}

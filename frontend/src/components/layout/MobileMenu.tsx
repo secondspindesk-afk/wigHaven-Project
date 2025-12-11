@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import {
     X, Home, ShoppingBag, User, Phone, Info, Package, Heart,
-    LogOut, LayoutDashboard, Settings, Search, ChevronRight,
+    LogOut, LayoutDashboard, Search, ChevronRight,
     MapPin, HeadphonesIcon, Mail, Bell, Sparkles
 } from 'lucide-react';
 import { useUIStore } from '@/store/uiStore';

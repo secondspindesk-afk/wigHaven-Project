@@ -5,7 +5,7 @@ import { useCreateReview } from '@/lib/hooks/useReviews';
 import { useCurrencyContext } from '@/lib/context/CurrencyContext';
 import { useToast } from '@/contexts/ToastContext';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, ArrowLeft, MapPin, CreditCard, Package, AlertTriangle, X, Star, Download, ChevronRight } from 'lucide-react';
+import { Loader2, ArrowLeft, MapPin, CreditCard, Package, AlertTriangle, X, Star, Download } from 'lucide-react';
 import api from '@/lib/api/axios';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
 
@@ -86,9 +86,9 @@ export default function OrderDetails() {
                         <p className="text-xs text-zinc-500">{new Date(order.created_at).toLocaleDateString()}</p>
                     </div>
                     <span className={`px-3 py-1.5 rounded-full text-xs font-bold uppercase ${order.status === 'delivered' ? 'bg-green-500/10 text-green-400' :
-                            order.status === 'processing' ? 'bg-blue-500/10 text-blue-400' :
-                                order.status === 'cancelled' ? 'bg-red-500/10 text-red-400' :
-                                    'bg-zinc-800 text-zinc-400'
+                        order.status === 'processing' ? 'bg-blue-500/10 text-blue-400' :
+                            order.status === 'cancelled' ? 'bg-red-500/10 text-red-400' :
+                                'bg-zinc-800 text-zinc-400'
                         }`}>
                         {order.status}
                     </span>

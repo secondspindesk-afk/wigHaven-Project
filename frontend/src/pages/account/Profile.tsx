@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { useUser } from '@/lib/hooks/useUser';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { useToast } from '@/contexts/ToastContext';
-import { Loader2, ChevronDown } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
 
 const profileSchema = z.object({

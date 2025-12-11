@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Search, Filter, Edit, Trash2, Copy, Upload, Loader2, FileSpreadsheet, CheckSquare, Square, X, ChevronRight, Package, MoreVertical } from 'lucide-react';
+import { Plus, Search, Filter, Edit, Trash2, Copy, Upload, Loader2, FileSpreadsheet, CheckSquare, Square, X, Package, MoreVertical } from 'lucide-react';
 import { useAdminProducts, useDeleteProduct, useDuplicateProduct, useBulkUploadProducts, useCategories, useBulkDeleteProducts, useBulkUpdateProductStatus } from '@/lib/hooks/useProducts';
 import { useDebounce } from '@/lib/hooks/useDebounce';
 import { useToast } from '@/contexts/ToastContext';
@@ -11,12 +11,11 @@ interface MobileProductCardProps {
     product: any;
     isSelected: boolean;
     onToggleSelect: () => void;
-    onEdit: () => void;
     onDuplicate: () => void;
     onDelete: () => void;
 }
 
-function MobileProductCard({ product, isSelected, onToggleSelect, onEdit, onDuplicate, onDelete }: MobileProductCardProps) {
+function MobileProductCard({ product, isSelected, onToggleSelect, onDuplicate, onDelete }: MobileProductCardProps) {
     const [showActions, setShowActions] = useState(false);
 
     return (
@@ -345,7 +344,6 @@ export default function ProductList() {
                                 product={product}
                                 isSelected={selectedProducts.includes(product.id)}
                                 onToggleSelect={() => toggleSelectProduct(product.id)}
-                                onEdit={() => { }}
                                 onDuplicate={() => handleDuplicate(product.id)}
                                 onDelete={() => setDeleteId(product.id)}
                             />

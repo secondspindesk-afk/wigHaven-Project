@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useForm, Controller } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useAddresses } from '@/lib/hooks/useAddresses';
@@ -40,7 +40,6 @@ export default function AddressBook() {
         register,
         handleSubmit,
         reset,
-        control,
         setValue,
         watch,
         formState: { errors, isSubmitting },
@@ -294,8 +293,8 @@ export default function AddressBook() {
                                                     setRegionPickerOpen(false);
                                                 }}
                                                 className={`w-full text-left px-4 py-4 rounded-xl transition-colors flex items-center justify-between ${selectedRegion === region
-                                                        ? 'bg-white text-black'
-                                                        : 'text-zinc-300 active:bg-zinc-800'
+                                                    ? 'bg-white text-black'
+                                                    : 'text-zinc-300 active:bg-zinc-800'
                                                     }`}
                                             >
                                                 <span className="text-sm font-medium">{region}</span>

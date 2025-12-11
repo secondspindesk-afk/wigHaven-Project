@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Download, TrendingUp, Users, CreditCard, Calendar, ShoppingCart, AlertTriangle, CheckCircle, Package } from 'lucide-react';
+import { Download, TrendingUp, Users, CreditCard, Calendar, ShoppingCart, AlertTriangle, CheckCircle } from 'lucide-react';
 import { BarChart, Bar, PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useRevenueByCategory, useCustomerAnalytics, usePaymentMethods, useSalesTrends, useTopProducts, useCartAbandonment } from '@/lib/hooks/useAdminDashboard';
 import adminApi from '@/lib/api/admin';

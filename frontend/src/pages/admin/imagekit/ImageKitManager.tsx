@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Folder, File, Trash2, RefreshCw, ChevronRight, Search, Image as ImageIcon, X, Move, FolderPlus, AlertTriangle, Info, ChevronLeft } from 'lucide-react';
+import { Folder, File, Trash2, RefreshCw, ChevronRight, Search, Image as ImageIcon, X, Move, FolderPlus, AlertTriangle, Info } from 'lucide-react';
 import { useImageKitFiles, useCreateFolder, useDeleteFolder, useDeleteImageKitFile, useMoveFile, useBulkDeleteFiles } from '@/lib/hooks/useImageKit';
 import { ImageKitFile } from '@/lib/api/imagekit';
 import { useToast } from '@/contexts/ToastContext';

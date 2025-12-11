@@ -11,7 +11,6 @@ import {
     HeadphonesIcon,
     Mail,
     MoreHorizontal,
-    X,
     Bell
 } from 'lucide-react';
 import { motion } from 'framer-motion';

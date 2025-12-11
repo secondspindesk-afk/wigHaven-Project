@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
 import ProductCard from '@/components/products/ProductCard';
-import { Filter, Search, X, ChevronDown, ChevronUp, SlidersHorizontal, Grid3X3, LayoutGrid } from 'lucide-react';
+import { Search, X, ChevronDown, ChevronUp, SlidersHorizontal, Grid3X3, LayoutGrid } from 'lucide-react';
 import { useProducts } from '@/lib/hooks/useProducts';
 import { useCategories } from '@/lib/hooks/useCategories';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
@@ -168,8 +168,8 @@ export default function Shop() {
                                             key={cat.id}
                                             onClick={() => handleCategoryChange(cat.id)}
                                             className={`w-full text-left px-4 py-3 rounded-lg text-sm transition-all ${filters.category === cat.id
-                                                    ? 'bg-white text-black font-bold'
-                                                    : 'text-zinc-400 active:bg-zinc-800'
+                                                ? 'bg-white text-black font-bold'
+                                                : 'text-zinc-400 active:bg-zinc-800'
                                                 }`}
                                         >
                                             <span className="flex justify-between items-center">
@@ -273,8 +273,8 @@ export default function Shop() {
                                 key={option.value}
                                 onClick={() => handleSortChange(option.value)}
                                 className={`w-full text-left px-6 py-4 text-base transition-all ${filters.sort === option.value
-                                        ? 'text-white bg-zinc-800'
-                                        : 'text-zinc-400 active:bg-zinc-900'
+                                    ? 'text-white bg-zinc-800'
+                                    : 'text-zinc-400 active:bg-zinc-900'
                                     }`}
                             >
                                 {option.label}
@@ -353,8 +353,8 @@ export default function Shop() {
                             <button
                                 onClick={() => setShowFilters(true)}
                                 className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg border transition-all ${activeFilterCount > 0
-                                        ? 'bg-white text-black border-white'
-                                        : 'bg-zinc-900 text-white border-zinc-800 active:bg-zinc-800'
+                                    ? 'bg-white text-black border-white'
+                                    : 'bg-zinc-900 text-white border-zinc-800 active:bg-zinc-800'
                                     }`}
                             >
                                 <SlidersHorizontal size={16} />
@@ -575,8 +575,8 @@ export default function Shop() {
                                                 key={page}
                                                 onClick={() => handlePageChange(page)}
                                                 className={`w-10 h-10 flex items-center justify-center text-sm font-medium transition-colors ${isMobile ? 'rounded-lg' : 'rounded-sm'} ${page === pagination.page
-                                                        ? 'bg-white text-black'
-                                                        : 'bg-zinc-900 border border-zinc-800 text-zinc-400 active:text-white'
+                                                    ? 'bg-white text-black'
+                                                    : 'bg-zinc-900 border border-zinc-800 text-zinc-400 active:text-white'
                                                     }`}
                                             >
                                                 {page}
