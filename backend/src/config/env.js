@@ -25,12 +25,9 @@ const envSchema = Joi.object({
     PAYSTACK_SECRET_KEY: Joi.string().required(),
     PAYSTACK_PUBLIC_KEY: Joi.string().required(),
 
-    // Email (SMTP)
-    SMTP_HOST: Joi.string().required(),
-    SMTP_PORT: Joi.number().required(),
-    SMTP_USER: Joi.string().required(),
-    SMTP_PASS: Joi.string().required(),
-    EMAIL_FROM: Joi.string().email().required(),
+    // Email (Resend API - replaces SMTP)
+    RESEND_API_KEY: Joi.string().required(),
+    EMAIL_FROM: Joi.string().optional(), // Optional - defaults to onboarding@resend.dev
 
     // ImageKit Cloud Storage
     IMAGEKIT_PUBLIC_KEY: Joi.string().required(),

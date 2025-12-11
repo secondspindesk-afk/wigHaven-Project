@@ -30,7 +30,7 @@ A production-ready e-commerce backend API for a premium wig and hair extensions 
 - **ORM**: Prisma
 - **Payments**: Paystack
 - **Storage**: ImageKit
-- **Email**: SMTP (Nodemailer)
+- **Email**: Resend API (HTTPS-based, works on HuggingFace)
 
 ## API Endpoints
 
@@ -50,8 +50,8 @@ Required environment variables (configure in HuggingFace Space settings):
 - `JWT_SECRET` - JWT signing secret (min 32 chars)
 - `PAYSTACK_SECRET_KEY` - Paystack API secret
 - `PAYSTACK_PUBLIC_KEY` - Paystack public key
-- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` - Email config
-- `EMAIL_FROM` - Sender email address
+- `RESEND_API_KEY` - Resend API key (get from resend.com)
+- `EMAIL_FROM` - Sender email (optional, defaults to onboarding@resend.dev)
 - `IMAGEKIT_PUBLIC_KEY`, `IMAGEKIT_PRIVATE_KEY`, `IMAGEKIT_URL_ENDPOINT` - ImageKit config
 - `FRONTEND_URL` - Frontend application URL
 
