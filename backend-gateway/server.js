@@ -1,6 +1,10 @@
 import express from 'express';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 import dotenv from 'dotenv';
+import compression from 'compression';
+import helmet from 'helmet';
+import morgan from 'morgan';
+import rateLimit from 'express-rate-limit';
 
 dotenv.config();
 
@@ -17,6 +21,27 @@ if (!TARGET_URL) {
 if (!HF_TOKEN) {
     console.warn('⚠️ WARNING: HF_TOKEN is not set! Private space access might fail.');
 }
+
+// Security Middleware
+app.use(helmet({
+    contentSecurityPolicy: false, // Disable CSP for gateway as it might interfere with proxied content
+    crossOriginEmbedderPolicy: false
+}));
+
+// Compression Middleware
+app.use(compression());
+
+// Logging Middleware
+app.use(morgan('combined'));
+
+// Rate Limiting
+const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 1000, // Limit each IP to 1000 requests per windowMs (Higher limit for gateway)
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+app.use(limiter);
 
 // Health check for the Gateway itself
 app.get('/gateway-health', (req, res) => {
