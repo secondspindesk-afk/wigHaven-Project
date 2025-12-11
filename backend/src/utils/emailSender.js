@@ -1,88 +1,104 @@
-import { Resend } from 'resend';
 import logger from './logger.js';
 
-let resendClient = null;
+let brevoApiKey = null;
 
 /**
- * Initialize Resend client
- * Uses Resend API (HTTPS) instead of SMTP - works on HuggingFace Spaces
+ * Initialize Brevo email client
+ * Uses Brevo API (HTTPS) - works on HuggingFace Spaces
  */
 export const initializeTransporter = () => {
-    if (!resendClient) {
-        // DEBUG: Log Resend configuration
-        logger.info(`[EMAIL DEBUG] Resend Configuration Check:`);
-        logger.info(`  RESEND_API_KEY: ${process.env.RESEND_API_KEY ? '***SET*** (' + process.env.RESEND_API_KEY.length + ' chars)' : 'NOT SET'}`);
-        logger.info(`  EMAIL_FROM: ${process.env.EMAIL_FROM || 'NOT SET (will use onboarding@resend.dev)'}`);
+    if (!brevoApiKey) {
+        // DEBUG: Log Brevo configuration
+        logger.info(`[EMAIL DEBUG] Brevo Configuration Check:`);
+        logger.info(`  BREVO_API_KEY: ${process.env.BREVO_API_KEY ? '***SET*** (' + process.env.BREVO_API_KEY.length + ' chars)' : 'NOT SET'}`);
+        logger.info(`  EMAIL_FROM: ${process.env.EMAIL_FROM || 'NOT SET'}`);
 
         // Check for API key
-        if (!process.env.RESEND_API_KEY) {
-            logger.error('❌ Resend not configured! RESEND_API_KEY is missing');
+        if (!process.env.BREVO_API_KEY) {
+            logger.error('❌ Brevo not configured! BREVO_API_KEY is missing');
             logger.warn('⚠️  Emails will be logged but not sent.');
             return null;
         }
 
-        resendClient = new Resend(process.env.RESEND_API_KEY);
-        logger.info(`📧 Resend email client initialized`);
+        if (!process.env.EMAIL_FROM) {
+            logger.error('❌ EMAIL_FROM is required for Brevo (must be a verified sender)');
+            logger.warn('⚠️  Emails will be logged but not sent.');
+            return null;
+        }
 
-        // Note: Resend doesn't need a connection test like SMTP
-        // It uses HTTPS which always works
-        logger.info(`✅ Resend ready - using HTTPS API (no SMTP port blocking issues)`);
+        brevoApiKey = process.env.BREVO_API_KEY;
+        logger.info(`📧 Brevo email client initialized`);
+        logger.info(`✅ Brevo ready - using HTTPS API (no SMTP port blocking issues)`);
     }
-    return resendClient;
+    return brevoApiKey;
 };
 
 /**
- * Send email directly using Resend
+ * Send email directly using Brevo API
  * @param {Object} emailOptions - { to, subject, text, html }
  */
 export const sendEmailDirectly = async (emailOptions) => {
-    const client = initializeTransporter();
+    const apiKey = initializeTransporter();
 
-    // If Resend not configured, just log the email
-    if (!client) {
-        logger.info(`[EMAIL NOT SENT - NO RESEND] To: ${emailOptions.to}, Subject: ${emailOptions.subject}`);
-        return { id: 'no-resend-configured' };
+    // If Brevo not configured, just log the email
+    if (!apiKey) {
+        logger.info(`[EMAIL NOT SENT - NO BREVO] To: ${emailOptions.to}, Subject: ${emailOptions.subject}`);
+        return { messageId: 'no-brevo-configured' };
     }
 
     try {
         logger.info(`[EMAIL DEBUG] Attempting to send email to: ${emailOptions.to}`);
 
-        // Determine the from address
-        // If using Resend free tier without verified domain, use onboarding@resend.dev
-        const fromAddress = process.env.EMAIL_FROM || 'WigHaven <onboarding@resend.dev>';
+        // Get sender from env (must be verified in Brevo)
+        const senderEmail = process.env.EMAIL_FROM;
+        const senderName = process.env.EMAIL_FROM_NAME || 'WigHaven';
 
-        logger.info(`[EMAIL DEBUG] Mail options: from=${fromAddress}, subject=${emailOptions.subject}`);
+        logger.info(`[EMAIL DEBUG] Mail options: from=${senderName} <${senderEmail}>, subject=${emailOptions.subject}`);
 
-        const { data, error } = await client.emails.send({
-            from: fromAddress,
-            to: emailOptions.to,
-            subject: emailOptions.subject,
-            text: emailOptions.text,
-            html: emailOptions.html,
+        const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+            method: 'POST',
+            headers: {
+                'accept': 'application/json',
+                'api-key': apiKey,
+                'content-type': 'application/json',
+            },
+            body: JSON.stringify({
+                sender: {
+                    name: senderName,
+                    email: senderEmail
+                },
+                to: [{ email: emailOptions.to }],
+                subject: emailOptions.subject,
+                htmlContent: emailOptions.html,
+                textContent: emailOptions.text || emailOptions.subject
+            }),
         });
 
-        if (error) {
-            logger.error(`❌ Resend API error:`, error);
-            throw new Error(error.message || 'Resend API error');
+        const data = await response.json();
+
+        if (response.ok) {
+            logger.info(`✅ Email sent to ${emailOptions.to} (ID: ${data.messageId})`);
+            logger.info(`[EMAIL DEBUG] Brevo response: ${JSON.stringify(data)}`);
+            return { messageId: data.messageId, accepted: [emailOptions.to] };
+        } else {
+            logger.error(`❌ Brevo API error: ${response.status} ${response.statusText}`);
+            logger.error(`[EMAIL DEBUG] Error response: ${JSON.stringify(data)}`);
+
+            if (data.code === 'unauthorized') {
+                logger.error('  💡 FIX: Check your BREVO_API_KEY is valid');
+            }
+            if (data.message?.includes('sender') || data.message?.includes('not found')) {
+                logger.error('  💡 FIX: Verify your sender email in Brevo dashboard');
+                logger.error('  💡 Go to: Settings > Senders, Domains, IPs > Senders');
+            }
+
+            throw new Error(data.message || `Brevo API error: ${response.status}`);
         }
-
-        logger.info(`✅ Email sent to ${emailOptions.to} (ID: ${data.id})`);
-        logger.info(`[EMAIL DEBUG] Resend response: ${JSON.stringify(data)}`);
-
-        return { messageId: data.id, accepted: [emailOptions.to] };
     } catch (error) {
         logger.error(`❌ Failed to send email to ${emailOptions.to}`);
         logger.error(`[EMAIL DEBUG] Error Details:`);
         logger.error(`  Message: ${error.message}`);
         logger.error(`  Name: ${error.name || 'N/A'}`);
-
-        if (error.message?.includes('API key')) {
-            logger.error('  💡 FIX: Check your RESEND_API_KEY is valid');
-        }
-        if (error.message?.includes('domain')) {
-            logger.error('  💡 FIX: Verify your domain in Resend dashboard, or use onboarding@resend.dev as FROM');
-        }
-
         throw error;
     }
 };

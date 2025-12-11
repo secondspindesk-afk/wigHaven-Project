@@ -25,9 +25,10 @@ const envSchema = Joi.object({
     PAYSTACK_SECRET_KEY: Joi.string().required(),
     PAYSTACK_PUBLIC_KEY: Joi.string().required(),
 
-    // Email (Resend API - replaces SMTP)
-    RESEND_API_KEY: Joi.string().required(),
-    EMAIL_FROM: Joi.string().optional(), // Optional - defaults to onboarding@resend.dev
+    // Email (Brevo API - works on HuggingFace Spaces)
+    BREVO_API_KEY: Joi.string().required(),
+    EMAIL_FROM: Joi.string().email().required(), // Must be verified sender in Brevo
+    EMAIL_FROM_NAME: Joi.string().optional().default('WigHaven'),
 
     // ImageKit Cloud Storage
     IMAGEKIT_PUBLIC_KEY: Joi.string().required(),

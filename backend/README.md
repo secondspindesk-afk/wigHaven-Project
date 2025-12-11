@@ -30,7 +30,7 @@ A production-ready e-commerce backend API for a premium wig and hair extensions 
 - **ORM**: Prisma
 - **Payments**: Paystack
 - **Storage**: ImageKit
-- **Email**: Resend API (HTTPS-based, works on HuggingFace)
+- **Email**: Brevo API (HTTPS-based, works on HuggingFace)
 
 ## API Endpoints
 
@@ -50,8 +50,8 @@ Required environment variables (configure in HuggingFace Space settings):
 - `JWT_SECRET` - JWT signing secret (min 32 chars)
 - `PAYSTACK_SECRET_KEY` - Paystack API secret
 - `PAYSTACK_PUBLIC_KEY` - Paystack public key
-- `RESEND_API_KEY` - Resend API key (get from resend.com)
-- `EMAIL_FROM` - Sender email (optional, defaults to onboarding@resend.dev)
+- `BREVO_API_KEY` - Brevo API key (get from brevo.com)
+- `EMAIL_FROM` - Verified sender email in Brevo (e.g., dawnred820@gmail.com)
 - `IMAGEKIT_PUBLIC_KEY`, `IMAGEKIT_PRIVATE_KEY`, `IMAGEKIT_URL_ENDPOINT` - ImageKit config
 - `FRONTEND_URL` - Frontend application URL
 
