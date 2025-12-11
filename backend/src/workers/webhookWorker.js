@@ -242,7 +242,7 @@ export async function processWebhookPayload(webhookData) {
                 return;
             }
 
-            // 3. Broadcast WebSocket Notification
+            // 3. Broadcast WebSocket Notification + Create Persistent In-App Notification
             try {
                 const { broadcastNotification } = await import('../config/websocket.js');
                 const order = await prisma.order.findUnique({
@@ -250,6 +250,7 @@ export async function processWebhookPayload(webhookData) {
                 });
 
                 if (order && order.userId) {
+                    // Ephemeral WebSocket notification (real-time)
                     broadcastNotification(order.userId, {
                         type: 'order_payment_confirmed',
                         message: `Payment received for Order #${order.orderNumber}`,
@@ -260,9 +261,14 @@ export async function processWebhookPayload(webhookData) {
                         }
                     });
                     logger.info(`📡 WebSocket notification sent to user ${order.userId}`);
+
+                    // Persistent in-app notification (stored in DB)
+                    const notificationService = (await import('../services/notificationService.js')).default;
+                    await notificationService.notifyPaymentSuccess(order);
+                    logger.info(`🔔 In-app notification created for user ${order.userId}`);
                 }
             } catch (wsError) {
-                logger.error(`Failed to send WebSocket notification for ${reference}:`, wsError);
+                logger.error(`Failed to send notifications for ${reference}:`, wsError);
             }
 
             // 4. Send Confirmation Email
@@ -285,7 +291,7 @@ export async function processWebhookPayload(webhookData) {
                     });
 
                     if (order) {
-                        // Queue email via simple queue (no PgBoss)
+                        // Queue email with CORRECT variable names matching template
                         queueEmail({
                             type: 'order_confirmation',
                             toEmail: order.customerEmail,
@@ -293,15 +299,24 @@ export async function processWebhookPayload(webhookData) {
                             template: 'orderConfirmation',
                             variables: {
                                 order_number: order.orderNumber,
-                                customer_name: order.customerEmail.split('@')[0],
-                                total: order.total,
+                                customer_name: order.shippingAddress?.name || order.customerEmail.split('@')[0],
+                                created_at: order.createdAt, // Date object for formatDate helper
+                                subtotal: parseFloat(order.subtotal),
+                                tax: parseFloat(order.tax),
+                                shipping: parseFloat(order.shipping),
+                                discount: parseFloat(order.discount) || 0,
+                                coupon_code: order.couponCode,
+                                total: parseFloat(order.total),
+                                shipping_address: order.shippingAddress,
+                                tracking_link: `${process.env.FRONTEND_URL}/account/orders`,
                                 items: order.items.map(item => ({
-                                    name: item.variant.product.name,
+                                    // Template expects: productName, variantName, quantity, total
+                                    productName: item.variant?.product?.name || item.productName || 'Product',
+                                    variantName: item.attributes ? Object.values(item.attributes).filter(Boolean).join(' / ') : '',
                                     quantity: item.quantity,
-                                    price: item.unitPrice,
-                                    image: item.variant.product.images[0] || ''
-                                })),
-                                date: new Date().toLocaleDateString()
+                                    total: parseFloat(item.subtotal) || (item.quantity * parseFloat(item.unitPrice)),
+                                    image: item.variant?.product?.images?.[0] || ''
+                                }))
                             }
                         });
                         logger.info(`📧 Queued confirmation email for order ${order.orderNumber}`);

@@ -6,6 +6,25 @@ import { getPrisma } from '../config/database.js';
 import { uploadFromUrl } from '../config/imagekit.js';
 import { generateUniqueFilename, getFolderPath, validateExternalImageUrl } from '../utils/imageUtils.js';
 import cache from '../utils/cache.js';
+import smartCache from '../utils/smartCache.js';
+
+/**
+ * Invalidate all product-related caches
+ * Call this when products are created/updated/deleted
+ * @param {string} productId - Optional specific product ID to invalidate
+ */
+const invalidateProductCache = (productId = null) => {
+    // Invalidate specific product if ID provided
+    if (productId) {
+        cache.del(cache.productKey(productId)); // Old cache
+        smartCache.del(smartCache.keys.product(productId)); // New cache
+    }
+
+    // Invalidate all product lists (they may contain this product)
+    smartCache.invalidateByPrefix('products:list');
+
+    logger.debug(`[CACHE] Product cache invalidated${productId ? ` for ${productId}` : ' (all lists)'}`);
+};
 
 /**
  * Process image URLs - uploads external URLs to ImageKit and returns all as ImageKit URLs
@@ -222,51 +241,41 @@ export const createProduct = async (productData, userId = null) => {
 };
 
 /**
- * Get product by ID - CACHED (node-cache)
- * Serves from memory if available, otherwise DB
+ * Fetch product from database and calculate stats (internal helper)
+ */
+const fetchProductFromDB = async (id) => {
+    const product = await productRepository.findProductById(id);
+
+    if (!product) {
+        return null;
+    }
+
+    // Calculate stats
+    const variants = product.variants || [];
+    const stats = {
+        total_variants: variants.length,
+        in_stock: variants.filter(v => v.stock > 5).length,
+        low_stock: variants.filter(v => v.stock > 0 && v.stock <= 5).length,
+        out_of_stock: variants.filter(v => v.stock === 0).length,
+    };
+
+    return { ...product, stats };
+};
+
+/**
+ * Get product by ID - SMART CACHED
+ * 
+ * Features:
+ * - Request deduplication (concurrent requests share one DB call)
+ * - SWR (stale-while-revalidate) for instant responses
+ * - 5 minute TTL
  */
 export const getProductById = async (id) => {
-    const startTime = Date.now();
-
-    try {
-        // 1. Check Cache
-        const cachedProduct = cache.get(cache.productKey(id));
-        if (cachedProduct) {
-            // logger.info(`[PERF] Serving product ${id} from cache`);
-            return cachedProduct;
-        }
-
-        // 2. Fetch from DB
-        const dbStart = Date.now();
-        const product = await productRepository.findProductById(id);
-        const dbTime = Date.now() - dbStart;
-
-        if (!product) {
-            return null;
-        }
-
-        // Calculate stats
-        const variants = product.variants || [];
-        const stats = {
-            total_variants: variants.length,
-            in_stock: variants.filter(v => v.stock > 5).length,
-            low_stock: variants.filter(v => v.stock > 0 && v.stock <= 5).length,
-            out_of_stock: variants.filter(v => v.stock === 0).length,
-        };
-
-        const result = { ...product, stats };
-        const totalTime = Date.now() - startTime;
-
-        logger.info(`[PERF] getProductById: ${totalTime}ms (DB: ${dbTime}ms) - CACHE MISS`);
-
-        // 3. Save to Cache (10 minutes)
-        cache.set(cache.productKey(id), result);
-
-        return result;
-    } catch (error) {
-        logger.error(`Error in getProductById service for ${id}:`, error);
-        throw error;
-    }
+    return smartCache.getOrFetch(
+        smartCache.keys.product(id),
+        () => fetchProductFromDB(id),
+        { type: 'product', swr: true }
+    );
 };
 
 /**
@@ -306,17 +315,20 @@ export const getAdminProductById = async (id) => {
 };
 
 /**
- * List products - NO CACHING (Redis is too slow!)
+ * List products - SMART CACHED
+ * 
+ * Features:
+ * - Query-based cache key (hash of params)
+ * - Request deduplication (concurrent same-query requests share one DB call)
+ * - SWR (stale-while-revalidate) for instant responses
+ * - 2 minute TTL (shorter due to product data volatility)
  */
 export const listProducts = async (params) => {
-    try {
-        // DIRECT DATABASE ACCESS
-        const result = await productRepository.listProducts(params);
-        return result;
-    } catch (error) {
-        logger.error('Error in listProducts service:', error);
-        throw error;
-    }
+    return smartCache.getOrFetch(
+        smartCache.keys.productList(params),
+        () => productRepository.listProducts(params),
+        { type: 'productList', swr: true }
+    );
 };
 
 /**
@@ -481,8 +493,8 @@ export const updateProduct = async (id, data, userId = null) => {
         // Update product (only with fields that were actually provided)
         const updatedProduct = await productRepository.updateProduct(id, data);
 
-        // INVALIDATE CACHE
-        cache.del(cache.productKey(id));
+        // INVALIDATE ALL PRODUCT CACHES
+        invalidateProductCache(id);
 
         return updatedProduct;
     } catch (error) {
@@ -503,8 +515,8 @@ export const deleteProduct = async (id) => {
         const result = await productRepository.hardDeleteProduct(id, moveToTrash);
         logger.info(`Product ${id} deleted. ${result.imagesMovedToTrash} images moved to trash.`);
 
-        // INVALIDATE CACHE
-        cache.del(cache.productKey(id));
+        // INVALIDATE ALL PRODUCT CACHES
+        invalidateProductCache(id);
 
         return result;
     } catch (error) {
@@ -546,11 +558,18 @@ export const bulkDeleteProducts = async (ids) => {
                 const result = await productRepository.hardDeleteProduct(id, moveToTrash);
                 results.success++;
                 results.imagesMovedToTrash += result.imagesMovedToTrash;
+
+                // Invalidate individual product cache
+                cache.del(cache.productKey(id));
+                smartCache.del(smartCache.keys.product(id));
             } catch (error) {
                 logger.error(`Failed to delete product ${id}:`, error);
                 results.failed++;
             }
         }
+
+        // Invalidate all product lists once at the end
+        smartCache.invalidateByPrefix('products:list');
 
         return results;
     } catch (error) {
@@ -570,6 +589,13 @@ export const bulkUpdateProductStatus = async (ids, isActive) => {
             where: { id: { in: ids } },
             data: { isActive }
         });
+
+        // Invalidate all affected product caches
+        for (const id of ids) {
+            cache.del(cache.productKey(id));
+            smartCache.del(smartCache.keys.product(id));
+        }
+        smartCache.invalidateByPrefix('products:list');
 
         return result;
     } catch (error) {
@@ -877,14 +903,15 @@ export const bulkUpdateVariants = async (variantIds, updates) => {
 
 /**
  * Get product categories
+ * 
+ * SMART CACHED: 10 min TTL, request deduplication, SWR
  */
 export const getCategories = async () => {
-    try {
-        return await productRepository.getCategories();
-    } catch (error) {
-        logger.error('Error in getCategories service:', error);
-        throw error;
-    }
+    return smartCache.getOrFetch(
+        smartCache.keys.categories(),
+        () => productRepository.getCategories(),
+        { type: 'categories', swr: true }
+    );
 };
 
 /**

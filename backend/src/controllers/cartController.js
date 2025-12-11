@@ -183,6 +183,75 @@ export const removeCoupon = async (req, res, next) => {
     }
 };
 
+/**
+ * Sync Cart (Background sync for page unload)
+ * 
+ * Called by navigator.sendBeacon when user closes the page.
+ * Syncs LocalStorage cart items to the database for logged-in users.
+ * 
+ * Note: sendBeacon sends data as text/plain by default, so we handle both
+ * JSON body and text body parsing.
+ */
+export const syncCart = async (req, res, next) => {
+    try {
+        // sendBeacon may send data as text/plain, try to parse it
+        let items = [];
+
+        if (req.body?.items) {
+            items = req.body.items;
+        } else if (typeof req.body === 'string') {
+            try {
+                const parsed = JSON.parse(req.body);
+                items = parsed.items || [];
+            } catch {
+                // Invalid JSON, ignore
+                logger.warn('[syncCart] Received invalid JSON body');
+            }
+        }
+
+        // Only sync if user is logged in and has items
+        if (!req.user || !Array.isArray(items) || items.length === 0) {
+            return res.status(200).json({
+                success: true,
+                message: 'Nothing to sync'
+            });
+        }
+
+        // Sync each item to the cart (best effort, don't fail on individual items)
+        let synced = 0;
+        for (const item of items) {
+            if (!item.variant_id || !item.quantity) continue;
+
+            try {
+                await cartService.addToCart(
+                    req.cart,
+                    item.variant_id,
+                    parseInt(item.quantity)
+                );
+                synced++;
+            } catch (err) {
+                // Log but don't fail - best effort sync
+                logger.warn(`[syncCart] Failed to sync item ${item.variant_id}:`, err.message);
+            }
+        }
+
+        logger.info(`[syncCart] Synced ${synced}/${items.length} items for user ${req.user.id}`);
+
+        res.status(200).json({
+            success: true,
+            message: `Synced ${synced} items`,
+            synced
+        });
+    } catch (error) {
+        // For background sync, always return 200 to prevent retry spam
+        logger.error('[syncCart] Error:', error);
+        res.status(200).json({
+            success: false,
+            message: 'Sync failed'
+        });
+    }
+};
+
 export default {
     getCart,
     addToCart,
@@ -192,5 +261,6 @@ export default {
     validateCart,
     validateCheckout,
     applyCoupon,
-    removeCoupon
+    removeCoupon,
+    syncCart
 };

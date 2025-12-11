@@ -51,6 +51,10 @@ router.post('/validate', ...cartMiddleware, cartController.validateCart);
 
 router.post('/validate-checkout', ...cartMiddleware, cartController.validateCheckout);
 
+// Background sync for page unload (navigator.sendBeacon)
+// sendBeacon sends data as text/plain, so we need express.text() to parse it
+router.post('/sync', express.text({ type: '*/*' }), ...cartMiddleware, cartController.syncCart);
+
 // Coupon Routes
 const applyCouponSchema = Joi.object({
     code: Joi.string().required().trim().max(50)

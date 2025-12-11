@@ -3,13 +3,17 @@ import { broadcastForceLogout } from '../config/websocket.js';
 import logger from '../utils/logger.js';
 
 import cache from '../utils/cache.js';
+import smartCache from '../utils/smartCache.js';
 
 /**
  * Invalidate the settings cache
  * Call this when settings are updated
  */
 export const invalidateSettingsCache = () => {
+    // Invalidate both old and new cache for safety
     cache.del('settings:all');
+    smartCache.del(smartCache.keys.settings());
+    smartCache.del(smartCache.keys.settingsPublic());
     logger.info('[CACHE] Settings cache invalidated');
 };
 
@@ -47,33 +51,32 @@ export const getSetting = async (key) => {
 };
 
 /**
- * Get all settings with IN-MEMORY CACHING
- * 
- * Settings are cached for 10 minutes (via cache.js default) to reduce DB calls.
- * Cache is invalidated when settings are updated.
+ * Fetch all settings from database (internal helper)
  */
-export const getAllSettings = async () => {
-    // 1. Check Cache
-    const cachedSettings = cache.get('settings:all');
-    if (cachedSettings) {
-        return cachedSettings;
-    }
-
-    // 2. Fetch from database
+const fetchAllSettingsFromDB = async () => {
     const prisma = getPrisma();
     const settings = await prisma.systemSetting.findMany();
 
-    // 3. Parse and Cache
-    const settingsObject = settings.reduce((acc, curr) => {
+    return settings.reduce((acc, curr) => {
         acc[curr.key] = parseValue(curr.value);
         return acc;
     }, {});
+};
 
-    // Cache for 10 minutes
-    cache.set('settings:all', settingsObject);
-
-    logger.debug('[CACHE] Settings cache refreshed');
-    return settingsObject;
+/**
+ * Get all settings with SMART CACHING
+ * 
+ * Features:
+ * - Request deduplication (concurrent requests share one DB call)
+ * - SWR (stale-while-revalidate) for instant responses
+ * - 5 minute TTL
+ */
+export const getAllSettings = async () => {
+    return smartCache.getOrFetch(
+        smartCache.keys.settings(),
+        fetchAllSettingsFromDB,
+        { type: 'settings', swr: true }
+    );
 };
 
 /**

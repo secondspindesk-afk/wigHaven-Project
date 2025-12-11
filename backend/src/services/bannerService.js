@@ -1,6 +1,16 @@
 import { getPrisma } from '../config/database.js';
 import notificationService from './notificationService.js';
 import logger from '../utils/logger.js';
+import smartCache from '../utils/smartCache.js';
+
+/**
+ * Invalidate banner cache
+ * Call this when banners are created/updated/deleted
+ */
+const invalidateBannerCache = () => {
+    smartCache.del(smartCache.keys.banners());
+    logger.debug('[CACHE] Banner cache invalidated');
+};
 
 /**
  * Create promotional banner
@@ -17,6 +27,9 @@ export const createBanner = async (bannerData, createdBy) => {
 
     logger.info(`Banner created: ${banner.id} by user ${createdBy}`);
 
+    // Invalidate cache after creation
+    invalidateBannerCache();
+
     // Optionally notify all users about the sale (if requested)
     if (bannerData.notifyUsers) {
         await notificationService.notifyPromotionalCampaign(
@@ -30,9 +43,9 @@ export const createBanner = async (bannerData, createdBy) => {
 };
 
 /**
- * Get active banners (for frontend display)
+ * Fetch active banners from database (internal helper)
  */
-export const getActiveBanners = async () => {
+const fetchActiveBannersFromDB = async () => {
     const prisma = getPrisma();
     const now = new Date();
 
@@ -55,6 +68,19 @@ export const getActiveBanners = async () => {
             priority: true
         }
     });
+};
+
+/**
+ * Get active banners (for frontend display)
+ * 
+ * SMART CACHED: 5 min TTL, request deduplication, SWR
+ */
+export const getActiveBanners = async () => {
+    return smartCache.getOrFetch(
+        smartCache.keys.banners(),
+        fetchActiveBannersFromDB,
+        { type: 'banners', swr: true }
+    );
 };
 
 /**
@@ -105,10 +131,15 @@ export const getBannerById = async (id) => {
 export const updateBanner = async (id, bannerData) => {
     const prisma = getPrisma();
 
-    return await prisma.promotionalBanner.update({
+    const banner = await prisma.promotionalBanner.update({
         where: { id },
         data: bannerData
     });
+
+    // Invalidate cache after update
+    invalidateBannerCache();
+
+    return banner;
 };
 
 /**
@@ -117,9 +148,14 @@ export const updateBanner = async (id, bannerData) => {
 export const deleteBanner = async (id) => {
     const prisma = getPrisma();
 
-    return await prisma.promotionalBanner.delete({
+    const banner = await prisma.promotionalBanner.delete({
         where: { id }
     });
+
+    // Invalidate cache after delete
+    invalidateBannerCache();
+
+    return banner;
 };
 
 export default {

@@ -89,7 +89,7 @@ const createApp = () => {
             },
             credentials: true,
             methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-            allowedHeaders: ['Content-Type', 'Authorization', 'X-Session-ID', 'X-Paystack-Signature'],
+            allowedHeaders: ['Content-Type', 'Authorization', 'X-Session-ID', 'X-Paystack-Signature', 'x-auth-token'],
             exposedHeaders: ['X-Session-ID'],
         })
     );

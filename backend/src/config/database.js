@@ -2,25 +2,115 @@ import { PrismaClient } from '@prisma/client';
 import logger from '../utils/logger.js';
 
 let prisma = null;
+let heartbeatInterval = null;
+let lastConnectionError = 0;
 
 // Neon serverless connection configuration
-// Neon closes idle connections after ~5 minutes to save resources
-// These settings ensure robust reconnection handling
 const NEON_CONFIG = {
-  // Connection pool settings optimized for Neon serverless
-  pool: {
-    min: 1,        // Keep at least 1 connection
-    max: 10,       // Maximum connections (Neon free tier allows 20)
-  },
-  // Connection timeout settings
-  connect_timeout: 10,   // 10 seconds to establish connection
-  idle_timeout: 180,     // Close idle connections after 3 minutes (before Neon's 5 min)
+  HEARTBEAT_INTERVAL_MS: 2 * 60 * 1000,  // Ping every 2 minutes
+  ERROR_LOG_DEBOUNCE_MS: 30 * 1000,      // Only log same error once per 30 seconds
+  MAX_RETRIES: 3,
+  RETRY_BASE_DELAY_MS: 500,
+};
+
+/**
+ * Check if error is a connection reset error (common with Neon serverless)
+ */
+const isConnectionError = (error) => {
+  const msg = error?.message?.toLowerCase() || '';
+  const code = error?.code;
+
+  return (
+    msg.includes('connection reset') ||
+    msg.includes('connection closed') ||
+    (msg.includes('connection') && msg.includes('error')) ||
+    msg.includes('closed') ||
+    code === 'P1001' ||  // Unable to reach database
+    code === 'P1008' ||  // Operations timed out
+    code === 'P1017' ||  // Server closed connection
+    code === 'P2024'     // Connection pool timeout
+  );
+};
+
+/**
+ * Log connection error with debouncing to prevent spam
+ */
+const logConnectionError = (message) => {
+  const now = Date.now();
+  if (now - lastConnectionError > NEON_CONFIG.ERROR_LOG_DEBOUNCE_MS) {
+    lastConnectionError = now;
+    logger.warn(`[Neon] ${message}`);
+  }
+};
+
+/**
+ * Silent reconnection attempt
+ * Returns true if successful, false otherwise
+ */
+const silentReconnect = async () => {
+  try {
+    if (prisma) {
+      await prisma.$disconnect().catch(() => { });
+      await prisma.$connect();
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Heartbeat function to keep Neon connection alive
+ * @returns {Promise<boolean>} - true if connection is healthy
+ */
+const heartbeat = async () => {
+  if (!prisma) return false;
+
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    return true;
+  } catch (error) {
+    if (isConnectionError(error)) {
+      const reconnected = await silentReconnect();
+      if (!reconnected) {
+        logConnectionError('Heartbeat reconnection failed, will retry on next heartbeat');
+      }
+      return reconnected;
+    }
+    return false;
+  }
+};
+
+/**
+ * Start automatic heartbeat to prevent Neon idle disconnection
+ */
+const startHeartbeat = () => {
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+  }
+
+  heartbeatInterval = setInterval(heartbeat, NEON_CONFIG.HEARTBEAT_INTERVAL_MS);
+
+  if (heartbeatInterval.unref) {
+    heartbeatInterval.unref();
+  }
+
+  logger.info(`[Neon] Heartbeat started (every ${NEON_CONFIG.HEARTBEAT_INTERVAL_MS / 1000}s)`);
+};
+
+/**
+ * Stop heartbeat
+ */
+const stopHeartbeat = () => {
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+    heartbeatInterval = null;
+  }
 };
 
 /**
  * Initialize Prisma Client with error handling and logging
- * Implements singleton pattern to prevent multiple instances
- * Optimized for Neon serverless database with connection resiliency
  */
 export const initializePrisma = async () => {
   try {
@@ -31,33 +121,28 @@ export const initializePrisma = async () => {
 
     prisma = new PrismaClient({
       log: [
-        // Disable query logging - it adds significant overhead (100-500ms per query)
-        // { level: 'query', emit: 'event' },
         { level: 'error', emit: 'event' },
         { level: 'warn', emit: 'event' },
       ],
       errorFormat: 'minimal',
-      // Performance optimizations
-      datasources: {
-        db: {
-          url: process.env.DATABASE_URL,
-        },
-      },
     });
 
-    // Log database errors
     prisma.$on('error', (e) => {
-      logger.error(`Prisma Error: ${e.message}`);
+      if (isConnectionError(e)) {
+        logConnectionError(e.message);
+      } else {
+        logger.error(`Prisma Error: ${e.message}`);
+      }
     });
 
-    // Log warnings
     prisma.$on('warn', (e) => {
       logger.warn(`Prisma Warning: ${e.message}`);
     });
 
-    // Test database connection
     await prisma.$connect();
-    logger.info('✓ PostgreSQL connected successfully');
+    logger.info('✓ PostgreSQL connected successfully (Neon serverless)');
+
+    startHeartbeat();
 
     return prisma;
   } catch (error) {
@@ -68,7 +153,6 @@ export const initializePrisma = async () => {
 
 /**
  * Get Prisma client instance
- * Must call initializePrisma() first
  */
 export const getPrisma = () => {
   if (!prisma) {
@@ -81,6 +165,8 @@ export const getPrisma = () => {
  * Disconnect Prisma client gracefully
  */
 export const disconnectPrisma = async () => {
+  stopHeartbeat();
+
   if (prisma) {
     try {
       await prisma.$disconnect();
@@ -95,46 +181,26 @@ export const disconnectPrisma = async () => {
 
 /**
  * Execute a database query with automatic retry for connection errors
- * Handles Neon serverless connection drops gracefully
- * @param {Function} operation - Async function that performs the database operation
- * @param {number} maxRetries - Maximum retry attempts (default: 3)
- * @returns {Promise} - Query result
  */
-export const executeWithRetry = async (operation, maxRetries = 3) => {
+export const executeWithRetry = async (operation, maxRetries = NEON_CONFIG.MAX_RETRIES) => {
   const client = getPrisma();
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       return await operation(client);
     } catch (error) {
-      const isConnectionError =
-        error.message?.includes('Connection') ||
-        error.message?.includes('Closed') ||
-        error.message?.includes('connection') ||
-        error.code === 'P1001' || // Unable to reach database
-        error.code === 'P1008' || // Operations timed out
-        error.code === 'P1017' || // Server closed connection
-        error.code === 'P2024';   // Connection pool timeout
+      if (isConnectionError(error) && attempt < maxRetries) {
+        const delay = NEON_CONFIG.RETRY_BASE_DELAY_MS * Math.pow(2, attempt - 1);
 
-      if (isConnectionError && attempt < maxRetries) {
-        logger.warn(`Database connection error (attempt ${attempt}/${maxRetries}): ${error.message}. Retrying...`);
-
-        // Exponential backoff: 500ms, 1s, 2s...
-        await new Promise(resolve => setTimeout(resolve, 500 * Math.pow(2, attempt - 1)));
-
-        // Try to reconnect
-        try {
-          await client.$disconnect();
-          await client.$connect();
-          logger.info('Database reconnected successfully');
-        } catch (reconnectError) {
-          logger.warn(`Reconnection attempt failed: ${reconnectError.message}`);
+        if (attempt === 1) {
+          logConnectionError(`Connection error, retrying (${attempt}/${maxRetries})...`);
         }
 
+        await new Promise(resolve => setTimeout(resolve, delay));
+        await silentReconnect();
         continue;
       }
 
-      // Not a connection error or max retries reached
       throw error;
     }
   }
@@ -142,9 +208,6 @@ export const executeWithRetry = async (operation, maxRetries = 3) => {
 
 /**
  * Execute a database transaction with retry logic
- * @param {Function} callback - Transaction callback function
- * @param {number} maxRetries - Maximum retry attempts (default: 2)
- * @returns {Promise} - Transaction result
  */
 export const executeTransaction = async (callback, maxRetries = 2) => {
   const client = getPrisma();
@@ -153,27 +216,12 @@ export const executeTransaction = async (callback, maxRetries = 2) => {
     try {
       return await client.$transaction(callback);
     } catch (error) {
-      const isConnectionError =
-        error.message?.includes('Connection') ||
-        error.message?.includes('Closed') ||
-        error.message?.includes('connection') ||
-        error.code === 'P1001' ||
-        error.code === 'P1008' ||
-        error.code === 'P1017' ||
-        error.code === 'P2024';
-
-      if (isConnectionError && attempt < maxRetries) {
-        logger.warn(`Transaction failed due to connection error (attempt ${attempt}/${maxRetries}): ${error.message}. Retrying...`);
-        await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
-
-        // Try to reconnect
-        try {
-          await client.$disconnect();
-          await client.$connect();
-        } catch (reconnectError) {
-          logger.warn(`Reconnection failed: ${reconnectError.message}`);
+      if (isConnectionError(error) && attempt < maxRetries) {
+        if (attempt === 1) {
+          logConnectionError(`Transaction connection error, retrying...`);
         }
-
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+        await silentReconnect();
         continue;
       }
 
@@ -185,42 +233,23 @@ export const executeTransaction = async (callback, maxRetries = 2) => {
 
 /**
  * Health check for database connection
- * Returns true if connection is healthy, false otherwise
  */
 export const healthCheck = async () => {
   try {
     const client = getPrisma();
     await client.$queryRaw`SELECT 1`;
     return true;
-  } catch (error) {
-    logger.warn(`Database health check failed: ${error.message}`);
-    return false;
+  } catch {
+    const reconnected = await silentReconnect();
+    return reconnected;
   }
 };
 
 /**
- * Periodic connection keep-alive to prevent Neon from closing idle connections
- * Call this from a cron job every 2-3 minutes
+ * Manual keep-alive ping (for CRON jobs)
  */
 export const keepAlive = async () => {
-  try {
-    const client = getPrisma();
-    await client.$queryRaw`SELECT 1`;
-    return true;
-  } catch (error) {
-    logger.warn(`Keep-alive ping failed: ${error.message}`);
-
-    // Try to reconnect
-    try {
-      await client.$disconnect();
-      await client.$connect();
-      logger.info('Connection restored after keep-alive failure');
-      return true;
-    } catch (reconnectError) {
-      logger.error(`Failed to restore connection: ${reconnectError.message}`);
-      return false;
-    }
-  }
+  return heartbeat();
 };
 
 export default {
@@ -230,5 +259,7 @@ export default {
   executeTransaction,
   executeWithRetry,
   healthCheck,
-  keepAlive
+  keepAlive,
+  startHeartbeat,
+  stopHeartbeat,
 };

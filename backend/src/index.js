@@ -72,6 +72,23 @@ const startServer = async () => {
             const { initializeWebSocket } = await import('./config/websocket.js');
             initializeWebSocket(server);
 
+            // Warm the cache (pre-fetch common data for instant first requests)
+            try {
+                const smartCache = (await import('./utils/smartCache.js')).default;
+                const { getAllSettings } = await import('./services/settingsService.js');
+                const { getActiveBanners } = await import('./services/bannerService.js');
+                const { getCategories, listProducts } = await import('./services/productService.js');
+
+                await smartCache.warmCache({
+                    getSettings: getAllSettings,
+                    getBanners: getActiveBanners,
+                    getCategories: getCategories,
+                    getFeaturedProducts: () => listProducts({ featured: true, limit: 20 })
+                });
+            } catch (warmupError) {
+                logger.warn('Cache warm-up failed (non-fatal):', warmupError.message);
+            }
+
             logger.info('='.repeat(60));
             logger.info(`✅ Server successfully started!`);
             logger.info(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);

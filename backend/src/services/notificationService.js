@@ -91,7 +91,7 @@ export const notifyOrderPlaced = async (order) => {
         NotificationTypes.ORDER_PLACED,
         `Order Placed #${order.orderNumber}`,
         `Your order for ₵${order.total} has been placed successfully.`,
-        `/orders/${order.orderNumber}`
+        `/account/orders/${order.orderNumber}`
     );
 };
 
@@ -114,7 +114,7 @@ export const notifyOrderStatusChanged = async (order, oldStatus, newStatus) => {
         NotificationTypes.ORDER_STATUS,
         `Order Update #${order.orderNumber}`,
         `Your order ${message}`,
-        `/orders/${order.orderNumber}`
+        `/account/orders/${order.orderNumber}`
     );
 };
 
@@ -127,7 +127,7 @@ export const notifyPaymentSuccess = async (order) => {
         NotificationTypes.PAYMENT,
         `Payment Confirmed #${order.orderNumber}`,
         `We have received your payment of ₵${order.total}. We will start processing your order shortly.`,
-        `/orders/${order.orderNumber}`
+        `/account/orders/${order.orderNumber}`
     );
 };
 
@@ -140,7 +140,7 @@ export const notifyPasswordChanged = async (userId) => {
         NotificationTypes.SECURITY,
         'Security Alert: Password Changed',
         'Your password was recently changed. If this wasn\'t you, please contact support immediately.',
-        '/profile'
+        '/account/profile'
     );
 };
 
@@ -171,7 +171,7 @@ export const notifyOrderCancelled = async (order, reason = 'Payment not received
         NotificationTypes.ORDER_CANCELLED,
         `Order Cancelled #${order.orderNumber}`,
         `Your order has been automatically cancelled. Reason: ${reason}`,
-        `/orders/${order.orderNumber}`
+        `/account/orders/${order.orderNumber}`
     );
 };
 
@@ -372,7 +372,7 @@ export const notifyOrderRefunded = async (order) => {
         NotificationTypes.ORDER_REFUNDED,
         `Order Refunded #${order.orderNumber}`,
         `Your payment of ₵${order.total} has been refunded. It may take 3-5 business days to appear in your account.`,
-        `/orders/${order.orderNumber}`
+        `/account/orders/${order.orderNumber}`
     );
 };
 
@@ -385,7 +385,7 @@ export const notifyEmailVerified = async (userId) => {
         NotificationTypes.EMAIL_VERIFIED,
         'Email Verified! ✅',
         'Your email has been verified. You now have full access to all features.',
-        '/profile'
+        '/account/profile'
     );
 };
 
@@ -415,7 +415,7 @@ export const notifyReviewRejected = async (review, product, reason) => {
         NotificationTypes.REVIEW_REJECTED,
         'Review Not Approved',
         `Your review for "${product.name}" was not approved. ${reason || 'It may not meet our community guidelines.'}`,
-        '/profile/reviews'
+        '/account/profile'
     );
 };
 
