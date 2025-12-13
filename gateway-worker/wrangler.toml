@@ -1,0 +1,11 @@
+name = "wighaven-gateway"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Environment variables (set via wrangler secret or dashboard)
+# HF_TOKEN - Your HuggingFace token for private space access
+# PRIVATE_BACKEND_URL - Your HF backend URL (e.g., https://ben820-wighaven-backend.hf.space)
+
+[vars]
+PRIVATE_BACKEND_URL = "https://ben820-wighaven-backend.hf.space"
