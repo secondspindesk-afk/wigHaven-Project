@@ -111,7 +111,7 @@ class WebSocketManager {
             const ws = new WebSocket(`${wsUrl}/notifications`, ['access_token', token]);
 
             ws.onopen = () => {
-                console.log(`✅ [WebSocketManager] Connected to ${wsUrl}`);
+                // Don't log URL for security
                 this.state.isConnecting = false;
                 this.state.reconnectAttempts = 0;
 
@@ -181,7 +181,7 @@ class WebSocketManager {
                 const delay = this.getReconnectDelay(this.state.reconnectAttempts);
                 this.state.reconnectAttempts++;
 
-                console.log(`⏳ [WebSocketManager] Reconnecting in ${Math.round(delay / 1000)}s (attempt ${this.state.reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
+                // Reconnection logging disabled for security
 
                 this.state.reconnectTimeout = setTimeout(() => {
                     if (this.state.subscribers.size > 0) {

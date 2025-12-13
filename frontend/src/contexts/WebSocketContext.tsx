@@ -39,7 +39,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
      * Sync data after reconnection
      */
     const syncAfterReconnect = useCallback(() => {
-        console.log('🔄 Syncing data after WebSocket reconnection...');
+        // Silently sync after reconnection
         queryClient.invalidateQueries({ queryKey: ['notifications'] });
         queryClient.invalidateQueries({ queryKey: ['orders'] });
 
@@ -74,7 +74,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
 
             // Handle force logout
             if (message.type === 'FORCE_LOGOUT') {
-                console.warn('🔒 Force logout received:', message.reason);
+                // Force logout - clear tokens and redirect
                 tokenManager.clearTokens();
                 sessionStorage.setItem('maintenanceMode', 'true');
                 showToast(message.message, 'warning');
@@ -84,7 +84,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
 
             // Handle DATA_UPDATE (admin dashboard)
             if (message.type === 'DATA_UPDATE') {
-                console.log(`📊 DATA_UPDATE received: ${message.eventType}`, message.queryKeys);
+                // Data update - invalidate queries
                 message.queryKeys.forEach((queryKey: string[]) => {
                     queryClient.invalidateQueries({ queryKey });
                 });
@@ -93,7 +93,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
 
             // Handle notification
             const notification = message as Notification;
-            console.log('📬 Received notification:', notification.type);
+            // Notification received
 
             // Update notifications cache
             queryClient.setQueryData<NotificationsResponse>(['notifications'], (old) => {
@@ -169,13 +169,13 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         if (!user || hasSubscribedRef.current) return;
 
         hasSubscribedRef.current = true;
-        console.log('🔌 [WebSocketProvider] Subscribing to WebSocket (app root)');
+        // Subscribe to WebSocket
 
         const unsubscribeMessages = wsManager.subscribe(handleMessage);
         const unsubscribeConnect = wsManager.onConnect(syncAfterReconnect);
 
         return () => {
-            console.log('🔌 [WebSocketProvider] Unsubscribing from WebSocket');
+            // Unsubscribe on cleanup
             hasSubscribedRef.current = false;
             unsubscribeMessages();
             unsubscribeConnect();
