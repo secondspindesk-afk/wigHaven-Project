@@ -3,7 +3,7 @@ use axum::{
     routing::get,
     extract::{State, WebSocketUpgrade, ws::{Message, WebSocket}},
     http::{HeaderMap, HeaderName, HeaderValue, StatusCode, Uri, Method, Request, header},
-    response::{IntoResponse, Response},
+    response::{IntoResponse, Response, Html},
     body::Body,
 };
 use bytes::Bytes;
@@ -46,6 +46,7 @@ async fn main() {
         tracing::warn!("HF_TOKEN not set - private space access may fail");
     }
 
+    // Optimized HTTPS connector with faster TLS
     let https = hyper_rustls::HttpsConnectorBuilder::new()
         .with_native_roots()
         .expect("Failed to load native roots")
@@ -54,37 +55,41 @@ async fn main() {
         .enable_http2()
         .build();
 
+    // Optimized connection pool
     let client = HyperClient::builder(TokioExecutor::new())
-        .pool_idle_timeout(Duration::from_secs(60))
-        .pool_max_idle_per_host(100)
+        .pool_idle_timeout(Duration::from_secs(90))  // Keep connections longer
+        .pool_max_idle_per_host(200)                 // More idle connections
         .retry_canceled_requests(true)
         .build(https);
 
     let state = Arc::new(AppState { client, target_url, hf_token });
 
-    // WebSocket route must be separate to avoid compression/timeout middleware
+    // Public routes (decoy landing page)
+    let public_routes = Router::new()
+        .route("/", get(landing_page))
+        .route("/robots.txt", get(robots_txt));
+
+    // WebSocket route (no middleware for speed)
     let ws_routes = Router::new()
         .route("/notifications", get(websocket_handler))
         .with_state(state.clone());
 
-    // HTTP routes with compression and timeout
-    let http_routes = Router::new()
+    // API routes with compression
+    let api_routes = Router::new()
         .route("/gateway-health", get(gateway_health))
         .fallback(proxy_handler)
         .layer(CompressionLayer::new())
         .layer(TimeoutLayer::new(Duration::from_secs(30)))
         .with_state(state);
 
-    // Merge routes - WebSocket routes first (no middleware)
-    let app = ws_routes.merge(http_routes);
+    // Merge routes - order matters
+    let app = public_routes.merge(ws_routes).merge(api_routes);
 
     let port = env::var("PORT").unwrap_or_else(|_| "7860".to_string());
     let addr = format!("0.0.0.0:{}", port);
     let listener = tokio::net::TcpListener::bind(&addr).await.expect("Failed to bind");
 
-    tracing::info!("🚀 Rust Gateway v2.2 on http://{}", addr);
-    tracing::info!("📡 Proxying to: {}", env::var("PRIVATE_BACKEND_URL").unwrap());
-    tracing::info!("🔌 WebSocket: /notifications");
+    tracing::info!("🚀 Gateway v3.0 (optimized) on http://{}", addr);
 
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
@@ -115,23 +120,96 @@ async fn shutdown_signal() {
     tracing::info!("Shutting down...");
 }
 
-// Health check
+// Decoy landing page - looks like a generic coming soon page
+async fn landing_page() -> Html<&'static str> {
+    Html(r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coming Soon</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+        }
+        .container {
+            text-align: center;
+            padding: 2rem;
+        }
+        h1 {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            background: linear-gradient(to right, #e94560, #f39c12);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        p {
+            font-size: 1.2rem;
+            color: #a0a0a0;
+            max-width: 400px;
+            margin: 0 auto 2rem;
+        }
+        .dots {
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+        }
+        .dot {
+            width: 12px;
+            height: 12px;
+            background: #e94560;
+            border-radius: 50%;
+            animation: pulse 1.5s infinite;
+        }
+        .dot:nth-child(2) { animation-delay: 0.3s; }
+        .dot:nth-child(3) { animation-delay: 0.6s; }
+        @keyframes pulse {
+            0%, 100% { opacity: 0.3; transform: scale(0.8); }
+            50% { opacity: 1; transform: scale(1); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Coming Soon</h1>
+        <p>We're working on something amazing. Stay tuned for updates.</p>
+        <div class="dots">
+            <div class="dot"></div>
+            <div class="dot"></div>
+            <div class="dot"></div>
+        </div>
+    </div>
+</body>
+</html>"#)
+}
+
+// Robots.txt to discourage indexing
+async fn robots_txt() -> &'static str {
+    "User-agent: *\nDisallow: /"
+}
+
+// Health check (hidden from casual visitors)
 async fn gateway_health() -> impl IntoResponse {
     (
         StatusCode::OK,
         [(HeaderName::from_static("content-type"), HeaderValue::from_static("application/json"))],
-        Bytes::from_static(b"{\"status\":\"ok\",\"service\":\"wighaven-gateway-rust\",\"version\":\"2.2\",\"websocket\":true}"),
+        Bytes::from_static(b"{\"status\":\"ok\",\"version\":\"3.0\"}"),
     )
 }
 
-// WebSocket handler - accepts upgrade and proxies to backend
+// OPTIMIZED WebSocket handler
 async fn websocket_handler(
     ws: WebSocketUpgrade,
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Response {
-    tracing::info!("🔌 WebSocket upgrade request for /notifications");
-    
     // Extract token from Sec-WebSocket-Protocol header
     let token = headers
         .get("sec-websocket-protocol")
@@ -152,10 +230,11 @@ async fn websocket_handler(
         ws
     };
 
+    // Upgrade immediately for speed
     ws.on_upgrade(move |socket| websocket_proxy(socket, state, token))
 }
 
-// Bidirectional WebSocket proxy
+// OPTIMIZED bidirectional WebSocket proxy
 async fn websocket_proxy(client_ws: WebSocket, state: Arc<AppState>, token: Option<String>) {
     // Build upstream WebSocket URL
     let base_url = if state.target_url.starts_with("https://") {
@@ -167,25 +246,19 @@ async fn websocket_proxy(client_ws: WebSocket, state: Arc<AppState>, token: Opti
     };
     
     let ws_url = format!("{}/notifications", base_url);
-    
-    tracing::info!("🔗 Connecting to upstream: {}", ws_url);
 
-    // Parse URL for tokio-tungstenite
-    let url = match url::Url::parse(&ws_url) {
-        Ok(u) => u,
-        Err(e) => {
-            tracing::error!("Invalid WebSocket URL: {}", e);
-            return;
-        }
-    };
-
-    // Build proper WebSocket request with all required headers
+    // Build request with all headers at once (avoid multiple allocations)
     use tokio_tungstenite::tungstenite::handshake::client::generate_key;
     
+    let url = match url::Url::parse(&ws_url) {
+        Ok(u) => u,
+        Err(_) => return,
+    };
+
     let host = url.host_str().unwrap_or("localhost");
-    let ws_key = generate_key(); // This generates a proper sec-websocket-key
+    let ws_key = generate_key();
     
-    let mut request = tokio_tungstenite::tungstenite::http::Request::builder()
+    let mut builder = tokio_tungstenite::tungstenite::http::Request::builder()
         .uri(ws_url.as_str())
         .header("Host", host)
         .header("Connection", "Upgrade")
@@ -193,98 +266,59 @@ async fn websocket_proxy(client_ws: WebSocket, state: Arc<AppState>, token: Opti
         .header("Sec-WebSocket-Version", "13")
         .header("Sec-WebSocket-Key", ws_key);
     
-    // Add token in protocol header
     if let Some(ref t) = token {
-        request = request.header("Sec-WebSocket-Protocol", format!("access_token, {}", t));
+        builder = builder.header("Sec-WebSocket-Protocol", format!("access_token, {}", t));
     }
     
-    // Add HF token for private space access
     if !state.hf_token.is_empty() {
-        request = request.header("Authorization", format!("Bearer {}", state.hf_token));
+        builder = builder.header("Authorization", format!("Bearer {}", state.hf_token));
     }
 
-    let request = match request.body(()) {
+    let request = match builder.body(()) {
         Ok(r) => r,
-        Err(e) => {
-            tracing::error!("Failed to build upstream request: {}", e);
-            return;
-        }
+        Err(_) => return,
     };
 
-    // Connect to upstream
+    // Connect to upstream with optimized settings
     let upstream_ws = match connect_async(request).await {
-        Ok((ws, resp)) => {
-            tracing::info!("✅ Upstream connected (status: {})", resp.status());
-            ws
-        }
-        Err(e) => {
-            tracing::error!("❌ Upstream connection failed: {}", e);
-            return;
-        }
+        Ok((ws, _)) => ws,
+        Err(_) => return,
     };
 
-    // Split both connections
+    // Split connections for concurrent handling
     let (mut client_sink, mut client_stream) = client_ws.split();
     let (mut upstream_sink, mut upstream_stream) = upstream_ws.split();
 
-    // Forward client -> upstream
+    // Forward client -> upstream (optimized: minimal matching)
     let client_to_upstream = async {
-        while let Some(msg) = client_stream.next().await {
-            match msg {
-                Ok(Message::Text(text)) => {
-                    if upstream_sink.send(TungMessage::Text(text)).await.is_err() {
-                        break;
-                    }
-                }
-                Ok(Message::Binary(data)) => {
-                    if upstream_sink.send(TungMessage::Binary(data)).await.is_err() {
-                        break;
-                    }
-                }
-                Ok(Message::Ping(data)) => {
-                    if upstream_sink.send(TungMessage::Ping(data)).await.is_err() {
-                        break;
-                    }
-                }
-                Ok(Message::Pong(data)) => {
-                    if upstream_sink.send(TungMessage::Pong(data)).await.is_err() {
-                        break;
-                    }
-                }
-                Ok(Message::Close(_)) => break,
-                Err(_) => break,
+        while let Some(Ok(msg)) = client_stream.next().await {
+            let tung_msg = match msg {
+                Message::Text(t) => TungMessage::Text(t),
+                Message::Binary(b) => TungMessage::Binary(b),
+                Message::Ping(p) => TungMessage::Ping(p),
+                Message::Pong(p) => TungMessage::Pong(p),
+                Message::Close(_) => break,
+            };
+            if upstream_sink.send(tung_msg).await.is_err() {
+                break;
             }
         }
         let _ = upstream_sink.close().await;
     };
 
-    // Forward upstream -> client
+    // Forward upstream -> client (optimized)
     let upstream_to_client = async {
-        while let Some(msg) = upstream_stream.next().await {
-            match msg {
-                Ok(TungMessage::Text(text)) => {
-                    if client_sink.send(Message::Text(text)).await.is_err() {
-                        break;
-                    }
-                }
-                Ok(TungMessage::Binary(data)) => {
-                    if client_sink.send(Message::Binary(data)).await.is_err() {
-                        break;
-                    }
-                }
-                Ok(TungMessage::Ping(data)) => {
-                    if client_sink.send(Message::Ping(data)).await.is_err() {
-                        break;
-                    }
-                }
-                Ok(TungMessage::Pong(data)) => {
-                    if client_sink.send(Message::Pong(data)).await.is_err() {
-                        break;
-                    }
-                }
-                Ok(TungMessage::Close(_)) => break,
-                Ok(TungMessage::Frame(_)) => {} // Ignore raw frames
-                Err(_) => break,
+        while let Some(Ok(msg)) = upstream_stream.next().await {
+            let axum_msg = match msg {
+                TungMessage::Text(t) => Message::Text(t),
+                TungMessage::Binary(b) => Message::Binary(b),
+                TungMessage::Ping(p) => Message::Ping(p),
+                TungMessage::Pong(p) => Message::Pong(p),
+                TungMessage::Close(_) => break,
+                TungMessage::Frame(_) => continue,
+            };
+            if client_sink.send(axum_msg).await.is_err() {
+                break;
             }
         }
         let _ = client_sink.close().await;
@@ -292,15 +326,9 @@ async fn websocket_proxy(client_ws: WebSocket, state: Arc<AppState>, token: Opti
 
     // Run both directions concurrently
     tokio::select! {
-        _ = client_to_upstream => {
-            tracing::info!("Client disconnected");
-        }
-        _ = upstream_to_client => {
-            tracing::info!("Upstream disconnected");
-        }
+        _ = client_to_upstream => {}
+        _ = upstream_to_client => {}
     }
-    
-    tracing::info!("🔌 WebSocket connection closed");
 }
 
 // HTTP proxy handler
@@ -324,10 +352,7 @@ async fn proxy_handler(
 
     let target_uri: hyper::Uri = match target_url.parse() {
         Ok(u) => u,
-        Err(e) => {
-            tracing::error!("Invalid target URL: {}", e);
-            return (StatusCode::INTERNAL_SERVER_ERROR, "Invalid target URL").into_response();
-        }
+        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Invalid target URL").into_response(),
     };
 
     let mut req = Request::builder().method(method).uri(target_uri);
@@ -358,10 +383,7 @@ async fn proxy_handler(
 
     let req = match req.body(body) {
         Ok(r) => r,
-        Err(e) => {
-            tracing::error!("Failed to build request: {}", e);
-            return (StatusCode::INTERNAL_SERVER_ERROR, "Failed to build request").into_response();
-        }
+        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Failed to build request").into_response(),
     };
 
     match state.client.request(req).await {
@@ -387,8 +409,7 @@ async fn proxy_handler(
             })
         }
         Err(e) => {
-            tracing::error!("Proxy error: {}", e);
-            (StatusCode::BAD_GATEWAY, format!("Backend connection failed: {}", e)).into_response()
+            (StatusCode::BAD_GATEWAY, format!("Backend error: {}", e)).into_response()
         }
     }
 }

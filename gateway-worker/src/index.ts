@@ -3,10 +3,6 @@
  * 
  * Cloudflare Worker that proxies requests to private HuggingFace Space backend.
  * Supports both HTTP requests and WebSocket connections.
- * 
- * Environment Variables (set via wrangler secret):
- * - HF_TOKEN: HuggingFace token for private space access
- * - PRIVATE_BACKEND_URL: Backend URL (set in wrangler.toml)
  */
 
 export interface Env {
@@ -14,10 +10,18 @@ export interface Env {
     PRIVATE_BACKEND_URL: string;
 }
 
-// Headers to skip when proxying (hop-by-hop headers)
+// CORS headers for browser requests
+const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, PATCH, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-auth-token, x-forwarded-auth, x-session-id, x-request-id, cache-control, pragma, accept, origin, referer, user-agent',
+    'Access-Control-Max-Age': '86400',
+};
+
+// Headers to skip when proxying
 const SKIP_HEADERS = new Set([
     'host', 'connection', 'keep-alive', 'proxy-authenticate',
-    'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade',
+    'proxy-authorization', 'te', 'trailer', 'transfer-encoding',
     'cf-connecting-ip', 'cf-ipcountry', 'cf-ray', 'cf-visitor',
     'x-forwarded-for', 'x-forwarded-proto', 'x-real-ip'
 ]);
@@ -26,15 +30,26 @@ export default {
     async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
         const url = new URL(request.url);
 
+        // Handle CORS preflight requests
+        if (request.method === 'OPTIONS') {
+            return new Response(null, {
+                status: 204,
+                headers: corsHeaders
+            });
+        }
+
         // Health check endpoint
         if (url.pathname === '/gateway-health') {
             return new Response(JSON.stringify({
                 status: 'ok',
                 service: 'wighaven-gateway-cf',
-                version: '1.0.0',
+                version: '1.3.0',
                 websocket: true
             }), {
-                headers: { 'Content-Type': 'application/json' }
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...corsHeaders
+                }
             });
         }
 
@@ -55,14 +70,11 @@ export default {
 async function handleHTTP(request: Request, env: Env, url: URL): Promise<Response> {
     const targetUrl = `${env.PRIVATE_BACKEND_URL}${url.pathname}${url.search}`;
 
-    // Build headers for upstream request
     const headers = new Headers();
 
-    // Forward original headers, skip hop-by-hop
     for (const [key, value] of request.headers.entries()) {
         const keyLower = key.toLowerCase();
         if (!SKIP_HEADERS.has(keyLower)) {
-            // Move Authorization to x-forwarded-auth for JWT passthrough
             if (keyLower === 'authorization') {
                 headers.set('x-forwarded-auth', value);
             } else {
@@ -71,13 +83,11 @@ async function handleHTTP(request: Request, env: Env, url: URL): Promise<Respons
         }
     }
 
-    // Also check x-auth-token and forward it
     const authToken = request.headers.get('x-auth-token');
     if (authToken && !headers.has('x-forwarded-auth')) {
         headers.set('x-forwarded-auth', `Bearer ${authToken}`);
     }
 
-    // Add HF token for private space access
     if (env.HF_TOKEN) {
         headers.set('Authorization', `Bearer ${env.HF_TOKEN}`);
     }
@@ -87,12 +97,17 @@ async function handleHTTP(request: Request, env: Env, url: URL): Promise<Respons
             method: request.method,
             headers,
             body: request.body,
-            // @ts-ignore - Cloudflare-specific option
-            duplex: 'half'
         });
 
-        // Build response headers, skip hop-by-hop
+        // Build response with CORS headers
         const responseHeaders = new Headers();
+
+        // Add CORS headers first
+        for (const [key, value] of Object.entries(corsHeaders)) {
+            responseHeaders.set(key, value);
+        }
+
+        // Copy response headers (skip hop-by-hop)
         for (const [key, value] of response.headers.entries()) {
             if (!SKIP_HEADERS.has(key.toLowerCase())) {
                 responseHeaders.set(key, value);
@@ -111,7 +126,10 @@ async function handleHTTP(request: Request, env: Env, url: URL): Promise<Respons
             message: error instanceof Error ? error.message : 'Unknown error'
         }), {
             status: 502,
-            headers: { 'Content-Type': 'application/json' }
+            headers: {
+                'Content-Type': 'application/json',
+                ...corsHeaders
+            }
         });
     }
 }
@@ -120,7 +138,6 @@ async function handleHTTP(request: Request, env: Env, url: URL): Promise<Respons
  * Handle WebSocket upgrade - proxy to backend WebSocket
  */
 async function handleWebSocket(request: Request, env: Env, url: URL): Promise<Response> {
-    // Extract token from Sec-WebSocket-Protocol header
     const protocol = request.headers.get('sec-websocket-protocol');
     let token: string | null = null;
 
@@ -131,80 +148,81 @@ async function handleWebSocket(request: Request, env: Env, url: URL): Promise<Re
         }
     }
 
-    // Build upstream WebSocket URL
     const backendUrl = env.PRIVATE_BACKEND_URL
         .replace('https://', 'wss://')
         .replace('http://', 'ws://');
     const targetUrl = `${backendUrl}${url.pathname}`;
 
-    // Build headers for upstream WebSocket
-    const headers = new Headers();
+    console.log(`[WS] Proxying to: ${targetUrl}`);
 
-    // Forward token in protocol header
+    const upstreamHeaders = new Headers();
+
     if (token) {
-        headers.set('Sec-WebSocket-Protocol', `access_token, ${token}`);
+        upstreamHeaders.set('Sec-WebSocket-Protocol', `access_token, ${token}`);
     }
 
-    // Add HF token for private space access
     if (env.HF_TOKEN) {
-        headers.set('Authorization', `Bearer ${env.HF_TOKEN}`);
+        upstreamHeaders.set('Authorization', `Bearer ${env.HF_TOKEN}`);
     }
 
     try {
-        // Connect to upstream WebSocket
         const upstreamResponse = await fetch(targetUrl, {
-            headers,
-            // @ts-ignore - Cloudflare WebSocket upgrade
-            upgrade: 'websocket'
+            headers: upstreamHeaders,
         });
 
         if (upstreamResponse.status !== 101) {
-            return new Response('Upstream WebSocket connection failed', {
-                status: 502
+            console.error(`[WS] Upstream rejected upgrade: ${upstreamResponse.status}`);
+            return new Response(`Upstream WebSocket failed: ${upstreamResponse.status}`, {
+                status: 502,
+                headers: corsHeaders
             });
         }
 
-        // @ts-ignore - Cloudflare WebSocket
-        const upstreamSocket = upstreamResponse.webSocket;
-        if (!upstreamSocket) {
-            return new Response('No WebSocket from upstream', { status: 502 });
+        // @ts-ignore - Cloudflare-specific API
+        const upstreamWs = upstreamResponse.webSocket;
+        if (!upstreamWs) {
+            console.error('[WS] No webSocket in upstream response');
+            return new Response('No WebSocket from upstream', {
+                status: 502,
+                headers: corsHeaders
+            });
         }
 
-        // Accept the upstream connection
-        upstreamSocket.accept();
+        upstreamWs.accept();
 
-        // Create WebSocket pair for client
-        const [client, server] = Object.values(new WebSocketPair());
+        const pair = new WebSocketPair();
+        const [clientWs, serverWs] = Object.values(pair);
 
-        // Accept the server side
-        server.accept();
+        serverWs.accept();
 
-        // Bidirectional forwarding
-        server.addEventListener('message', (event) => {
+        serverWs.addEventListener('message', (event: MessageEvent) => {
             try {
-                upstreamSocket.send(event.data);
+                if (upstreamWs.readyState === WebSocket.OPEN) {
+                    upstreamWs.send(event.data);
+                }
             } catch (e) {
-                console.error('Error forwarding to upstream:', e);
+                console.error('[WS] Error forwarding to upstream:', e);
             }
         });
 
-        server.addEventListener('close', () => {
-            upstreamSocket.close();
+        serverWs.addEventListener('close', (event: CloseEvent) => {
+            upstreamWs.close(event.code, event.reason);
         });
 
-        upstreamSocket.addEventListener('message', (event: MessageEvent) => {
+        upstreamWs.addEventListener('message', (event: MessageEvent) => {
             try {
-                server.send(event.data);
+                if (serverWs.readyState === WebSocket.OPEN) {
+                    serverWs.send(event.data);
+                }
             } catch (e) {
-                console.error('Error forwarding to client:', e);
+                console.error('[WS] Error forwarding to client:', e);
             }
         });
 
-        upstreamSocket.addEventListener('close', () => {
-            server.close();
+        upstreamWs.addEventListener('close', (event: CloseEvent) => {
+            serverWs.close(event.code, event.reason);
         });
 
-        // Return the client WebSocket with protocol if token was provided
         const responseHeaders = new Headers();
         if (token) {
             responseHeaders.set('Sec-WebSocket-Protocol', 'access_token');
@@ -212,13 +230,17 @@ async function handleWebSocket(request: Request, env: Env, url: URL): Promise<Re
 
         return new Response(null, {
             status: 101,
-            // @ts-ignore - Cloudflare WebSocket
-            webSocket: client,
+            statusText: 'Switching Protocols',
+            // @ts-ignore - Cloudflare-specific API
+            webSocket: clientWs,
             headers: responseHeaders
         });
 
     } catch (error) {
-        console.error('WebSocket proxy error:', error);
-        return new Response('WebSocket connection failed', { status: 502 });
+        console.error('[WS] Proxy error:', error);
+        return new Response(`WebSocket connection failed: ${error instanceof Error ? error.message : 'Unknown'}`, {
+            status: 502,
+            headers: corsHeaders
+        });
     }
 }
