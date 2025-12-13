@@ -37,6 +37,15 @@ export function useLogin() {
             navigate('/shop');
         },
         onError: (error: any) => {
+            const responseData = error.response?.data;
+
+            // Check if user needs to verify email - redirect to resend page
+            if (responseData?.needsVerification && responseData?.email) {
+                showToast('Please verify your email to continue.', 'warning');
+                navigate('/please-verify-email', { state: { email: responseData.email } });
+                return;
+            }
+
             let message = 'Login failed';
 
             // 1. Check for standardized error format: { error: { message: "..." } }

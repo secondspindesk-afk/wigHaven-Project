@@ -22,6 +22,8 @@ export const NotificationTypes = {
     REVIEW_APPROVED: 'review_approved',
     REVIEW_REJECTED: 'review_rejected',
     SALE_ALERT: 'sale_alert',
+    SUPPORT_REPLY: 'support_reply',
+    SUPPORT_RESOLVED: 'support_resolved',
 
     // Admin notifications (CRITICAL BUSINESS EVENTS ONLY)
     ADMIN_NEW_ORDER: 'admin_new_order',
@@ -30,6 +32,7 @@ export const NotificationTypes = {
     ADMIN_NEW_REVIEW: 'admin_new_review',
     ADMIN_PAYMENT_FAILED: 'admin_payment_failed',
     ADMIN_MILESTONE: 'admin_milestone',
+    ADMIN_SUPPORT_REPLY: 'admin_support_reply',
 };
 
 /**
@@ -356,6 +359,32 @@ export const notifyAdminMilestone = async (type, threshold, currentValue) => {
     );
 };
 
+/**
+ * Notify admins: User replied to support ticket (needs attention)
+ */
+export const notifyAdminSupportReply = async (ticket, userName) => {
+    const displayName = userName || 'A customer';
+    return notifyAllAdmins(
+        NotificationTypes.ADMIN_SUPPORT_REPLY,
+        `💬 Support Reply - Ticket #${ticket.ticketNumber}`,
+        `${displayName} replied to: "${ticket.subject.substring(0, 40)}${ticket.subject.length > 40 ? '...' : ''}"`,
+        `/admin/support?ticket=${ticket.id}`
+    );
+};
+
+/**
+ * Notify admins: New support ticket created
+ */
+export const notifyAdminNewTicket = async (ticket, userName) => {
+    const displayName = userName || 'A customer';
+    return notifyAllAdmins(
+        NotificationTypes.ADMIN_SUPPORT_REPLY, // Reuse type for frontend compatibility
+        `🆕 New Support Ticket #${ticket.ticketNumber}`,
+        `${displayName} created ticket: "${ticket.subject.substring(0, 40)}${ticket.subject.length > 40 ? '...' : ''}"`,
+        `/admin/support?ticket=${ticket.id}`
+    );
+};
+
 // ============================================
 // USER NOTIFICATIONS (PERSONAL ACTIVITY)
 // ============================================
@@ -440,6 +469,42 @@ export const notifySaleAlert = async (userId, title, message, link) => {
         title,
         message,
         link
+    );
+};
+
+/**
+ * Notify user of admin reply to their support ticket
+ * @param {string} userId - User ID
+ * @param {object} ticket - Support ticket with ticketNumber
+ * @returns {Promise} Notification object
+ */
+export const notifySupportReply = async (userId, ticket) => {
+    if (!userId) return null;
+
+    return createNotification(
+        userId,
+        NotificationTypes.SUPPORT_REPLY,
+        `Support Reply - Ticket #${ticket.ticketNumber}`,
+        `Our team has responded to your support request: "${ticket.subject.substring(0, 50)}${ticket.subject.length > 50 ? '...' : ''}"`,
+        `/account/support/${ticket.id}`
+    );
+};
+
+/**
+ * Notify user that their support ticket has been resolved
+ * @param {string} userId - User ID
+ * @param {object} ticket - Support ticket with ticketNumber
+ * @returns {Promise} Notification object
+ */
+export const notifySupportResolved = async (userId, ticket) => {
+    if (!userId) return null;
+
+    return createNotification(
+        userId,
+        NotificationTypes.SUPPORT_RESOLVED,
+        `Ticket #${ticket.ticketNumber} Resolved`,
+        `Your support request "${ticket.subject.substring(0, 50)}${ticket.subject.length > 50 ? '...' : ''}" has been marked as resolved.`,
+        `/account/support/${ticket.id}`
     );
 };
 
@@ -535,6 +600,8 @@ export default {
     notifyEmailVerified,
     notifyPromotionalCampaign,
     notifySaleAlert,
+    notifySupportReply,
+    notifySupportResolved,
 
     // Admin notifications (CRITICAL ONLY)
     notifyAdminNewOrder,
@@ -543,6 +610,7 @@ export default {
     notifyAdminNewReview,
     notifyAdminPaymentFailed,
     notifyAdminMilestone,
+    notifyAdminSupportReply,
 
     // Utilities
     getUserNotifications,

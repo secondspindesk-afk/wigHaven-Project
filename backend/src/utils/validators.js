@@ -103,8 +103,8 @@ export const createProductSchema = Joi.object({
         'string.max': 'Product name must not exceed 255 characters',
         'any.required': 'Product name is required',
     }),
-    description: Joi.string().min(10).required().messages({
-        'string.min': 'Product description must be at least 10 characters',
+    description: Joi.string().min(3).required().messages({
+        'string.min': 'Product description must be at least 3 characters',
         'any.required': 'Product description is required',
     }),
     // Accept both snake_case and camelCase
@@ -215,6 +215,7 @@ export const validateRequest = (schema) => {
             }));
 
             logger.warn(`❌ Validation failed for ${req.path}`);
+            logger.warn(`Validation errors: ${JSON.stringify(details)}`);
 
             return res.status(400).json({
                 success: false,

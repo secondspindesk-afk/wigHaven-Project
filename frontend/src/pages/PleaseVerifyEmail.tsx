@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useLocation, Link } from 'react-router-dom';
+import { useLocation, Link, useNavigate } from 'react-router-dom';
 import { Mail, Loader2, CheckCircle2 } from 'lucide-react';
 import { authService } from '@/lib/api/auth';
 import { useToast } from '@/contexts/ToastContext';
@@ -8,6 +8,7 @@ import { motion } from 'framer-motion';
 
 export default function PleaseVerifyEmail() {
     const location = useLocation();
+    const navigate = useNavigate();
     const email = location.state?.email || 'your email';
     const [isResending, setIsResending] = useState(false);
     const [justResent, setJustResent] = useState(false);
@@ -16,7 +17,15 @@ export default function PleaseVerifyEmail() {
     const handleResend = async () => {
         setIsResending(true);
         try {
-            await authService.resendVerificationEmail(email);
+            const response = await authService.resendVerificationEmail(email);
+
+            // Check if user is already verified - redirect to login
+            if ((response as any).alreadyVerified) {
+                showToast('Your email is already verified! Redirecting to login...', 'success');
+                setTimeout(() => navigate('/login'), 1500);
+                return;
+            }
+
             showToast('Verification link sent!', 'success');
             setJustResent(true);
             setTimeout(() => setJustResent(false), 5000);

@@ -12,6 +12,7 @@ export interface SupportTicket {
     updatedAt: string;
     messages: SupportMessage[];
     user?: User;
+    _count?: { messages: number }; // Message count from Prisma
 }
 
 export interface SupportMessage {

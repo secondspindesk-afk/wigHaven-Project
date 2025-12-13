@@ -5,7 +5,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useRegister } from '@/lib/hooks/useRegister';
 import { useUser } from '@/lib/hooks/useUser';
 import { registerSchema, RegisterFormData } from '@/lib/validators';
-import { Eye, EyeOff, Loader2, ArrowRight } from 'lucide-react';
+import { Eye, EyeOff, ArrowRight } from 'lucide-react';
+import BrandedSpinner from '@/components/ui/BrandedSpinner';
 import AuthHeader from '@/components/ui/AuthHeader';
 import PasswordStrengthMeter from '@/components/ui/PasswordStrengthMeter';
 import { motion } from 'framer-motion';
@@ -171,7 +172,7 @@ export default function Register() {
                     >
                         {isLoading ? (
                             <>
-                                <Loader2 className="w-4 h-4 animate-spin" />
+                                <BrandedSpinner size="xs" />
                                 <span>Creating Account...</span>
                             </>
                         ) : (

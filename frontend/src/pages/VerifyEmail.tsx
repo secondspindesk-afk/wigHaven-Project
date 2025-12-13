@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { useVerifyEmail } from '@/lib/hooks/useVerifyEmail';
 import { Loader2, CheckCircle2, XCircle, ArrowRight } from 'lucide-react';
 import AuthHeader from '@/components/ui/AuthHeader';
@@ -9,10 +9,12 @@ import { useToast } from '@/contexts/ToastContext';
 
 export default function VerifyEmail() {
     const [searchParams] = useSearchParams();
+    const navigate = useNavigate();
     const token = searchParams.get('token');
     const verifyEmailMutation = useVerifyEmail();
     const [resendEmail, setResendEmail] = useState('');
     const [isResending, setIsResending] = useState(false);
+    const [countdown, setCountdown] = useState(3);
     const { showToast } = useToast();
 
     useEffect(() => {
@@ -22,6 +24,17 @@ export default function VerifyEmail() {
         }
     }, [token]); // Don't add mutation to deps - we check status instead
 
+    // Auto-redirect countdown on success
+    useEffect(() => {
+        if (verifyEmailMutation.isSuccess && countdown > 0) {
+            const timer = setTimeout(() => setCountdown(c => c - 1), 1000);
+            return () => clearTimeout(timer);
+        }
+        if (countdown === 0) {
+            navigate('/login');
+        }
+    }, [verifyEmailMutation.isSuccess, countdown, navigate]);
+
     const handleResendVerification = async () => {
         if (!resendEmail || !resendEmail.includes('@')) {
             showToast('Please enter a valid email address', 'error');
@@ -29,7 +42,15 @@ export default function VerifyEmail() {
         }
         setIsResending(true);
         try {
-            await authService.resendVerificationEmail(resendEmail);
+            const response = await authService.resendVerificationEmail(resendEmail);
+
+            // Check if already verified - redirect to login
+            if (response.alreadyVerified) {
+                showToast('Your email is already verified! Redirecting to login...', 'success');
+                setTimeout(() => navigate('/login'), 1500);
+                return;
+            }
+
             showToast('Verification email sent! Check your inbox.', 'success');
             setResendEmail('');
         } catch (error: any) {
@@ -91,11 +112,18 @@ export default function VerifyEmail() {
                             <h3 className="mt-6 text-lg font-bold text-white uppercase tracking-widest">Access Granted</h3>
                             <p className="mt-2 text-xs text-zinc-400 font-mono">Your email has been successfully verified.</p>
 
+                            <div className="mt-6 text-center">
+                                <p className="text-xs text-zinc-500 font-mono">
+                                    Redirecting to login in {countdown}...
+                                </p>
+                                <Loader2 className="w-4 h-4 text-zinc-500 animate-spin mx-auto mt-2" />
+                            </div>
+
                             <Link
                                 to="/login"
-                                className="w-full bg-white text-black font-bold text-xs uppercase tracking-widest py-4 rounded-lg hover:bg-zinc-200 transition-all mt-8 flex items-center justify-center gap-2 group"
+                                className="w-full bg-white text-black font-bold text-xs uppercase tracking-widest py-4 rounded-lg hover:bg-zinc-200 transition-all mt-6 flex items-center justify-center gap-2 group"
                             >
-                                <span>Proceed to Login</span>
+                                <span>Proceed to Login Now</span>
                                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                             </Link>
                         </motion.div>

@@ -4,6 +4,7 @@ import { authenticateToken, requireAdmin } from '../middleware/auth.js';
 import reviewController from '../controllers/reviewController.js';
 import { validateRequest } from '../utils/validators.js';
 import rateLimit from 'express-rate-limit';
+import { shortCache } from '../middleware/cacheControl.js';
 
 const router = express.Router();
 
@@ -41,8 +42,8 @@ const reviewRateLimit = rateLimit({
     keyGenerator: (req) => req.user?.id || req.ip
 });
 
-// Public: Get reviews for a product
-router.get('/product/:productId', reviewController.getProductReviews);
+// Public: Get reviews for a product (with cache - reviews change but short TTL is fine)
+router.get('/product/:productId', shortCache, reviewController.getProductReviews);
 
 // Protected: Create a review (with rate limiting and validation)
 router.post('/', authenticateToken, reviewRateLimit, validateRequest(createReviewSchema), reviewController.createReview);

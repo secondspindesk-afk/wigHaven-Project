@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useOrders } from '@/lib/hooks/useOrders';
 import { useCurrencyContext } from '@/lib/context/CurrencyContext';
 import { Link } from 'react-router-dom';
-import { Loader2, Package, ChevronRight, ChevronLeft } from 'lucide-react';
+import { Package, ChevronRight, ChevronLeft } from 'lucide-react';
+import SectionLoader from '@/components/ui/SectionLoader';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
 
 export default function Orders() {
@@ -14,11 +15,7 @@ export default function Orders() {
     const isMobile = useIsMobile();
 
     if (isLoading) {
-        return (
-            <div className="flex items-center justify-center min-h-[400px]">
-                <Loader2 className="w-8 h-8 animate-spin text-zinc-500" />
-            </div>
-        );
+        return <SectionLoader className="min-h-[400px]" />;
     }
 
     if (orders.length === 0 && page === 1) {
@@ -57,9 +54,9 @@ export default function Orders() {
                                 <p className="text-xs text-zinc-500">{new Date(order.created_at).toLocaleDateString()}</p>
                             </div>
                             <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${order.status === 'delivered' ? 'bg-green-500/10 text-green-400' :
-                                    order.status === 'processing' ? 'bg-blue-500/10 text-blue-400' :
-                                        order.status === 'cancelled' ? 'bg-red-500/10 text-red-400' :
-                                            'bg-zinc-800 text-zinc-400'
+                                order.status === 'processing' ? 'bg-blue-500/10 text-blue-400' :
+                                    order.status === 'cancelled' ? 'bg-red-500/10 text-red-400' :
+                                        'bg-zinc-800 text-zinc-400'
                                 }`}>
                                 {order.status}
                             </span>

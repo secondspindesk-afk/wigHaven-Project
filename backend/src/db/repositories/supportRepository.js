@@ -31,18 +31,27 @@ export const createTicket = async (data) => {
 export const addMessage = async (data) => {
     try {
         const prisma = getPrisma();
-        return await prisma.supportMessage.create({
-            data,
-            include: {
-                sender: {
-                    select: {
-                        firstName: true,
-                        lastName: true,
-                        role: true
+        // Use transaction to add message AND update ticket's updatedAt
+        const [message] = await prisma.$transaction([
+            prisma.supportMessage.create({
+                data,
+                include: {
+                    sender: {
+                        select: {
+                            firstName: true,
+                            lastName: true,
+                            role: true
+                        }
                     }
                 }
-            }
-        });
+            }),
+            // Touch the ticket to update its 'updatedAt' timestamp
+            prisma.supportTicket.update({
+                where: { id: data.ticketId },
+                data: { updatedAt: new Date() }
+            })
+        ]);
+        return message;
     } catch (error) {
         logger.error('Error adding support message:', error);
         throw error;

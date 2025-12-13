@@ -16,7 +16,7 @@ export const authenticateToken = async (req, res, next) => {
         const token = req.headers['x-auth-token'] || extractTokenFromHeader(authHeader);
 
         if (!token) {
-            throw new UnauthorizedError('Access token required');
+            throw new UnauthorizedError('Please log in to continue');
         }
 
         // Verify token FIRST (synchronous, no DB needed)
@@ -111,12 +111,25 @@ export const optionalAuth = async (req, res, next) => {
         const decoded = verifyToken(token);
 
         if (decoded && decoded.sub) {
-            req.user = {
-                id: decoded.sub,
-                email: decoded.email,
-                role: decoded.role,
-            };
-            req.token = token;
+            // Check if user is still active before treating them as authenticated
+            const prisma = getPrisma();
+            const user = await prisma.user.findUnique({
+                where: { id: decoded.sub },
+                select: { isActive: true }
+            });
+
+            // Only set req.user if user exists and is active
+            if (user && user.isActive) {
+                req.user = {
+                    id: decoded.sub,
+                    email: decoded.email,
+                    role: decoded.role,
+                };
+                req.token = token;
+            } else {
+                // User deleted or deactivated - treat as unauthenticated
+                req.user = null;
+            }
         } else {
             req.user = null;
         }

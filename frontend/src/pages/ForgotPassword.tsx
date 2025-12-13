@@ -4,7 +4,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { Link } from 'react-router-dom';
 import { z } from 'zod';
 import { authService } from '@/lib/api/auth';
-import { Loader2, ArrowLeft, CheckCircle2, ArrowRight } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, ArrowRight } from 'lucide-react';
+import BrandedSpinner from '@/components/ui/BrandedSpinner';
 import AuthHeader from '@/components/ui/AuthHeader';
 import { motion } from 'framer-motion';
 
@@ -97,7 +98,7 @@ export default function ForgotPassword() {
                             >
                                 {isLoading ? (
                                     <>
-                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                        <BrandedSpinner size="xs" />
                                         <span>Sending Link...</span>
                                     </>
                                 ) : (

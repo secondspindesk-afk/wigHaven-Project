@@ -2,7 +2,7 @@
  * Analytics Cache Service
  * 
  * Server-side caching for expensive analytics computations.
- * Uses Cache-Aside (Lazy Loading) pattern with memory-safe configuration.
+ * Uses smartCache (LRU) with analytics-specific configuration.
  * 
  * Memory Target: Stay under 20MB even at peak (1000 concurrent users)
  * 
@@ -14,30 +14,24 @@
  * - sidebar:stats           → Sidebar counts
  */
 
-import NodeCache from 'node-cache';
+import smartCache from '../utils/smartCache.js';
 import logger from '../utils/logger.js';
 
-// Memory-safe configuration for 512MB server limit
-const analyticsCache = new NodeCache({
-    stdTTL: 300,           // 5 minutes default TTL
-    checkperiod: 120,      // Check for expired keys every 2 minutes
-    maxKeys: 100,          // ⚠️ CRITICAL: Limit keys to prevent memory bloat
-    useClones: false,      // ⚠️ Don't clone objects - saves 30% memory
-    deleteOnExpire: true,  // Auto-delete expired keys
-});
+// Analytics-specific TTL (5 minutes)
+const ANALYTICS_TTL = 5 * 60 * 1000;
 
 // Cache key constants for consistency
 export const CACHE_KEYS = {
-    DASHBOARD_SUMMARY: 'dashboard:summary',
-    SALES_TRENDS: (days) => `dashboard:sales:${days}`,
-    INVENTORY_STATUS: 'dashboard:inventory',
-    SYSTEM_HEALTH: 'dashboard:health',
-    SIDEBAR_STATS: 'sidebar:stats',
-    TOP_PRODUCTS: (days, limit) => `dashboard:top:${days}:${limit}`,
-    CUSTOMER_ANALYTICS: (days) => `dashboard:customers:${days}`,
-    ORDER_STATUS: 'dashboard:order-status',
-    CART_ABANDONMENT: 'dashboard:cart-abandonment',
-    EMAIL_STATS: 'dashboard:email-stats',
+    DASHBOARD_SUMMARY: 'analytics:dashboard:summary',
+    SALES_TRENDS: (days) => `analytics:dashboard:sales:${days}`,
+    INVENTORY_STATUS: 'analytics:dashboard:inventory',
+    SYSTEM_HEALTH: 'analytics:dashboard:health',
+    SIDEBAR_STATS: 'analytics:sidebar:stats',
+    TOP_PRODUCTS: (days, limit) => `analytics:dashboard:top:${days}:${limit}`,
+    CUSTOMER_ANALYTICS: (days) => `analytics:dashboard:customers:${days}`,
+    ORDER_STATUS: 'analytics:dashboard:order-status',
+    CART_ABANDONMENT: 'analytics:dashboard:cart-abandonment',
+    EMAIL_STATS: 'analytics:dashboard:email-stats',
 };
 
 /**
@@ -49,36 +43,19 @@ export const CACHE_KEYS = {
  * 
  * @param {string} key - Cache key
  * @param {Function} fetchFn - Async function to fetch data on cache miss
- * @param {number} ttl - Optional TTL override in seconds
+ * @param {number} ttl - Optional TTL override in milliseconds
  * @returns {Promise<any>} - Cached or freshly fetched data
  */
-export const getCached = async (key, fetchFn, ttl = undefined) => {
+export const getCached = async (key, fetchFn, ttl = ANALYTICS_TTL) => {
     try {
-        // Step 1: Check cache
-        let data = analyticsCache.get(key);
-
-        if (data !== undefined) {
-            // Cache HIT
-            logger.debug(`[Cache HIT] ${key}`);
-            return data;
-        }
-
-        // Step 2: Cache MISS - fetch from source
-        logger.debug(`[Cache MISS] ${key} - fetching from DB`);
-        data = await fetchFn();
-
-        // Step 3: Store in cache
-        if (data !== undefined && data !== null) {
-            if (ttl !== undefined) {
-                analyticsCache.set(key, data, ttl);
-            } else {
-                analyticsCache.set(key, data);
-            }
-        }
-
-        return data;
+        // Use smartCache's getOrFetch for deduplication + SWR
+        return await smartCache.getOrFetch(key, fetchFn, {
+            ttl,
+            swr: true,
+            type: 'analytics'
+        });
     } catch (error) {
-        logger.error(`[Cache Error] ${key}:`, error.message);
+        logger.error(`[Analytics Cache Error] ${key}:`, error.message);
         // On error, attempt to fetch directly (fail gracefully)
         return await fetchFn();
     }
@@ -94,16 +71,14 @@ export const invalidateCache = (keys) => {
     const keyArray = Array.isArray(keys) ? keys : [keys];
 
     keyArray.forEach(key => {
-        // Handle pattern keys (e.g., "dashboard:sales:*")
+        // Handle pattern keys (e.g., "analytics:dashboard:sales:*")
         if (key.includes('*')) {
             const pattern = key.replace('*', '');
-            const allKeys = analyticsCache.keys();
-            const matchingKeys = allKeys.filter(k => k.startsWith(pattern));
-            matchingKeys.forEach(k => analyticsCache.del(k));
-            logger.debug(`[Cache Invalidate] Pattern ${key} - cleared ${matchingKeys.length} keys`);
+            smartCache.invalidateByPrefix(pattern);
+            logger.debug(`[Analytics Cache Invalidate] Pattern ${key}`);
         } else {
-            analyticsCache.del(key);
-            logger.debug(`[Cache Invalidate] ${key}`);
+            smartCache.del(key);
+            logger.debug(`[Analytics Cache Invalidate] ${key}`);
         }
     });
 };
@@ -117,13 +92,13 @@ export const INVALIDATION_MAP = {
         CACHE_KEYS.DASHBOARD_SUMMARY,
         CACHE_KEYS.SIDEBAR_STATS,
         CACHE_KEYS.ORDER_STATUS,
-        'dashboard:sales:*',  // All sales trends
+        'analytics:dashboard:sales:*',  // All sales trends
     ],
     products: [
         CACHE_KEYS.DASHBOARD_SUMMARY,
         CACHE_KEYS.SIDEBAR_STATS,
         CACHE_KEYS.INVENTORY_STATUS,
-        'dashboard:top:*',  // All top products
+        'analytics:dashboard:top:*',  // All top products
     ],
     stock: [
         CACHE_KEYS.INVENTORY_STATUS,
@@ -132,7 +107,7 @@ export const INVALIDATION_MAP = {
     users: [
         CACHE_KEYS.DASHBOARD_SUMMARY,
         CACHE_KEYS.SIDEBAR_STATS,
-        'dashboard:customers:*',
+        'analytics:dashboard:customers:*',
     ],
     reviews: [
         CACHE_KEYS.SIDEBAR_STATS,
@@ -156,41 +131,32 @@ export const invalidateForEntity = (entityType) => {
     const keys = INVALIDATION_MAP[entityType];
     if (keys && keys.length > 0) {
         invalidateCache(keys);
-        logger.info(`[Cache] Invalidated cache for entity: ${entityType}`);
+        logger.info(`[Analytics Cache] Invalidated cache for entity: ${entityType}`);
     }
 };
 
 /**
  * Get cache statistics for monitoring
- * Can be exposed via admin endpoint for debugging
+ * Delegates to smartCache stats
  */
 export const getCacheStats = () => {
-    const stats = analyticsCache.getStats();
-    return {
-        hits: stats.hits,
-        misses: stats.misses,
-        keys: analyticsCache.keys().length,
-        hitRate: stats.hits + stats.misses > 0
-            ? ((stats.hits / (stats.hits + stats.misses)) * 100).toFixed(2) + '%'
-            : '0%',
-        memoryKeys: analyticsCache.keys(),
-    };
+    return smartCache.getStats();
 };
 
 /**
- * Flush all cache (use sparingly - for debugging/admin)
+ * Flush all analytics cache
  */
 export const flushCache = () => {
-    analyticsCache.flushAll();
-    logger.info('[Cache] All cache flushed');
+    smartCache.invalidateByPrefix('analytics:');
+    logger.info('[Analytics Cache] All analytics cache flushed');
 };
 
-// Log cache stats periodically (every 10 minutes) for monitoring
-setInterval(() => {
-    const stats = getCacheStats();
-    if (stats.hits > 0 || stats.misses > 0) {
-        logger.info(`[Cache Stats] Hit Rate: ${stats.hitRate}, Keys: ${stats.keys}, Hits: ${stats.hits}, Misses: ${stats.misses}`);
-    }
-}, 10 * 60 * 1000);
-
-export default analyticsCache;
+export default {
+    getCached,
+    invalidateCache,
+    invalidateForEntity,
+    getCacheStats,
+    flushCache,
+    CACHE_KEYS,
+    INVALIDATION_MAP,
+};

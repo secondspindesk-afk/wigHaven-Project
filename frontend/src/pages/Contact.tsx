@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Mail, Phone, MapPin, Clock, Send, MessageSquare, Loader2, CheckCircle, Instagram, Facebook, Twitter, ExternalLink } from 'lucide-react';
+import { Mail, Phone, MapPin, Clock, Send, MessageSquare, CheckCircle, Instagram, Facebook, Twitter, ExternalLink } from 'lucide-react';
+import BrandedSpinner from '@/components/ui/BrandedSpinner';
 import { useToast } from '@/contexts/ToastContext';
 import { usePublicSettings } from '@/lib/hooks/useSettings';
 import { useCreateTicket, useCreateGuestTicket } from '@/lib/hooks/useSupport';
@@ -121,7 +122,7 @@ export default function Contact() {
                                 <textarea value={authFormData.message} onChange={(e) => setAuthFormData({ ...authFormData, message: e.target.value })} rows={5} className="w-full px-4 py-3.5 bg-zinc-900/50 border border-zinc-800/50 rounded-xl text-white text-sm resize-none" placeholder="Describe your issue..." required />
                             </div>
                             <button type="submit" disabled={isPending} className="w-full py-3.5 bg-white text-black text-xs font-bold uppercase rounded-xl flex items-center justify-center gap-2 disabled:opacity-50">
-                                {isPending ? <><Loader2 className="w-4 h-4 animate-spin" />Sending...</> : <><Send className="w-4 h-4" />Send Message</>}
+                                {isPending ? <><BrandedSpinner size="xs" />Sending...</> : <><Send className="w-4 h-4" />Send Message</>}
                             </button>
                         </form>
                     ) : (
@@ -145,7 +146,7 @@ export default function Contact() {
                                 <textarea value={guestFormData.message} onChange={(e) => setGuestFormData({ ...guestFormData, message: e.target.value })} rows={5} className="w-full px-4 py-3.5 bg-zinc-900/50 border border-zinc-800/50 rounded-xl text-white text-sm resize-none" placeholder="Describe your issue..." required />
                             </div>
                             <button type="submit" disabled={isPending} className="w-full py-3.5 bg-white text-black text-xs font-bold uppercase rounded-xl flex items-center justify-center gap-2 disabled:opacity-50">
-                                {isPending ? <><Loader2 className="w-4 h-4 animate-spin" />Sending...</> : <><Send className="w-4 h-4" />Send Message</>}
+                                {isPending ? <><BrandedSpinner size="xs" />Sending...</> : <><Send className="w-4 h-4" />Send Message</>}
                             </button>
                             <p className="text-center text-zinc-600 text-xs">Have an account? <Link to="/login" className="text-cyan-400">Login</Link> to track tickets.</p>
                         </form>
@@ -241,7 +242,7 @@ export default function Contact() {
                                     <textarea value={authFormData.message} onChange={(e) => setAuthFormData({ ...authFormData, message: e.target.value })} rows={6} className="w-full bg-[#0A0A0A] border border-[#27272a] px-4 py-3 text-white text-sm placeholder-zinc-600 focus:outline-none focus:border-cyan-500/50 transition-colors resize-none" placeholder="Describe your issue or question in detail..." required />
                                 </div>
                                 <button type="submit" disabled={isPending} className="w-full bg-white text-black font-bold text-xs uppercase tracking-widest px-8 py-4 hover:bg-zinc-200 transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
-                                    {isPending ? <><Loader2 className="w-4 h-4 animate-spin" />Sending...</> : <><Send className="w-4 h-4" />Send Message</>}
+                                    {isPending ? <><BrandedSpinner size="xs" />Sending...</> : <><Send className="w-4 h-4" />Send Message</>}
                                 </button>
                             </form>
                         ) : (
@@ -265,7 +266,7 @@ export default function Contact() {
                                     <textarea value={guestFormData.message} onChange={(e) => setGuestFormData({ ...guestFormData, message: e.target.value })} rows={6} className="w-full bg-[#0A0A0A] border border-[#27272a] px-4 py-3 text-white text-sm placeholder-zinc-600 focus:outline-none focus:border-cyan-500/50 transition-colors resize-none" placeholder="Describe your issue or question in detail..." required />
                                 </div>
                                 <button type="submit" disabled={isPending} className="w-full bg-white text-black font-bold text-xs uppercase tracking-widest px-8 py-4 hover:bg-zinc-200 transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
-                                    {isPending ? <><Loader2 className="w-4 h-4 animate-spin" />Sending...</> : <><Send className="w-4 h-4" />Send Message</>}
+                                    {isPending ? <><BrandedSpinner size="xs" />Sending...</> : <><Send className="w-4 h-4" />Send Message</>}
                                 </button>
                                 <p className="text-center text-zinc-600 text-xs">Have an account? <Link to="/login" className="text-cyan-400 hover:underline">Login</Link> to track your support tickets.</p>
                             </form>

@@ -50,6 +50,9 @@ export function useWishlist() {
                 },
             ]);
 
+            // INSTANT toast
+            showToast('Added to wishlist', 'success');
+
             return { previousWishlist };
         },
         onError: (error: any, _productId, context) => {
@@ -59,9 +62,7 @@ export function useWishlist() {
             }
             showToast(error.response?.data?.error || 'Failed to add to wishlist', 'error');
         },
-        onSuccess: () => {
-            showToast('Added to wishlist', 'success');
-        },
+        // onSuccess not needed - toast already shown in onMutate
         onSettled: () => {
             // Refetch to get real data
             queryClient.invalidateQueries({ queryKey: ['wishlist'] });
@@ -84,6 +85,9 @@ export function useWishlist() {
                 old.filter(item => item.productId !== productId)
             );
 
+            // INSTANT toast
+            showToast('Removed from wishlist', 'success');
+
             return { previousWishlist };
         },
         onError: (error: any, _productId, context) => {
@@ -93,9 +97,7 @@ export function useWishlist() {
             }
             showToast(error.response?.data?.error || 'Failed to remove from wishlist', 'error');
         },
-        onSuccess: () => {
-            showToast('Removed from wishlist', 'success');
-        },
+        // onSuccess not needed - toast already shown in onMutate
         onSettled: () => {
             // Refetch to get real data
             queryClient.invalidateQueries({ queryKey: ['wishlist'] });

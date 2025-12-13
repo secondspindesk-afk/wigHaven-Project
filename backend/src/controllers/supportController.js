@@ -75,6 +75,9 @@ export const replyTicket = async (req, res, next) => {
 
         const reply = await supportService.replyTicket(ticketId, userId, message, false);
 
+        // 🔔 Real-time: Notify all admin dashboards when user replies
+        notifySupportChanged({ action: 'user_reply', ticketId });
+
         res.json({
             success: true,
             data: reply,
@@ -199,6 +202,9 @@ export const adminReplyTicket = async (req, res, next) => {
         const { message } = req.body;
 
         const reply = await supportService.replyTicket(ticketId, adminId, message, true);
+
+        // 🔔 Real-time: Notify all admin dashboards
+        notifySupportChanged({ action: 'admin_reply', ticketId });
 
         res.json({
             success: true,

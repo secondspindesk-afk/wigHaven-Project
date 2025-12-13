@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Outlet, Link, Navigate } from 'react-router-dom';
+import { Outlet, Link, Navigate, useLocation } from 'react-router-dom';
 import { LogOut, User, Settings, Menu, Search, Command, X } from 'lucide-react';
 import { useUser } from '@/lib/hooks/useUser';
 import { useLogout } from '@/lib/hooks/useLogout';
@@ -176,6 +176,9 @@ export function AdminLayout() {
     }
 
     // ==================== DESKTOP LAYOUT ====================
+    const location = useLocation();
+    const isSupportPage = location.pathname.startsWith('/admin/support');
+
     return (
         <div className="flex h-screen overflow-hidden bg-[#050505] selection:bg-white selection:text-black">
             {/* Sidebar */}
@@ -299,7 +302,7 @@ export function AdminLayout() {
                 </header>
 
                 {/* Scrollable Content Area */}
-                <div className="relative z-0 flex-1 overflow-y-auto p-8">
+                <div className={`relative z-0 flex-1 ${isSupportPage ? 'overflow-hidden p-0' : 'overflow-y-auto p-8'}`}>
                     <Outlet />
                 </div>
             </main>

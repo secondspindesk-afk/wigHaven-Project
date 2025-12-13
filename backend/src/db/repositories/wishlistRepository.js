@@ -32,6 +32,8 @@ export const getWishlistByUserId = async (userId) => {
                                 stock: true,
                                 sku: true,
                                 color: true,
+                                length: true,
+                                texture: true,
                                 size: true,
                                 images: true // Include images for frontend display
                             }

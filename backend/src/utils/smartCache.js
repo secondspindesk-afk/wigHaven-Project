@@ -27,6 +27,7 @@ const CACHE_CONFIG = {
         productList: 2 * 60 * 1000, // 2 minutes (frequently changes)
         product: 5 * 60 * 1000,     // 5 minutes
         reviews: 3 * 60 * 1000,     // 3 minutes
+        currency: 6 * 60 * 60 * 1000, // 6 hours
     }
 };
 

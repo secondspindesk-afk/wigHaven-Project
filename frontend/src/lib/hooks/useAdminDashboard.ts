@@ -138,16 +138,15 @@ export function usePaymentMethods() {
     });
 }
 
-// System Health Hook - reduced polling to prevent excessive API calls
+// System Health Hook - NO POLLING, use manual refresh or WebSocket
 // The keep-alive cron job handles database connection maintenance
 export function useSystemHealth(enabled: boolean = true) {
     return useQuery({
         queryKey: ['admin', 'dashboard', 'system-health'],
         queryFn: adminApi.getSystemHealth,
-        staleTime: 3 * 60 * 1000,      // 3 minutes
-        gcTime: 5 * 60 * 1000,          // 5 minutes
-        refetchInterval: 3 * 60 * 1000, // Check every 3 minutes (was 30 seconds)
-        refetchOnWindowFocus: false,    // Don't refetch on focus - causes unnecessary load
+        staleTime: 5 * 60 * 1000,       // 5 minutes
+        gcTime: 10 * 60 * 1000,          // 10 minutes
+        refetchOnWindowFocus: true,     // Refresh on tab focus is enough
         enabled
     });
 }

@@ -17,8 +17,8 @@ export function useSupportTicket(id: string) {
         queryKey: ['support', 'ticket', id],
         queryFn: () => supportApi.getTicket(id),
         enabled: !!id,
-        refetchInterval: 10000, // Poll every 10 seconds for new messages
-        staleTime: 5 * 1000, // 5 seconds - ticket details need to be fresh for polling
+        // NO POLLING: WebSocket SUPPORT_REPLY notification invalidates this cache
+        staleTime: 30 * 1000, // 30 seconds
     });
 }
 

@@ -173,12 +173,12 @@ export default function AccountLayout() {
 
     // Desktop Layout
     return (
-        <div className="min-h-screen bg-[#050505] pt-24 pb-12">
+        <div className="min-h-screen bg-[#050505] pt-8 pb-12">
             <div className="container px-4">
                 <div className="flex flex-col lg:flex-row gap-8">
                     {/* Sidebar */}
                     <aside className="w-full lg:w-64 flex-shrink-0">
-                        <div className="bg-[#0A0A0A] border border-[#27272a] rounded-lg p-6 sticky top-24">
+                        <div className="bg-[#0A0A0A] border border-[#27272a] rounded-lg p-6 sticky top-20">
                             {/* User Info */}
                             <div className="flex items-center gap-3 mb-8 pb-8 border-b border-[#27272a]">
                                 <div className="w-12 h-12 rounded-full bg-zinc-800 flex items-center justify-center text-white font-bold text-lg">
@@ -193,7 +193,11 @@ export default function AccountLayout() {
                             {/* Navigation */}
                             <nav className="space-y-1">
                                 {menuItems.map((item) => {
-                                    const isActive = location.pathname === item.path;
+                                    // Handle dashboard (exact match) vs other routes (sub-path match)
+                                    const isActive = item.path === '/account'
+                                        ? location.pathname === '/account'
+                                        : location.pathname.startsWith(item.path);
+
                                     return (
                                         <Link
                                             key={item.path}

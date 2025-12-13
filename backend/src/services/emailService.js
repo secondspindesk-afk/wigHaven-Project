@@ -409,14 +409,14 @@ export const sendSupportTicketCreated = async (ticket, user) => {
   const emailData = {
     type: 'support_ticket_created',
     to_email: user.email,
-    subject: `Support Ticket Received - #${ticket.id}`,
+    subject: `Support Ticket Received - #${ticket.ticketNumber}`,
     template: 'supportTicketCreated',
     variables: {
       name: user.firstName || 'Valued Customer',
-      ticket_id: ticket.id,
+      ticket_number: ticket.ticketNumber,
       subject: ticket.subject,
       message: ticket.message,
-      ticket_link: `${process.env.FRONTEND_URL}/support/tickets/${ticket.id}`,
+      ticket_link: `${process.env.FRONTEND_URL}/account/support/${ticket.id}`,
     },
   };
   return await safeQueueEmail(emailData, false); // Non-critical
@@ -429,13 +429,13 @@ export const sendSupportTicketReply = async (ticket, replyMessage, user) => {
   const emailData = {
     type: 'support_ticket_reply',
     to_email: user.email,
-    subject: `New Reply to Ticket #${ticket.id}`,
+    subject: `New Reply to Ticket #${ticket.ticketNumber}`,
     template: 'supportTicketReply',
     variables: {
       name: user.firstName || 'Valued Customer',
-      ticket_id: ticket.id,
-      reply_message: replyMessage,
-      ticket_link: `${process.env.FRONTEND_URL}/support/tickets/${ticket.id}`,
+      ticket_number: ticket.ticketNumber,
+      message_preview: replyMessage.substring(0, 150),
+      ticket_link: `${process.env.FRONTEND_URL}/account/support/${ticket.id}`,
     },
   };
   return await safeQueueEmail(emailData, true); // Critical
@@ -449,11 +449,11 @@ export const sendGuestTicketReply = async (ticket, replyMessage, guest) => {
   const emailData = {
     type: 'guest_ticket_reply',
     to_email: guest.email,
-    subject: `Response to Your Inquiry - Ticket #${ticket.id}`,
+    subject: `Response to Your Inquiry - Ticket #${ticket.ticketNumber}`,
     template: 'guestTicketReply',
     variables: {
       name: guest.name || 'Valued Customer',
-      ticket_id: ticket.id,
+      ticket_number: ticket.ticketNumber,
       ticket_subject: ticket.subject?.replace('[GUEST] ', '') || 'Your Inquiry',
       reply_message: replyMessage,
       contact_link: `${process.env.FRONTEND_URL}/contact`,
@@ -519,6 +519,50 @@ export const sendAccountDeactivated = async (user, reason) => {
   return await safeQueueEmail(emailData, true); // Critical
 };
 
+/**
+ * Send ticket resolved email to logged-in users
+ * @param {object} ticket - Support ticket with ticketNumber
+ * @param {object} user - User object with email
+ */
+export const sendTicketResolved = async (ticket, user) => {
+  const emailData = {
+    type: 'ticket_resolved',
+    to_email: user.email,
+    subject: `Ticket #${ticket.ticketNumber} Resolved - WigHaven`,
+    template: 'ticketResolved',
+    variables: {
+      name: user.firstName || 'Valued Customer',
+      ticket_number: ticket.ticketNumber,
+      subject: ticket.subject,
+      ticket_link: `${process.env.FRONTEND_URL}/account/support/${ticket.id}`,
+    },
+  };
+  return await safeQueueEmail(emailData, true); // Critical
+};
+
+/**
+ * Send ticket resolved email to guest users
+ * @param {object} ticket - Support ticket with ticketNumber, guestName, guestEmail
+ */
+export const sendGuestTicketResolved = async (ticket) => {
+  if (!ticket.guestEmail) {
+    return { success: false, reason: 'No guest email' };
+  }
+
+  const emailData = {
+    type: 'guest_ticket_resolved',
+    to_email: ticket.guestEmail,
+    subject: `Ticket #${ticket.ticketNumber} Resolved - WigHaven`,
+    template: 'guestTicketResolved',
+    variables: {
+      guest_name: ticket.guestName || 'Valued Customer',
+      ticket_number: ticket.ticketNumber,
+      subject: ticket.subject?.replace('[GUEST] ', '') || 'Your Inquiry',
+    },
+  };
+  return await safeQueueEmail(emailData, true); // Critical
+};
+
 export default {
   sendOrderConfirmation,
   sendPasswordResetEmail,
@@ -539,7 +583,10 @@ export default {
   sendSupportTicketCreated,
   sendSupportTicketReply,
   sendGuestTicketReply,
+  sendTicketResolved,
+  sendGuestTicketResolved,
   sendReviewApproved,
   sendReviewRejected,
   sendAccountDeactivated,
 };
+

@@ -7,13 +7,16 @@ import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { queryClient } from './lib/queryClient';
 import { ToastProvider } from './contexts/ToastContext';
 import { CurrencyProvider } from './lib/context/CurrencyContext';
+import { WebSocketProvider } from './contexts/WebSocketContext';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <CurrencyProvider>
         <ToastProvider>
-          <App />
+          <WebSocketProvider>
+            <App />
+          </WebSocketProvider>
         </ToastProvider>
       </CurrencyProvider>
       {/* DevTools - only shows in development */}

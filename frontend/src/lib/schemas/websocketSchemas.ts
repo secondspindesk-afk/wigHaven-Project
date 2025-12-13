@@ -20,6 +20,8 @@ export const NotificationTypeSchema = z.enum([
     'review_approved',
     'review_rejected',
     'sale_alert',
+    'support_reply',    // Support ticket reply
+    'support_resolved', // Support ticket resolved
     // Admin notifications
     'admin_new_order',
     'admin_low_stock',
@@ -27,6 +29,7 @@ export const NotificationTypeSchema = z.enum([
     'admin_new_review',
     'admin_payment_failed',
     'admin_milestone',
+    'admin_support_reply',
 ]);
 
 /**

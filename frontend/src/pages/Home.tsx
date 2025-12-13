@@ -3,7 +3,7 @@ import FeaturedCategories from '@/components/home/FeaturedCategories';
 import NewArrivals from '@/components/home/NewArrivals';
 import BestSellers from '@/components/home/BestSellers';
 import { Link } from 'react-router-dom';
-import { ShoppingBag, Sparkles, Crown } from 'lucide-react';
+import { ShoppingBag, Crown } from 'lucide-react';
 
 export default function Home() {
     return (
@@ -22,34 +22,6 @@ export default function Home() {
             <section className="py-8 md:py-16 border-t border-zinc-800/50">
                 <div className="container mx-auto px-4">
                     <NewArrivals />
-                </div>
-            </section>
-
-            {/* Promo Banner - Mobile optimized */}
-            <section className="py-6 md:py-12 bg-gradient-to-r from-zinc-900 via-zinc-800 to-zinc-900">
-                <div className="container mx-auto px-4">
-                    <div className="flex flex-col md:flex-row items-center justify-between gap-4 md:gap-8">
-                        <div className="flex items-center gap-4 text-center md:text-left">
-                            <div className="hidden md:flex w-12 h-12 bg-white/10 rounded-full items-center justify-center">
-                                <Sparkles className="w-6 h-6 text-white" />
-                            </div>
-                            <div>
-                                <h3 className="text-lg md:text-xl font-bold text-white mb-1">
-                                    Free Shipping Over $100
-                                </h3>
-                                <p className="text-sm text-zinc-400">
-                                    Plus easy returns within 30 days
-                                </p>
-                            </div>
-                        </div>
-                        <Link
-                            to="/shop"
-                            className="inline-flex items-center gap-2 bg-white text-black font-bold text-sm uppercase tracking-wide px-6 py-3 rounded-lg md:rounded-sm active:scale-95 transition-transform"
-                        >
-                            <ShoppingBag className="w-4 h-4" />
-                            Start Shopping
-                        </Link>
-                    </div>
                 </div>
             </section>
 
@@ -87,6 +59,6 @@ export default function Home() {
                     </div>
                 </div>
             </section>
-        </div>
+        </div >
     );
 }

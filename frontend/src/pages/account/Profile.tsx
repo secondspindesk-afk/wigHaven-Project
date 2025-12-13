@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { useUser } from '@/lib/hooks/useUser';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { useToast } from '@/contexts/ToastContext';
-import { Loader2 } from 'lucide-react';
+import BrandedSpinner from '@/components/ui/BrandedSpinner';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
 
 const profileSchema = z.object({
@@ -126,7 +126,7 @@ export default function Profile() {
                             disabled={isProfileSubmitting}
                             className="w-full bg-white text-black py-3 text-sm font-bold rounded-lg flex items-center justify-center gap-2 disabled:opacity-50"
                         >
-                            {isProfileSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                            {isProfileSubmitting && <BrandedSpinner size="xs" />}
                             Save Changes
                         </button>
                     </form>
@@ -172,7 +172,7 @@ export default function Profile() {
                             disabled={isPasswordSubmitting}
                             className="w-full bg-zinc-800 text-white py-3 text-sm font-bold rounded-lg flex items-center justify-center gap-2 disabled:opacity-50"
                         >
-                            {isPasswordSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                            {isPasswordSubmitting && <BrandedSpinner size="xs" />}
                             Update Password
                         </button>
                     </form>
@@ -253,7 +253,7 @@ export default function Profile() {
                         disabled={isProfileSubmitting}
                         className="bg-white text-black px-6 py-3 text-xs font-bold uppercase tracking-widest hover:bg-zinc-200 transition-colors disabled:opacity-50 flex items-center gap-2"
                     >
-                        {isProfileSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                        {isProfileSubmitting && <BrandedSpinner size="xs" />}
                         Save Changes
                     </button>
                 </form>
@@ -300,7 +300,7 @@ export default function Profile() {
                         disabled={isPasswordSubmitting}
                         className="bg-zinc-800 text-white px-6 py-3 text-xs font-bold uppercase tracking-widest hover:bg-zinc-700 transition-colors disabled:opacity-50 flex items-center gap-2"
                     >
-                        {isPasswordSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                        {isPasswordSubmitting && <BrandedSpinner size="xs" />}
                         Update Password
                     </button>
                 </form>

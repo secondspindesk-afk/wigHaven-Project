@@ -188,6 +188,8 @@ export const notifySupportChanged = (metadata = {}) => {
         broadcastToAdmins('support', [
             QUERY_KEYS.ADMIN_SUPPORT,
             QUERY_KEYS.SIDEBAR_STATS,
+            ['support', 'ticket'], // Also invalidate individual ticket views
+            ['support', 'tickets'], // User-side ticket list
         ], metadata);
     } catch (error) {
         logger.warn('Failed to broadcast support update:', error.message);

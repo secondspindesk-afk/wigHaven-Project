@@ -36,7 +36,7 @@ export const authService = {
         return response.data;
     },
 
-    async resendVerificationEmail(email: string): Promise<{ success: boolean; message: string }> {
+    async resendVerificationEmail(email: string): Promise<{ success: boolean; message: string; alreadyVerified?: boolean; redirectTo?: string }> {
         const response = await api.post('/auth/resend-verification', { email });
         return response.data;
     },

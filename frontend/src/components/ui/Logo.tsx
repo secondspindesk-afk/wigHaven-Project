@@ -17,7 +17,7 @@ export default function Logo({ size = 'lg', className = '' }: LogoProps) {
 
             {/* The Face/Hair Vector */}
             <svg
-                className="w-full h-full p-4 text-white"
+                className="w-full h-full p-[15%] text-white"
                 viewBox="0 0 100 100"
                 fill="none"
                 stroke="currentColor"

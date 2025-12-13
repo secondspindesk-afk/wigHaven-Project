@@ -22,6 +22,15 @@ export function useRegister() {
             });
         },
         onError: (error: any) => {
+            const responseData = error.response?.data;
+
+            // Check if user should login instead (email already verified)
+            if (responseData?.shouldLogin) {
+                showToast('This email is already registered. Please login.', 'info');
+                navigate('/login');
+                return;
+            }
+
             showToast(getErrorMessage(error, 'Registration failed'), 'error');
         },
     });

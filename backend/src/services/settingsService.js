@@ -3,7 +3,6 @@ import { broadcastForceLogout } from '../config/websocket.js';
 import { invalidateMaintenanceCache } from '../middleware/maintenanceMode.js';
 import logger from '../utils/logger.js';
 
-import cache from '../utils/cache.js';
 import smartCache from '../utils/smartCache.js';
 
 /**
@@ -11,8 +10,6 @@ import smartCache from '../utils/smartCache.js';
  * Call this when settings are updated
  */
 export const invalidateSettingsCache = () => {
-    // Invalidate both old and new cache for safety
-    cache.del('settings:all');
     smartCache.del(smartCache.keys.settings());
     smartCache.del(smartCache.keys.settingsPublic());
     logger.info('[CACHE] Settings cache invalidated');

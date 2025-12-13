@@ -1,7 +1,8 @@
 import { useParams, Link } from 'react-router-dom';
 import { useSupportTicket, useReplyTicket } from '@/lib/hooks/useSupport';
 import { useUser } from '@/lib/hooks/useUser';
-import { Loader2, ArrowLeft, Send, User as UserIcon, Shield, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Send, User as UserIcon, Shield, AlertCircle } from 'lucide-react';
+import SectionLoader from '@/components/ui/SectionLoader';
 import { formatDistanceToNow } from 'date-fns';
 import { useState, useRef, useEffect } from 'react';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
@@ -26,7 +27,7 @@ export default function SupportTicket() {
     };
 
     if (isLoading) {
-        return <div className="flex items-center justify-center min-h-[400px]"><Loader2 className="w-6 h-6 animate-spin text-zinc-500" /></div>;
+        return <SectionLoader className="min-h-[400px]" />;
     }
 
     if (isError) {
@@ -89,7 +90,7 @@ export default function SupportTicket() {
                         <form onSubmit={handleReply} className="flex gap-2">
                             <input type="text" value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Type a reply..." className="flex-1 px-4 py-3 bg-zinc-900/50 border border-zinc-800/50 rounded-xl text-sm text-white" />
                             <button type="submit" disabled={!message.trim() || replyTicket.isPending} className="w-12 h-12 bg-white text-black rounded-xl flex items-center justify-center disabled:opacity-50">
-                                {replyTicket.isPending ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
+                                {replyTicket.isPending ? <SectionLoader className="py-0" size="xs" /> : <Send size={18} />}
                             </button>
                         </form>
                     )}
@@ -100,7 +101,7 @@ export default function SupportTicket() {
 
     // ==================== DESKTOP ====================
     return (
-        <div className="h-[calc(100vh-200px)] flex flex-col">
+        <div className="h-[calc(100vh-140px)] flex flex-col">
             {/* Header */}
             <div className="flex items-center gap-4 mb-6 flex-shrink-0">
                 <Link to="/account/support" className="text-zinc-500 hover:text-white transition-colors"><ArrowLeft size={20} /></Link>
@@ -115,16 +116,16 @@ export default function SupportTicket() {
 
             {/* Chat Area */}
             <div className="flex-1 bg-[#0A0A0A] border border-[#27272a] rounded-lg overflow-hidden flex flex-col">
-                <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                <div className="flex-1 overflow-y-auto p-4 space-y-4">
                     {ticket.messages.map((msg) => {
                         const isMe = msg.senderId === user?.id;
                         return (
-                            <div key={msg.id} className={`flex gap-4 ${isMe ? 'flex-row-reverse' : ''}`}>
+                            <div key={msg.id} className={`flex gap-3 ${isMe ? 'flex-row-reverse' : ''}`}>
                                 <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${msg.isAdmin ? 'bg-white text-black' : 'bg-zinc-800 text-zinc-400'}`}>
                                     {msg.isAdmin ? <Shield size={14} /> : <UserIcon size={14} />}
                                 </div>
-                                <div className={`max-w-[80%] space-y-1 ${isMe ? 'items-end' : 'items-start'} flex flex-col`}>
-                                    <div className={`p-4 rounded-lg text-sm leading-relaxed ${isMe ? 'bg-zinc-800 text-white rounded-tr-none' : 'bg-zinc-900 border border-[#27272a] text-zinc-300 rounded-tl-none'}`}>
+                                <div className={`max-w-[80%] space-y-0.5 ${isMe ? 'items-end' : 'items-start'} flex flex-col`}>
+                                    <div className={`px-3 py-2 rounded-lg text-sm leading-relaxed ${isMe ? 'bg-zinc-800 text-white rounded-tr-none' : 'bg-zinc-900 border border-[#27272a] text-zinc-300 rounded-tl-none'}`}>
                                         {msg.message}
                                     </div>
                                     <span className="text-[10px] text-zinc-600 font-mono">{formatDistanceToNow(new Date(msg.createdAt), { addSuffix: true })}</span>
@@ -136,11 +137,11 @@ export default function SupportTicket() {
                 </div>
 
                 {/* Reply Input */}
-                <div className="p-4 border-t border-[#27272a] bg-[#050505]">
-                    <form onSubmit={handleReply} className="flex gap-4">
-                        <input type="text" value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Type your reply..." className="flex-1 bg-zinc-900 border border-[#27272a] rounded-sm px-4 py-3 text-sm text-white focus:outline-none focus:border-zinc-500 transition-colors" disabled={ticket.status === 'closed'} />
-                        <button type="submit" disabled={!message.trim() || replyTicket.isPending || ticket.status === 'closed'} className="bg-white text-black px-6 font-bold uppercase tracking-widest hover:bg-zinc-200 transition-colors disabled:opacity-50 rounded-sm flex items-center gap-2">
-                            {replyTicket.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send size={16} />}
+                <div className="px-4 py-3 border-t border-[#27272a] bg-[#050505]">
+                    <form onSubmit={handleReply} className="flex gap-3">
+                        <input type="text" value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Type your reply..." className="flex-1 bg-zinc-900 border border-[#27272a] rounded-sm px-3 py-2 text-sm text-white focus:outline-none focus:border-zinc-700 transition-colors placeholder:text-zinc-600" disabled={ticket.status === 'closed'} />
+                        <button type="submit" disabled={!message.trim() || replyTicket.isPending || ticket.status === 'closed'} className="bg-white text-black px-4 font-bold uppercase tracking-widest hover:bg-zinc-200 transition-colors disabled:opacity-50 rounded-sm flex items-center gap-2 text-xs h-8">
+                            {replyTicket.isPending ? <SectionLoader className="py-0" size="xs" /> : <Send size={14} />}
                         </button>
                     </form>
                     {ticket.status === 'closed' && <p className="text-center text-xs text-zinc-500 mt-2">This ticket is closed. Please create a new ticket for further assistance.</p>}

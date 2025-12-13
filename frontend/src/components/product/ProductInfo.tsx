@@ -178,8 +178,34 @@ export default function ProductInfo({ product, onVariantChange }: ProductInfoPro
 
     const notifyMutation = useMutation({
         mutationFn: (email: string) => productApi.subscribeToRestock(selectedVariant!.id, email),
-        onSuccess: () => showToast("You'll be notified when back in stock!", 'success')
+        onSuccess: () => showToast("You'll be notified when back in stock!", 'success'),
+        onError: (error: any) => {
+            const message = error.response?.data?.error || 'Failed to subscribe';
+            showToast(message, 'error');
+        }
     });
+
+    /**
+     * Handle "Notify Me" button click
+     * - Logged in: Auto-subscribe using user's email
+     * - Guest: Prompt for email
+     */
+    const handleNotifyMe = () => {
+        if (!selectedVariant) return;
+
+        if (user?.email) {
+            // Logged-in user: Auto-subscribe with their email
+            notifyMutation.mutate(user.email);
+        } else {
+            // Guest: Prompt for email
+            const email = prompt('Enter your email to be notified when this item is back in stock:');
+            if (email && email.includes('@')) {
+                notifyMutation.mutate(email);
+            } else if (email) {
+                showToast('Please enter a valid email address', 'error');
+            }
+        }
+    };
 
     const existingCartItem = selectedVariant
         ? cart?.items?.find(item => item.variant_id === selectedVariant.id)
@@ -222,7 +248,7 @@ export default function ProductInfo({ product, onVariantChange }: ProductInfoPro
                 product_name: product.name,
                 sku: selectedVariant.sku || '',
                 unit_price: selectedVariant.price > 0 ? selectedVariant.price : product.basePrice,
-                images: selectedVariant.images || [],
+                images: selectedVariant.images?.length > 0 ? selectedVariant.images : (product.images || []),
                 attributes: {
                     length: selectedVariant.length || null,
                     color: selectedVariant.color || null,
@@ -245,6 +271,47 @@ export default function ProductInfo({ product, onVariantChange }: ProductInfoPro
             removeFromWishlist.mutate(product.id);
         } else {
             addToWishlist.mutate(product.id);
+        }
+    };
+
+    /**
+     * Share product using Web Share API (mobile) or copy to clipboard (desktop)
+     */
+    const handleShare = async () => {
+        const shareUrl = `${window.location.origin}/products/${product.id}${selectedVariant ? `?variant=${selectedVariant.id}` : ''}`;
+        const shareData = {
+            title: product.name,
+            text: `Check out ${product.name} at WigHaven!`,
+            url: shareUrl,
+        };
+
+        // Use Web Share API if available (mainly mobile browsers)
+        if (navigator.share && isMobile) {
+            try {
+                await navigator.share(shareData);
+                showToast('Shared successfully!', 'success');
+            } catch (error: any) {
+                // User cancelled sharing - not an error
+                if (error.name !== 'AbortError') {
+                    console.error('Share failed:', error);
+                    showToast('Failed to share', 'error');
+                }
+            }
+        } else {
+            // Fallback: Copy to clipboard
+            try {
+                await navigator.clipboard.writeText(shareUrl);
+                showToast('Link copied to clipboard!', 'success');
+            } catch (error) {
+                // Fallback for older browsers
+                const textArea = document.createElement('textarea');
+                textArea.value = shareUrl;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                showToast('Link copied to clipboard!', 'success');
+            }
         }
     };
 
@@ -293,14 +360,12 @@ export default function ProductInfo({ product, onVariantChange }: ProductInfoPro
                     {/* Add to Cart Button */}
                     {isOutOfStock ? (
                         <button
-                            onClick={() => {
-                                const email = prompt('Enter your email to be notified:');
-                                if (email) notifyMutation.mutate(email);
-                            }}
-                            className="flex-1 py-4 bg-zinc-800 text-white font-bold text-sm rounded-lg flex items-center justify-center gap-2"
+                            onClick={handleNotifyMe}
+                            disabled={notifyMutation.isPending}
+                            className="flex-1 py-4 bg-zinc-800 text-white font-bold text-sm rounded-lg flex items-center justify-center gap-2 disabled:opacity-60"
                         >
                             <Bell size={18} />
-                            Notify Me
+                            {notifyMutation.isPending ? 'Subscribing...' : 'Notify Me'}
                         </button>
                     ) : isAtMaxInCart ? (
                         <div className="flex-1 py-4 bg-green-500/10 border border-green-500 text-green-400 font-bold text-sm rounded-lg flex items-center justify-center gap-2">
@@ -398,7 +463,7 @@ export default function ProductInfo({ product, onVariantChange }: ProductInfoPro
                                 >
                                     <Heart size={20} fill={isWishlisted ? "currentColor" : "none"} />
                                 </button>
-                                <button className="p-3 rounded-full bg-zinc-800 text-zinc-400 active:text-white">
+                                <button onClick={handleShare} className="p-3 rounded-full bg-zinc-800 text-zinc-400 active:text-white">
                                     <Share2 size={20} />
                                 </button>
                             </div>
@@ -469,7 +534,7 @@ export default function ProductInfo({ product, onVariantChange }: ProductInfoPro
                         >
                             <Heart size={20} fill={isWishlisted ? "currentColor" : "none"} />
                         </button>
-                        <button className="p-3 rounded-full border border-[#27272a] text-zinc-400 hover:text-white hover:border-white transition-all">
+                        <button onClick={handleShare} className="p-3 rounded-full border border-[#27272a] text-zinc-400 hover:text-white hover:border-white transition-all">
                             <Share2 size={20} />
                         </button>
                     </div>
@@ -549,14 +614,12 @@ export default function ProductInfo({ product, onVariantChange }: ProductInfoPro
                     </div>
                 ) : (
                     <button
-                        onClick={() => {
-                            const email = prompt('Enter your email to be notified:');
-                            if (email) notifyMutation.mutate(email);
-                        }}
-                        className="w-full py-4 border border-[#27272a] text-white font-bold uppercase tracking-widest hover:bg-zinc-900 transition-colors flex items-center justify-center gap-2"
+                        onClick={handleNotifyMe}
+                        disabled={notifyMutation.isPending}
+                        className="w-full py-4 border border-[#27272a] text-white font-bold uppercase tracking-widest hover:bg-zinc-900 transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
                     >
                         <Bell size={20} />
-                        Notify When Available
+                        {notifyMutation.isPending ? 'Subscribing...' : 'Notify When Available'}
                     </button>
                 )}
 

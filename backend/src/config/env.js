@@ -27,7 +27,7 @@ const envSchema = Joi.object({
 
     // Email (Brevo API - works on HuggingFace Spaces)
     BREVO_API_KEY: Joi.string().required(),
-    EMAIL_FROM: Joi.string().email().required(), // Must be verified sender in Brevo
+    EMAIL_FROM: Joi.string().required(), // Must be verified sender in Brevo
     EMAIL_FROM_NAME: Joi.string().optional().default('WigHaven'),
 
     // ImageKit Cloud Storage

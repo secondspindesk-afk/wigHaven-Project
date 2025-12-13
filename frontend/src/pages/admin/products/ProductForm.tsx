@@ -136,11 +136,22 @@ export default function ProductForm() {
         if (!formData.name) { showToast('Name required', 'error'); return; }
         if (!formData.categoryId) { showToast('Category required', 'error'); return; }
         if (formData.basePrice <= 0) { showToast('Price must be > 0', 'error'); return; }
+        if (!formData.description || formData.description.length < 3) { showToast('Description required (min 3 characters)', 'error'); return; }
         try {
             if (isEditMode && id) { await updateMutation.mutateAsync({ id, data: formData }); showToast('Updated', 'success'); }
             else { await createMutation.mutateAsync(formData); showToast('Created', 'success'); }
             navigate('/admin/products');
-        } catch (error: any) { showToast(error.response?.data?.message || 'Failed', 'error'); }
+        } catch (error: any) {
+            // Extract detailed validation errors from backend
+            const errorData = error.response?.data?.error;
+            if (errorData?.fields && errorData.fields.length > 0) {
+                // Show first field error
+                const firstError = errorData.fields[0];
+                showToast(`${firstError.field}: ${firstError.message}`, 'error');
+            } else {
+                showToast(errorData?.message || error.response?.data?.message || 'Failed', 'error');
+            }
+        }
     };
 
     if (isEditMode && isLoadingProduct) return <div className="flex items-center justify-center h-96"><Loader2 size={32} className="text-white animate-spin" /></div>;

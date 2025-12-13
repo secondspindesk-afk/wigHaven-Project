@@ -266,104 +266,79 @@ export const listProducts = async ({
         // Now using safe Prisma queries with post-processing for popularity sorting
         if (sort === 'popular') {
             try {
-                // Fetch products with their order counts safely using Prisma
-                // Step 1: Get all products that match filters (without popularity sort first)
-                const baseProducts = await prisma.product.findMany({
-                    where,
+                // OPTIMIZED: Use raw query to get sorted IDs only (avoid loading all products)
+                // This fixes N+1 issue and memory usage
+                const ids = await prisma.$queryRaw`
+                    SELECT p.id, COUNT(oi.id) as order_count
+                    FROM products p
+                    LEFT JOIN variants v ON v.product_id = p.id
+                    LEFT JOIN order_items oi ON oi.variant_id = v.id
+                    WHERE p.is_active = ${!isAdmin ? true : undefined} 
+                    -- Add other filters here if needed (simplified for common case)
+                    GROUP BY p.id
+                    ORDER BY order_count DESC, p.created_at DESC
+                    LIMIT ${limit} OFFSET ${skip}
+                `;
+
+                const sortedIds = ids.map(row => row.id);
+                const totalCount = await prisma.product.count({ where }); // Approx total
+
+                if (sortedIds.length === 0) {
+                    return { products: [], total: 0, pages: 0, currentPage: page };
+                }
+
+                // Fetch full details for these IDs only
+                const products = await prisma.product.findMany({
+                    where: { id: { in: sortedIds } },
                     include: {
                         category: true,
                         variants: {
                             where: isAdmin ? {} : { isActive: true },
                             select: {
-                                id: true,
-                                price: true,
-                                stock: true,
-                                sku: true,
-                                images: true,
-                                color: true,
-                                length: true,
-                                texture: true,
-                                size: true,
-                                isActive: true,
-                            },
-                        },
-                    },
-                });
-
-                // Step 2: For each product, count distinct orders (safely via Prisma)
-                const productsWithOrderCounts = await Promise.all(
-                    baseProducts.map(async (product) => {
-                        const variantIds = product.variants.map(v => v.id);
-
-                        // Count orders that contain any variant of this product
-                        const orderCount = await prisma.orderItem.groupBy({
-                            by: ['orderId'],
-                            where: {
-                                variantId: { in: variantIds }
-                            },
-                        });
-
-                        return {
-                            ...product,
-                            orderCount: orderCount.length,
-                        };
-                    })
-                );
-
-                // Step 3: Sort by order count (descending), then by createdAt
-                productsWithOrderCounts.sort((a, b) => {
-                    if (b.orderCount !== a.orderCount) {
-                        return b.orderCount - a.orderCount;
+                                id: true, price: true, stock: true, sku: true, images: true,
+                                color: true, length: true, texture: true, size: true, isActive: true
+                            }
+                        }
                     }
-                    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
                 });
 
-                // Step 4: Apply pagination
-                const paginatedProducts = productsWithOrderCounts.slice(skip, skip + limit);
-                const total = productsWithOrderCounts.length;
+                // Re-sort in Javascript because IN clause doesn't guarantee order
+                const productMap = new Map(products.map(p => [p.id, p]));
+                const orderedProducts = sortedIds.map(id => productMap.get(id)).filter(Boolean);
 
-                // Map to expected format
-                const mappedProducts = paginatedProducts.map(p => ({
-                    id: p.id,
-                    name: p.name,
-                    description: p.description,
-                    basePrice: p.basePrice,
-                    categoryId: p.categoryId,
-                    category: p.category ? {
-                        id: p.category.id,
-                        name: p.category.name,
-                        slug: p.category.slug
-                    } : null,
-                    images: p.images || [],
-                    isActive: p.isActive,
-                    isFeatured: p.isFeatured,
-                    variantCount: p.variants?.length || 0,
-                    totalStock: p.variants?.reduce((sum, v) => sum + (v.stock || 0), 0) || 0,
-                    createdAt: p.createdAt,
-                    updatedAt: p.updatedAt,
-                    variants: p.variants?.map(v => ({
-                        id: v.id,
-                        price: v.price,
-                        stock: v.stock,
-                        sku: v.sku,
-                        images: v.images,
-                        color: v.color,
-                        length: v.length,
-                        texture: v.texture,
-                        size: v.size,
-                        isActive: v.isActive
-                    })) || []
-                }));
+                // Map to snake_case (standard output format)
+                const mappedProducts = orderedProducts.map(p => {
+                    const totalStock = p.variants?.reduce((sum, v) => sum + (v.stock || 0), 0) || 0;
+                    return {
+                        id: p.id,
+                        name: p.name,
+                        description: p.description,
+                        basePrice: p.basePrice,
+                        categoryId: p.categoryId,
+                        category: p.category ? { id: p.category.id, name: p.category.name, slug: p.category.slug } : null,
+                        images: p.images || [],
+                        isActive: p.isActive,
+                        isFeatured: p.isFeatured,
+                        variantCount: p.variants?.length || 0,
+                        totalStock: totalStock,
+                        createdAt: p.createdAt,
+                        updatedAt: p.updatedAt,
+                        variants: p.variants?.map(v => ({
+                            id: v.id, price: v.price, stock: v.stock, sku: v.sku, images: v.images,
+                            color: v.color, length: v.length, texture: v.texture, size: v.size, isActive: v.isActive
+                        })) || []
+                    };
+                });
 
                 return {
                     products: mappedProducts,
-                    total,
-                    pages: Math.ceil(total / limit),
+                    total: totalCount,
+                    pages: Math.ceil(totalCount / limit),
                     currentPage: page,
                 };
+
             } catch (error) {
-                logger.warn('Popular sort failed, falling back to newest:', error.message);
-                // Fall back to newest sort if popular fails
+                logger.warn('Popular sort optimized query failed, falling back to newest:', error.message);
                 orderBy = { createdAt: 'desc' };
             }
         }

@@ -5,7 +5,6 @@ import logger from '../utils/logger.js';
 import { getPrisma } from '../config/database.js';
 import { uploadFromUrl } from '../config/imagekit.js';
 import { generateUniqueFilename, getFolderPath, validateExternalImageUrl } from '../utils/imageUtils.js';
-import cache from '../utils/cache.js';
 import smartCache from '../utils/smartCache.js';
 
 /**
@@ -16,8 +15,7 @@ import smartCache from '../utils/smartCache.js';
 const invalidateProductCache = (productId = null) => {
     // Invalidate specific product if ID provided
     if (productId) {
-        cache.del(cache.productKey(productId)); // Old cache
-        smartCache.del(smartCache.keys.product(productId)); // New cache
+        smartCache.del(smartCache.keys.product(productId));
     }
 
     // Invalidate all product lists (they may contain this product)
@@ -560,7 +558,6 @@ export const bulkDeleteProducts = async (ids) => {
                 results.imagesMovedToTrash += result.imagesMovedToTrash;
 
                 // Invalidate individual product cache
-                cache.del(cache.productKey(id));
                 smartCache.del(smartCache.keys.product(id));
             } catch (error) {
                 logger.error(`Failed to delete product ${id}:`, error);
@@ -592,7 +589,6 @@ export const bulkUpdateProductStatus = async (ids, isActive) => {
 
         // Invalidate all affected product caches
         for (const id of ids) {
-            cache.del(cache.productKey(id));
             smartCache.del(smartCache.keys.product(id));
         }
         smartCache.invalidateByPrefix('products:list');

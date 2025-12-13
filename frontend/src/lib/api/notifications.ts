@@ -3,12 +3,13 @@ import axios from './axios';
 export interface Notification {
     id: string;
     userId: string;
-    type: 'welcome' | 'order_placed' | 'order_payment_confirmed' | 'order_status' | 'payment' | 'security' | 'review' | 'order_cancelled' | 'back_in_stock' | 'promotional' | 'order_refunded' | 'email_verified' | 'review_approved' | 'review_rejected' | 'sale_alert' | 'admin_new_order' | 'admin_low_stock' | 'admin_out_of_stock' | 'admin_new_review' | 'admin_payment_failed' | 'admin_milestone';
+    type: 'welcome' | 'order_placed' | 'order_payment_confirmed' | 'order_status' | 'payment' | 'security' | 'review' | 'order_cancelled' | 'back_in_stock' | 'promotional' | 'order_refunded' | 'email_verified' | 'review_approved' | 'review_rejected' | 'sale_alert' | 'support_reply' | 'support_resolved' | 'admin_new_order' | 'admin_low_stock' | 'admin_out_of_stock' | 'admin_new_review' | 'admin_payment_failed' | 'admin_milestone' | 'admin_support_reply';
     title: string;
     message: string;
     link?: string;
     isRead: boolean;
     createdAt: string;
+    data?: Record<string, any>; // Optional metadata (orderNumber, productId, ticketId, etc.)
 }
 
 export interface NotificationsResponse {

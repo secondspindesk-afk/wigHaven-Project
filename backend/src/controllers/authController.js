@@ -7,7 +7,7 @@ import * as emailService from '../services/emailService.js';
 import { ConflictError, UnauthorizedError, NotFoundError, ValidationError, ServiceUnavailableError } from '../middleware/errorHandler.js';
 import cartService from '../services/cartService.js';
 import logger from '../utils/logger.js';
-import cache from '../utils/cache.js';
+import smartCache from '../utils/smartCache.js';
 
 const SALT_ROUNDS = 10;
 const RESET_TOKEN_EXPIRY_HOURS = 1;
@@ -60,7 +60,15 @@ export const register = async (req, res, next) => {
                     throw new ConflictError('Email already registered but not verified. Please check your inbox.');
                 }
             }
-            throw new ConflictError('Email already registered');
+            // User exists and is verified - suggest login instead
+            return res.status(409).json({
+                success: false,
+                shouldLogin: true,
+                error: {
+                    message: 'This email is already registered. Please login instead.',
+                    code: 'EMAIL_ALREADY_VERIFIED'
+                }
+            });
         }
 
         // Hash password
@@ -194,7 +202,16 @@ export const login = async (req, res, next) => {
 
         // Check if email is verified
         if (!user.emailVerified) {
-            throw new UnauthorizedError('Email not verified. Please check your inbox.');
+            // Return structured error with hint for frontend to show resend option
+            return res.status(401).json({
+                success: false,
+                needsVerification: true,
+                email: user.email,
+                error: {
+                    message: 'Email not verified. Please check your inbox or resend the verification link.',
+                    code: 'EMAIL_NOT_VERIFIED'
+                }
+            });
         }
 
         // Check for maintenance mode
@@ -456,6 +473,15 @@ export const confirmPasswordReset = async (req, res, next) => {
 
         const user = resetTokenRecord.user;
 
+        // SECURITY: Deactivated users cannot reset password
+        if (!user.isActive) {
+            // Clean up the token to prevent future attempts
+            await prisma.passwordResetToken.deleteMany({
+                where: { id: resetTokenRecord.id }
+            });
+            throw new UnauthorizedError('This account has been deactivated. Please contact support.');
+        }
+
         // Hash new password
         const hashedPassword = await bcrypt.hash(newPassword, SALT_ROUNDS);
 
@@ -505,7 +531,7 @@ export const getCurrentUser = async (req, res, next) => {
         const cacheKey = `auth:me:${userId}`;
 
         // 1. Check Cache
-        const cachedUser = cache.get(cacheKey);
+        const cachedUser = smartCache.get(cacheKey);
         if (cachedUser) {
             return res.json({
                 success: true,
@@ -541,7 +567,7 @@ export const getCurrentUser = async (req, res, next) => {
 
         // 3. Cache the result (Short TTL: 60s)
         // Short cache allows for relatively quick role/status updates while handling rapid navs
-        cache.set(cacheKey, user, 60);
+        smartCache.set(cacheKey, user, 60 * 1000); // smartCache uses ms
 
         res.json({
             success: true,
@@ -761,11 +787,18 @@ export const resendVerificationEmail = async (req, res, next) => {
             throw new NotFoundError('No account found with this email address');
         }
 
-        // Check if already verified
+        // SECURITY: Deactivated users cannot resend verification - prevents email spam to banned accounts
+        if (!user.isActive) {
+            throw new UnauthorizedError('This account has been deactivated. Please contact support.');
+        }
+
+        // Check if already verified - user should login instead
         if (user.emailVerified) {
             return res.json({
                 success: true,
-                message: 'Email is already verified',
+                alreadyVerified: true,
+                message: 'Your email is already verified. Please login to continue.',
+                redirectTo: '/login'
             });
         }
 

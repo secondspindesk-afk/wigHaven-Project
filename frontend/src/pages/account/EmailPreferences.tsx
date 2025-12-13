@@ -1,7 +1,9 @@
 import { useEmailPreferences } from '@/lib/hooks/useEmailPreferences';
 import { useUser } from '@/lib/hooks/useUser';
 import { useToast } from '@/contexts/ToastContext';
-import { Loader2, Mail, Bell, ShoppingCart, AlertTriangle, Save } from 'lucide-react';
+import { Mail, Bell, ShoppingCart, AlertTriangle, Save } from 'lucide-react';
+import SectionLoader from '@/components/ui/SectionLoader';
+import BrandedSpinner from '@/components/ui/BrandedSpinner';
 import { useState, useEffect } from 'react';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
 
@@ -54,7 +56,7 @@ export default function EmailPreferences() {
     ];
 
     if (isLoading) {
-        return <div className="flex items-center justify-center min-h-[400px]"><Loader2 className="w-6 h-6 animate-spin text-zinc-500" /></div>;
+        return <SectionLoader className="min-h-[400px]" />;
     }
 
     // ==================== MOBILE ====================
@@ -106,7 +108,7 @@ export default function EmailPreferences() {
                 {/* Actions */}
                 <div className="space-y-3">
                     <button onClick={handleSave} disabled={updatePreferences.isPending} className="w-full py-3.5 bg-white text-black text-xs font-bold uppercase rounded-xl flex items-center justify-center gap-2 disabled:opacity-50">
-                        {updatePreferences.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save size={16} />} Save Preferences
+                        {updatePreferences.isPending ? <BrandedSpinner size="xs" /> : <Save size={16} />} Save Preferences
                     </button>
                     <button onClick={handleUnsubscribeAll} className="w-full py-3 text-zinc-500 text-xs font-bold uppercase">Unsubscribe from All</button>
                 </div>
@@ -151,7 +153,7 @@ export default function EmailPreferences() {
                 <div className="mt-8 pt-8 border-t border-[#27272a] flex flex-col md:flex-row gap-4 justify-between items-center">
                     <button onClick={handleUnsubscribeAll} className="text-zinc-500 hover:text-red-400 text-xs font-bold uppercase tracking-widest transition-colors">Unsubscribe from all</button>
                     <button onClick={handleSave} disabled={updatePreferences.isPending} className="bg-white text-black px-8 py-3 text-xs font-bold uppercase tracking-widest hover:bg-zinc-200 transition-colors disabled:opacity-50 flex items-center gap-2">
-                        {updatePreferences.isPending && <Loader2 className="w-4 h-4 animate-spin" />} Save Preferences
+                        {updatePreferences.isPending && <BrandedSpinner size="xs" />} Save Preferences
                     </button>
                 </div>
             </div>

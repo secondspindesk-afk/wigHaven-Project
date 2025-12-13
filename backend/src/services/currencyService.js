@@ -11,7 +11,7 @@
 import { getPrisma } from '../config/database.js';
 import logger from '../utils/logger.js';
 
-import cache from '../utils/cache.js';
+import smartCache from '../utils/smartCache.js';
 
 // ExchangeRate-API - Free tier: 1500 requests/month
 // Supports GHS directly (unlike Frankfurter)
@@ -89,7 +89,7 @@ export const updateRatesInDb = async () => {
     const rates = await fetchLatestRates();
 
     // Update centralized cache immediately
-    cache.set(RATES_CACHE_KEY, rates, CACHE_TTL);
+    smartCache.set(RATES_CACHE_KEY, rates, smartCache.TTL.currency || CACHE_TTL * 1000);
 
     // Try to persist to database (but don't fail if DB is unavailable)
     try {
@@ -133,7 +133,7 @@ export const updateRatesInDb = async () => {
  */
 export const getCachedRates = async () => {
     // 1. Check centralized cache first (fastest)
-    const cached = cache.get(RATES_CACHE_KEY);
+    const cached = smartCache.get(RATES_CACHE_KEY);
     if (cached) {
         return cached;
     }
@@ -153,7 +153,7 @@ export const getCachedRates = async () => {
 
             // Update memory cache
             // Update centralized cache
-            cache.set(RATES_CACHE_KEY, ratesObj, CACHE_TTL);
+            smartCache.set(RATES_CACHE_KEY, ratesObj, smartCache.TTL.currency || CACHE_TTL * 1000);
 
             // Check if DB cache is stale
             const oldestRate = rates.reduce((oldest, rate) =>
@@ -215,7 +215,7 @@ export const getSupportedCurrencies = () => {
  * Force refresh rates (for admin use)
  */
 export const forceRefreshRates = async () => {
-    cache.del(RATES_CACHE_KEY);
+    smartCache.del(RATES_CACHE_KEY);
     return await updateRatesInDb();
 };
 

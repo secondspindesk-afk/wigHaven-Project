@@ -5,7 +5,9 @@ import { useCreateReview } from '@/lib/hooks/useReviews';
 import { useCurrencyContext } from '@/lib/context/CurrencyContext';
 import { useToast } from '@/contexts/ToastContext';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, ArrowLeft, MapPin, CreditCard, Package, AlertTriangle, X, Star, Download } from 'lucide-react';
+import { ArrowLeft, MapPin, CreditCard, Package, AlertTriangle, X, Star, Download } from 'lucide-react';
+import SectionLoader from '@/components/ui/SectionLoader';
+import BrandedSpinner from '@/components/ui/BrandedSpinner';
 import api from '@/lib/api/axios';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
 
@@ -49,11 +51,7 @@ export default function OrderDetails() {
     };
 
     if (isLoading) {
-        return (
-            <div className="flex items-center justify-center min-h-[400px]">
-                <Loader2 className="w-8 h-8 animate-spin text-zinc-500" />
-            </div>
-        );
+        return <SectionLoader className="min-h-[400px]" />;
     }
 
     if (!order && !isLoading) {
@@ -192,7 +190,7 @@ export default function OrderDetails() {
                         disabled={downloadingInvoice}
                         className="w-full bg-white text-black py-3.5 text-sm font-bold rounded-lg flex items-center justify-center gap-2 disabled:opacity-50"
                     >
-                        {downloadingInvoice ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download size={16} />}
+                        {downloadingInvoice ? <BrandedSpinner size="xs" /> : <Download size={16} />}
                         Download Invoice
                     </button>
 
@@ -220,7 +218,7 @@ export default function OrderDetails() {
                             disabled={cancelOrder.isPending}
                             className="w-full border border-red-500/30 text-red-400 py-3.5 text-sm font-bold rounded-lg flex items-center justify-center gap-2"
                         >
-                            {cancelOrder.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <X size={16} />}
+                            {cancelOrder.isPending ? <BrandedSpinner size="xs" /> : <X size={16} />}
                             Cancel Order
                         </button>
                     )}
@@ -298,7 +296,7 @@ export default function OrderDetails() {
                     disabled={downloadingInvoice}
                     className="flex items-center gap-2 bg-white text-black px-4 py-3 text-xs font-bold uppercase tracking-widest hover:bg-zinc-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                    {downloadingInvoice ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download size={16} />}
+                    {downloadingInvoice ? <BrandedSpinner size="xs" /> : <Download size={16} />}
                     Download Invoice
                 </button>
             </div>
@@ -408,7 +406,7 @@ export default function OrderDetails() {
                                 disabled={cancelOrder.isPending}
                                 className="border border-red-900/50 text-red-400 px-6 py-3 text-xs font-bold uppercase tracking-widest hover:bg-red-900/20 transition-colors flex items-center gap-2"
                             >
-                                {cancelOrder.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <X size={16} />}
+                                {cancelOrder.isPending ? <BrandedSpinner size="xs" /> : <X size={16} />}
                                 Cancel Order
                             </button>
                         </div>
@@ -434,7 +432,7 @@ export default function OrderDetails() {
                         </div>
                         <div className="flex gap-3">
                             <button onClick={() => setReviewModalOpen(false)} className="flex-1 border border-[#27272a] text-zinc-400 px-4 py-3 text-xs font-bold uppercase tracking-widest">Cancel</button>
-                            <button onClick={() => { if (comment.trim().length < 10) { showToast('Review must be at least 10 characters', 'error'); return; } createReview.mutate({ productId: selectedItem.product_id || selectedItem.variant_id, rating, comment: comment.trim(), orderItemId: selectedItem.id }, { onSuccess: () => { showToast('Review submitted!', 'success'); setReviewModalOpen(false); } }); }} disabled={createReview.isPending || comment.trim().length < 10} className="flex-1 bg-white text-black px-4 py-3 text-xs font-bold uppercase tracking-widest disabled:opacity-50">{createReview.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Submit'}</button>
+                            <button onClick={() => { if (comment.trim().length < 10) { showToast('Review must be at least 10 characters', 'error'); return; } createReview.mutate({ productId: selectedItem.product_id || selectedItem.variant_id, rating, comment: comment.trim(), orderItemId: selectedItem.id }, { onSuccess: () => { showToast('Review submitted!', 'success'); setReviewModalOpen(false); } }); }} disabled={createReview.isPending || comment.trim().length < 10} className="flex-1 bg-white text-black px-4 py-3 text-xs font-bold uppercase tracking-widest disabled:opacity-50">{createReview.isPending ? <BrandedSpinner size="xs" /> : 'Submit'}</button>
                         </div>
                     </div>
                 </div>

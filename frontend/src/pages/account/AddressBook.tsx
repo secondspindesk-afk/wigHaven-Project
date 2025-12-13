@@ -4,7 +4,9 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useAddresses } from '@/lib/hooks/useAddresses';
 import { useToast } from '@/contexts/ToastContext';
-import { Plus, MapPin, Trash2, Edit2, Check, Loader2, X, ChevronDown } from 'lucide-react';
+import { Plus, MapPin, Trash2, Edit2, Check, X, ChevronDown } from 'lucide-react';
+import SectionLoader from '@/components/ui/SectionLoader';
+import BrandedSpinner from '@/components/ui/BrandedSpinner';
 import { Address } from '@/lib/types';
 import { createPortal } from 'react-dom';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
@@ -96,11 +98,7 @@ export default function AddressBook() {
     }, [isModalOpen, isMobile]);
 
     if (isLoading) {
-        return (
-            <div className="flex items-center justify-center min-h-[400px]">
-                <Loader2 className="w-8 h-8 animate-spin text-zinc-500" />
-            </div>
-        );
+        return <SectionLoader className="min-h-[400px]" />;
     }
 
     // Mobile Layout
@@ -265,7 +263,7 @@ export default function AddressBook() {
                                 disabled={isSubmitting}
                                 className="w-full bg-white text-black py-4 text-sm font-bold rounded-lg flex items-center justify-center gap-2"
                             >
-                                {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                                {isSubmitting && <BrandedSpinner size="xs" />}
                                 {editingAddress ? 'Update Address' : 'Save Address'}
                             </button>
                         </div>
@@ -424,7 +422,7 @@ export default function AddressBook() {
                                 <label htmlFor="isDefault" className="text-xs text-zinc-400">Set as default address</label>
                             </div>
                             <button type="submit" disabled={isSubmitting} className="w-full bg-white text-black font-bold text-xs uppercase tracking-widest py-4 rounded-sm hover:bg-zinc-200 transition-colors mt-6 flex items-center justify-center gap-2">
-                                {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                                {isSubmitting && <BrandedSpinner size="xs" />}
                                 {editingAddress ? 'Update Address' : 'Save Address'}
                             </button>
                         </form>

@@ -1,7 +1,8 @@
 import { useWishlist } from '@/lib/hooks/useWishlist';
 import { useAddToCart } from '@/lib/hooks/useAddToCart';
-import { Link } from 'react-router-dom';
-import { Heart, ShoppingBag, Trash2, Loader2, AlertCircle, X } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Heart, ShoppingBag, Trash2, AlertCircle, X } from 'lucide-react';
+import SectionLoader from '@/components/ui/SectionLoader';
 import { useCurrencyContext } from '@/lib/context/CurrencyContext';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
 
@@ -10,13 +11,35 @@ export default function Wishlist() {
     const addToCart = useAddToCart();
     const { formatPrice } = useCurrencyContext();
     const isMobile = useIsMobile();
+    const navigate = useNavigate();
+
+    /**
+     * Add to cart from wishlist:
+     * - Single item → Remove from wishlist + navigate to cart
+     * - Multiple items → Remove from wishlist + stay on page
+     */
+    const handleAddToCart = (productId: string, variantId: string, productInfo?: any) => {
+        const isLastItem = wishlist.length === 1;
+
+        // Add to cart
+        addToCart.mutate(
+            { variantId, quantity: 1, productInfo },
+            {
+                onSuccess: () => {
+                    // Remove from wishlist (fire and forget - optimistic)
+                    removeFromWishlist.mutate(productId);
+
+                    // Navigate to cart if this was the last item
+                    if (isLastItem) {
+                        navigate('/cart');
+                    }
+                }
+            }
+        );
+    };
 
     if (isLoading) {
-        return (
-            <div className="flex items-center justify-center min-h-[400px]">
-                <Loader2 className="w-8 h-8 animate-spin text-zinc-500" />
-            </div>
-        );
+        return <SectionLoader className="min-h-[400px]" />;
     }
 
     if (wishlist.length === 0) {
@@ -95,7 +118,21 @@ export default function Wishlist() {
                                     <button
                                         onClick={() => {
                                             if (actionVariant) {
-                                                addToCart.mutate({ variantId: actionVariant.id, quantity: 1 });
+                                                handleAddToCart(product.id, actionVariant.id, {
+                                                    product_id: product.id,
+                                                    product_name: product.name,
+                                                    sku: actionVariant.sku || '',
+                                                    unit_price: actionVariant.price > 0 ? actionVariant.price : product.basePrice,
+                                                    images: actionVariant.images?.length > 0 ? actionVariant.images : (product.images || []),
+                                                    attributes: {
+                                                        length: actionVariant.length || null,
+                                                        color: actionVariant.color || null,
+                                                        texture: actionVariant.texture || null,
+                                                        size: actionVariant.size || null,
+                                                    },
+                                                    stock_available: actionVariant.stock,
+                                                    category: product.category?.slug || 'uncategorized',
+                                                });
                                             }
                                         }}
                                         disabled={isOutOfStock}
@@ -180,9 +217,20 @@ export default function Wishlist() {
                                     <button
                                         onClick={() => {
                                             if (actionVariant) {
-                                                addToCart.mutate({
-                                                    variantId: actionVariant.id,
-                                                    quantity: 1
+                                                handleAddToCart(product.id, actionVariant.id, {
+                                                    product_id: product.id,
+                                                    product_name: product.name,
+                                                    sku: actionVariant.sku || '',
+                                                    unit_price: actionVariant.price > 0 ? actionVariant.price : product.basePrice,
+                                                    images: actionVariant.images?.length > 0 ? actionVariant.images : (product.images || []),
+                                                    attributes: {
+                                                        length: actionVariant.length || null,
+                                                        color: actionVariant.color || null,
+                                                        texture: actionVariant.texture || null,
+                                                        size: actionVariant.size || null,
+                                                    },
+                                                    stock_available: actionVariant.stock,
+                                                    category: product.category?.slug || 'uncategorized',
                                                 });
                                             }
                                         }}

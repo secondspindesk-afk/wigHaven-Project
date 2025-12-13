@@ -5,7 +5,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useLogin } from '@/lib/hooks/useLogin';
 import { useUser } from '@/lib/hooks/useUser';
 import { loginSchema, LoginFormData } from '@/lib/validators';
-import { Eye, EyeOff, Loader2, ArrowRight } from 'lucide-react';
+import { Eye, EyeOff, ArrowRight } from 'lucide-react';
+import BrandedSpinner from '@/components/ui/BrandedSpinner';
 import AuthHeader from '@/components/ui/AuthHeader';
 import { motion } from 'framer-motion';
 
@@ -127,7 +128,7 @@ export default function Login() {
                     >
                         {isLoading ? (
                             <>
-                                <Loader2 className="w-4 h-4 animate-spin" />
+                                <BrandedSpinner size="xs" />
                                 <span>Authenticating...</span>
                             </>
                         ) : (

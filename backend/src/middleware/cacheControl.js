@@ -17,6 +17,7 @@ import logger from '../utils/logger.js';
  */
 export const shortCache = (req, res, next) => {
     res.set('Cache-Control', 'public, s-maxage=60, max-age=30, stale-while-revalidate=120');
+    res.set('CDN-Cache-Control', 'max-age=60');
     res.set('Vary', 'Accept-Encoding, Accept-Language');
     next();
 };
@@ -27,6 +28,7 @@ export const shortCache = (req, res, next) => {
  */
 export const mediumCache = (req, res, next) => {
     res.set('Cache-Control', 'public, s-maxage=300, max-age=120, stale-while-revalidate=600');
+    res.set('CDN-Cache-Control', 'max-age=300');
     res.set('Vary', 'Accept-Encoding');
     next();
 };
@@ -37,6 +39,7 @@ export const mediumCache = (req, res, next) => {
  */
 export const longCache = (req, res, next) => {
     res.set('Cache-Control', 'public, s-maxage=3600, max-age=1800, stale-while-revalidate=7200');
+    res.set('CDN-Cache-Control', 'max-age=3600');
     res.set('Vary', 'Accept-Encoding');
     next();
 };
@@ -47,6 +50,7 @@ export const longCache = (req, res, next) => {
  */
 export const currencyCache = (req, res, next) => {
     res.set('Cache-Control', 'public, s-maxage=21600, max-age=3600, stale-while-revalidate=43200');
+    res.set('CDN-Cache-Control', 'max-age=21600');
     res.set('Vary', 'Accept-Encoding');
     next();
 };
