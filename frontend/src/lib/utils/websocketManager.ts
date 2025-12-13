@@ -82,7 +82,7 @@ class WebSocketManager {
 
         const token = tokenManager.getAccessToken();
         if (!token) {
-            console.warn('[WebSocketManager] No token available, skipping connection');
+            // No token - silently skip connection
             return;
         }
 
