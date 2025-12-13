@@ -12,8 +12,14 @@ import logger from '../utils/logger.js';
 export const authenticateToken = async (req, res, next) => {
     try {
         const authHeader = req.headers.authorization;
-        // Check custom header first (Hybrid Arch support) or standard header
-        const token = req.headers['x-auth-token'] || extractTokenFromHeader(authHeader);
+        // Check headers in priority order:
+        // 1. x-auth-token (direct API calls)
+        // 2. x-forwarded-auth (forwarded through HF gateway - contains original Authorization header)
+        // 3. authorization (standard Bearer token)
+        const forwardedAuth = req.headers['x-forwarded-auth'];
+        const token = req.headers['x-auth-token']
+            || extractTokenFromHeader(forwardedAuth)
+            || extractTokenFromHeader(authHeader);
 
         if (!token) {
             throw new UnauthorizedError('Please log in to continue');
@@ -92,7 +98,10 @@ export const authenticateToken = async (req, res, next) => {
 export const optionalAuth = async (req, res, next) => {
     try {
         const authHeader = req.headers.authorization;
-        const token = req.headers['x-auth-token'] || extractTokenFromHeader(authHeader);
+        const forwardedAuth = req.headers['x-forwarded-auth'];
+        const token = req.headers['x-auth-token']
+            || extractTokenFromHeader(forwardedAuth)
+            || extractTokenFromHeader(authHeader);
 
         if (!token) {
             // No token provided, continue without user

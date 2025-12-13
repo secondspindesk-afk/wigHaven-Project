@@ -160,22 +160,39 @@ async fn proxy_handler(
         .method(method)
         .uri(target_uri);
 
-    // Add auth header
-    if !state.hf_token.is_empty() {
-        req = req.header("authorization", format!("Bearer {}", state.hf_token));
-    }
-
     // Forward headers efficiently - skip hop-by-hop headers
     static SKIP_HEADERS: &[&str] = &[
         "host", "connection", "keep-alive", "proxy-authenticate",
         "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade"
     ];
 
+    // IMPORTANT: Preserve client's Authorization header before overwriting
+    // Forward it as x-forwarded-auth so backend can read the user's JWT
+    let mut client_auth_forwarded = false;
     for (key, value) in headers.iter() {
         let key_str = key.as_str();
         if !SKIP_HEADERS.contains(&key_str) {
-            req = req.header(key, value);
+            // If this is the Authorization header, forward it as x-forwarded-auth
+            if key_str == "authorization" {
+                req = req.header("x-forwarded-auth", value);
+                client_auth_forwarded = true;
+            } else {
+                req = req.header(key, value);
+            }
         }
+    }
+
+    // Also check for x-auth-token and forward it
+    if let Some(auth_token) = headers.get("x-auth-token") {
+        if !client_auth_forwarded {
+            req = req.header("x-forwarded-auth", format!("Bearer {}", auth_token.to_str().unwrap_or("")));
+        }
+    }
+
+    // Add HF token as Authorization header for accessing private HF Space
+    // This MUST be the actual Authorization header for HF to accept it
+    if !state.hf_token.is_empty() {
+        req = req.header("authorization", format!("Bearer {}", state.hf_token));
     }
 
     // Build request with streaming body
