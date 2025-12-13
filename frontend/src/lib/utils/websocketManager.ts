@@ -91,11 +91,27 @@ class WebSocketManager {
         this.state.isIntentionalClose = false;
 
         try {
-            const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:5000';
+            // Auto-derive WebSocket URL from API URL if VITE_WS_URL not set
+            let wsUrl = import.meta.env.VITE_WS_URL;
+
+            if (!wsUrl) {
+                const apiUrl = import.meta.env.VITE_API_URL;
+                if (apiUrl) {
+                    // Convert http(s):// to ws(s)://
+                    wsUrl = apiUrl
+                        .replace(/^https:/, 'wss:')
+                        .replace(/^http:/, 'ws:');
+                } else {
+                    // Fallback to current origin with proper protocol
+                    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                    wsUrl = `${protocol}//${window.location.host}`;
+                }
+            }
+
             const ws = new WebSocket(`${wsUrl}/notifications`, ['access_token', token]);
 
             ws.onopen = () => {
-                console.log('✅ [WebSocketManager] Connected (singleton)');
+                console.log(`✅ [WebSocketManager] Connected to ${wsUrl}`);
                 this.state.isConnecting = false;
                 this.state.reconnectAttempts = 0;
 
