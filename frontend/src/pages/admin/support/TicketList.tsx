@@ -319,7 +319,7 @@ export default function TicketList() {
 
                             <div className="w-full h-px bg-zinc-900 max-w-3xl mx-auto my-6" />
 
-                            {selectedTicket.messages?.map((msg, index) => (
+                            {selectedTicket.messages?.map((msg) => (
                                 <div key={msg.id} className={`flex gap-3 max-w-3xl mx-auto w-full ${msg.isAdmin ? 'flex-row-reverse' : ''} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
                                     <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 border shadow-sm ${msg.isAdmin ? 'bg-white border-white text-black' : 'bg-zinc-800 border-zinc-700 text-zinc-400'}`}>
                                         {msg.isAdmin ? <span className="font-black text-[10px]">W</span> : <User size={12} />}
