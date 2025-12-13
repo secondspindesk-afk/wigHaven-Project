@@ -26,17 +26,17 @@ interface WebSocketManagerState {
     reconnectAttempts: number;
     reconnectTimeout: NodeJS.Timeout | null;
     heartbeatInterval: NodeJS.Timeout | null;
-    disconnectTimeout: NodeJS.Timeout | null; // For React Strict Mode handling
+    disconnectTimeout: NodeJS.Timeout | null;
     isIntentionalClose: boolean;
     isConnecting: boolean;
 }
 
 // Reconnection config with exponential backoff
 const MAX_RECONNECT_ATTEMPTS = 10;
-const BASE_DELAY = 1000; // Start at 1 second
-const MAX_DELAY = 30000; // Cap at 30 seconds
-const HEARTBEAT_INTERVAL = 30000; // Send heartbeat every 30 seconds
-const DISCONNECT_DEBOUNCE = 150; // Delay disconnect for React Strict Mode
+const BASE_DELAY = 1000;
+const MAX_DELAY = 30000;
+const HEARTBEAT_INTERVAL = 30000;
+const DISCONNECT_DEBOUNCE = 150;
 
 class WebSocketManager {
     private state: WebSocketManagerState = {
@@ -53,7 +53,6 @@ class WebSocketManager {
 
     /**
      * Calculate reconnection delay with exponential backoff and jitter
-     * Prevents "thundering herd" when many clients try to reconnect simultaneously
      */
     private getReconnectDelay(attempt: number): number {
         const exponentialDelay = Math.min(BASE_DELAY * Math.pow(2, attempt), MAX_DELAY);
@@ -91,13 +90,14 @@ class WebSocketManager {
         this.state.isIntentionalClose = false;
 
         try {
-            // Auto-derive WebSocket URL from API URL if VITE_WS_URL not set
+            // Auto-derive WebSocket URL from API URL (which points to gateway)
+            // Gateway now supports WebSocket proxy, so we use the same URL
             let wsUrl = import.meta.env.VITE_WS_URL;
 
             if (!wsUrl) {
                 const apiUrl = import.meta.env.VITE_API_URL;
                 if (apiUrl) {
-                    // Convert http(s):// to ws(s)://
+                    // Convert https:// to wss:// or http:// to ws://
                     wsUrl = apiUrl
                         .replace(/^https:/, 'wss:')
                         .replace(/^http:/, 'ws:');
@@ -151,7 +151,7 @@ class WebSocketManager {
             };
 
             ws.onerror = () => {
-                // Suppress error logs in development - noisy and expected during cleanup
+                // Suppress error logs - noisy and expected during cleanup
                 this.state.isConnecting = false;
             };
 
@@ -226,7 +226,6 @@ class WebSocketManager {
 
     /**
      * Disconnect WebSocket (intentionally)
-     * Uses debounce to handle React Strict Mode double-unmount
      */
     disconnect(): void {
         this.state.isIntentionalClose = true;
@@ -249,7 +248,6 @@ class WebSocketManager {
 
     /**
      * Subscribe to WebSocket messages
-     * Returns unsubscribe function
      */
     subscribe(handler: MessageHandler): () => void {
         // Cancel any pending disconnect (React Strict Mode re-mount)
@@ -260,7 +258,7 @@ class WebSocketManager {
 
         this.state.subscribers.add(handler);
 
-        // Auto-connect when first subscriber joins (or when reconnecting after Strict Mode)
+        // Auto-connect when first subscriber joins
         if (this.state.subscribers.size >= 1 && !this.state.ws && !this.state.isConnecting) {
             this.connect();
         }
@@ -282,7 +280,6 @@ class WebSocketManager {
 
     /**
      * Register handler to be called on each successful connection
-     * Useful for syncing data after reconnection
      */
     onConnect(handler: ConnectionHandler): () => void {
         this.state.onConnectHandlers.add(handler);
