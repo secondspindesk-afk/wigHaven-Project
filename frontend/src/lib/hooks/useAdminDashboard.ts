@@ -14,11 +14,12 @@ import adminApi, {
 // CACHE CONFIGURATION
 // ============================================
 // WebSocket DATA_UPDATE messages handle real-time invalidation,
-// so we can use longer staleTime to reduce DB load
+// so we can use longer staleTime and disable refetch on mount
 const ADMIN_CACHE_CONFIG = {
     staleTime: 5 * 60 * 1000,     // 5 minutes - data is fresh
     gcTime: 30 * 60 * 1000,       // 30 minutes - keep in memory
     refetchOnWindowFocus: true,   // Refresh on tab switch (admins expect this)
+    refetchOnMount: false,        // Don't refetch on every mount - WebSocket handles updates
 };
 
 // Dashboard Summary Hook
@@ -147,6 +148,7 @@ export function useSystemHealth(enabled: boolean = true) {
         staleTime: 5 * 60 * 1000,       // 5 minutes
         gcTime: 10 * 60 * 1000,          // 10 minutes
         refetchOnWindowFocus: true,     // Refresh on tab focus is enough
+        refetchOnMount: false,          // Don't refetch on every mount
         enabled
     });
 }

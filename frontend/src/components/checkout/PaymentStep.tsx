@@ -24,9 +24,9 @@ export default function PaymentStep({ payment, order, phoneNumber, paymentProvid
     const [isSuccess, setIsSuccess] = useState(false);
     const [showTimeoutMessage, setShowTimeoutMessage] = useState(false);
 
-    // Real-time order tracking
+    // Real-time order tracking via WebSocket (no polling needed)
+    // WebSocketContext invalidates ['orders'] cache when payment notification arrives
     const { data: liveOrder } = useOrder(order.orderNumber, {
-        refetchInterval: 3000,
         email: order.customerEmail || order.guestEmail // Pass email for guest authorization
     });
 

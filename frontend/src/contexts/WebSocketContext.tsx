@@ -111,6 +111,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
 
             // Cache invalidation based on notification type
             switch (notification.type) {
+                case 'payment': // Backend uses NotificationTypes.PAYMENT for payment success
                 case 'order_payment_confirmed':
                 case 'order_placed':
                 case 'order_status':

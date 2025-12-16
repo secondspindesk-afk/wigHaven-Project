@@ -27,6 +27,7 @@ export function useAdminProducts(params?: { search?: string; category?: string; 
         placeholderData: (previousData) => previousData,
         staleTime: 2 * 60 * 1000, // 2 minutes
         gcTime: 10 * 60 * 1000,
+        refetchOnMount: false, // Don't refetch on every mount
     });
 }
 
@@ -37,6 +38,7 @@ export function useProduct(id: string | undefined) {
         queryFn: () => adminProductApi.getProduct(id!),
         enabled: !!id,
         staleTime: 1 * 60 * 1000, // 1 minute
+        refetchOnMount: false, // Don't refetch on every mount
     });
 }
 
@@ -152,6 +154,7 @@ export function useAdminCategories(params?: { isActive?: boolean; type?: string;
         queryFn: () => adminProductApi.getCategories(params),
         staleTime: 2 * 60 * 1000, // 2 minutes - categories rarely change
         gcTime: 10 * 60 * 1000,
+        refetchOnMount: false, // Don't refetch on every mount
     });
 }
 
