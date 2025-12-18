@@ -34,19 +34,11 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     const { showToast } = useToast();
     const isConnectedRef = useRef(false);
     const hasSubscribedRef = useRef(false);
-
-    /**
-     * Sync data after reconnection
-     */
-    const syncAfterReconnect = useCallback(() => {
-        // Silently sync after reconnection
-        queryClient.invalidateQueries({ queryKey: ['notifications'] });
-        queryClient.invalidateQueries({ queryKey: ['orders'] });
-
-        if (user?.role === 'admin' || user?.role === 'super_admin') {
-            queryClient.invalidateQueries({ queryKey: ['admin'] });
-        }
-    }, [queryClient, user?.role]);
+    // Track if this is a RECONNECTION (not initial connection) to avoid spamming invalidations
+    const hasConnectedOnceRef = useRef(false);
+    // Store user role in ref to avoid callback recreation
+    const userRoleRef = useRef(user?.role);
+    userRoleRef.current = user?.role;
 
     /**
      * Handle incoming WebSocket messages - SINGLE HANDLER for entire app
@@ -165,23 +157,49 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         }
     }, [queryClient, showToast]);
 
-    // Subscribe to WebSocket - ONCE at app root
+    // Store handleMessage in ref to avoid re-running useEffect when callback changes
+    const handleMessageRef = useRef(handleMessage);
+    handleMessageRef.current = handleMessage;
+
+    // Subscribe to WebSocket - ONCE when user is available
+    // Using refs for handlers to prevent dependency changes from triggering re-subscription
     useEffect(() => {
-        if (!user || hasSubscribedRef.current) return;
+        if (!user) return;
 
+        // Only subscribe once per component lifetime
+        if (hasSubscribedRef.current) return;
         hasSubscribedRef.current = true;
-        // Subscribe to WebSocket
 
-        const unsubscribeMessages = wsManager.subscribe(handleMessage);
-        const unsubscribeConnect = wsManager.onConnect(syncAfterReconnect);
+        // Use stable wrapper that calls current ref value
+        const stableMessageHandler = (data: unknown) => {
+            handleMessageRef.current(data);
+        };
+
+        const unsubscribeMessages = wsManager.subscribe(stableMessageHandler);
+
+        // STABLE onConnect handler - only sync on RECONNECTION, not initial connect
+        // Uses refs to avoid dependency on user?.role which would cause infinite loops
+        const unsubscribeConnect = wsManager.onConnect(() => {
+            // Only sync if we've connected before (this is a RECONNECTION)
+            if (hasConnectedOnceRef.current) {
+                console.log('[WebSocket] Reconnected - syncing data');
+                queryClient.invalidateQueries({ queryKey: ['notifications'] });
+                queryClient.invalidateQueries({ queryKey: ['orders'] });
+
+                if (userRoleRef.current === 'admin' || userRoleRef.current === 'super_admin') {
+                    queryClient.invalidateQueries({ queryKey: ['admin'] });
+                }
+            }
+            hasConnectedOnceRef.current = true;
+        });
 
         return () => {
-            // Unsubscribe on cleanup
-            hasSubscribedRef.current = false;
+            // DON'T reset hasSubscribedRef - we want to stay subscribed across re-renders
+            // Only cleanup subscriptions on unmount
             unsubscribeMessages();
             unsubscribeConnect();
         };
-    }, [user, handleMessage, syncAfterReconnect]);
+    }, [user, queryClient]); // Removed handleMessage - using ref instead
 
     return (
         <WebSocketContext.Provider value={{ isConnected: isConnectedRef.current }}>
@@ -189,3 +207,4 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         </WebSocketContext.Provider>
     );
 }
+

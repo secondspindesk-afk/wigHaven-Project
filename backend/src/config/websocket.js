@@ -34,28 +34,38 @@ export const initializeWebSocket = (server) => {
         }
     });
 
-    server.on('upgrade', (request, socket, head) => {
-        // RATE LIMITING: Prevent connection flooding attacks
-        const clientIp = request.socket.remoteAddress || 'unknown';
+    // Start rate limit cleanup interval (every 5 minutes)
+    // This replaces the O(N) cleanup on every request which could be a DoS vector
+    const cleanupInterval = setInterval(() => {
         const now = Date.now();
-
-        // Clean up old entries
         for (const [ip, data] of connectionAttempts.entries()) {
             if (now > data.resetTime) {
                 connectionAttempts.delete(ip);
             }
         }
+    }, 5 * 60 * 1000);
+
+    server.on('upgrade', (request, socket, head) => {
+        // RATE LIMITING: Check limits without heavy cleanup
+        const clientIp = request.socket.remoteAddress || 'unknown';
+        const now = Date.now();
+        // ... (Cleanup is now handled by interval)
 
         // Check rate limit
         const attemptData = connectionAttempts.get(clientIp);
         if (attemptData) {
-            if (attemptData.count >= MAX_CONNECTION_ATTEMPTS) {
+            // Reset count if window passed (lazy cleanup for active IPs)
+            if (now > attemptData.resetTime) {
+                attemptData.count = 1;
+                attemptData.resetTime = now + RATE_LIMIT_WINDOW_MS;
+            } else if (attemptData.count >= MAX_CONNECTION_ATTEMPTS) {
                 logger.warn(`Rate limit exceeded for IP: ${clientIp}`);
                 socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n');
                 socket.destroy();
                 return;
+            } else {
+                attemptData.count++;
             }
-            attemptData.count++;
         } else {
             connectionAttempts.set(clientIp, {
                 count: 1,
@@ -82,13 +92,11 @@ export const initializeWebSocket = (server) => {
         const { pathname } = parsedUrl;
 
         if (pathname === '/notifications') {
-            // SECURITY ENHANCEMENT: Read token from Sec-WebSocket-Protocol header instead of URL
-            // This prevents token from appearing in browser history and server logs
+            // SECURITY: Read token from Sec-WebSocket-Protocol
             const protocols = request.headers['sec-websocket-protocol'];
             let token = null;
 
             if (protocols) {
-                // Protocol format: "access_token, <JWT_TOKEN>"
                 const protocolList = protocols.split(',').map(p => p.trim());
                 if (protocolList[0] === 'access_token' && protocolList[1]) {
                     token = protocolList[1];
@@ -106,13 +114,16 @@ export const initializeWebSocket = (server) => {
                 const decoded = verifyToken(token);
                 const userId = decoded.sub;
 
-                // CRITICAL: Accept the protocol in the upgrade response headers
-                // We need to tell the client which protocol we're accepting
                 wss.handleUpgrade(request, socket, head, (ws) => {
                     wss.emit('connection', ws, request, userId);
                 });
             } catch (error) {
-                logger.warn(`WebSocket auth failed: ${error.message}`);
+                // Log strictly as warning for specific errors, error for unknown
+                if (error.message === 'Token expired') {
+                    logger.warn(`WebSocket auth failed (Expired): User may need to refresh`);
+                } else {
+                    logger.error(`WebSocket auth failed: ${error.message}`);
+                }
                 socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
                 socket.destroy();
             }
@@ -130,7 +141,7 @@ export const initializeWebSocket = (server) => {
         }
         clients.get(userId).add(ws);
 
-        // Check if user is admin/super_admin and track separately for dashboard updates
+        // Check if user is admin/super_admin
         try {
             const { getPrisma } = await import('./database.js');
             const prisma = getPrisma();
@@ -147,24 +158,22 @@ export const initializeWebSocket = (server) => {
                 logger.info(`📊 Admin ${user.role} connected to dashboard updates: ${userId}`);
             }
         } catch (err) {
-            // Non-fatal: continue without admin tracking
             logger.warn(`Could not check admin status for ${userId}: ${err.message}`);
         }
 
-        // Track connection health for heartbeat
+        // HEARBEAT: Initialize isAlive
+        // We rely on Client PING -> Server PONG to keep connection alive
         ws.isAlive = true;
-        ws.on('pong', () => {
-            ws.isAlive = true;
-        });
 
-        // Handle client messages (heartbeat PING from frontend)
+        // Handle client messages
         ws.on('message', (data) => {
             try {
                 const message = JSON.parse(data.toString());
 
-                // Respond to client PING with PONG (keeps connection alive through proxies/NAT)
+                // Client PING is the source of truth for connection health
                 if (message.type === 'PING') {
-                    ws.isAlive = true; // Mark as alive on any client message
+                    ws.isAlive = true;
+                    // Respond with PONG to satisfy APP-LEVEL heartbeat
                     ws.send(JSON.stringify({
                         type: 'PONG',
                         timestamp: Date.now(),
@@ -172,7 +181,7 @@ export const initializeWebSocket = (server) => {
                     }));
                 }
             } catch (err) {
-                // Ignore malformed messages - not critical for heartbeat
+                // Ignore malformed messages
             }
         });
 
@@ -183,22 +192,16 @@ export const initializeWebSocket = (server) => {
         }));
 
         ws.on('close', () => {
-            logger.info(`WebSocket disconnected for user: ${userId}`);
+            // ... Clean up maps (existing code handles this well) ...
             if (clients.has(userId)) {
                 const userClients = clients.get(userId);
                 userClients.delete(ws);
-                if (userClients.size === 0) {
-                    clients.delete(userId);
-                }
+                if (userClients.size === 0) clients.delete(userId);
             }
-
-            // Also remove from admin clients
             if (adminClients.has(userId)) {
                 const adminData = adminClients.get(userId);
                 adminData.sockets.delete(ws);
-                if (adminData.sockets.size === 0) {
-                    adminClients.delete(userId);
-                }
+                if (adminData.sockets.size === 0) adminClients.delete(userId);
             }
         });
 
@@ -207,25 +210,23 @@ export const initializeWebSocket = (server) => {
         });
     });
 
-    // Heartbeat to keep connections alive
+    // HEARTBEAT CHECK INTERVAL
+    // Uses APP-LEVEL heartbeats only. Simpler and Proxy-Safe.
     const interval = setInterval(() => {
         wss.clients.forEach((ws) => {
-            // Initialize isAlive if undefined (new connections)
-            if (ws.isAlive === undefined) {
-                ws.isAlive = true;
-            }
-
             if (ws.isAlive === false) {
+                // No PING received from client in last interval
                 return ws.terminate();
             }
 
+            // Reset flag - expect PING before next interval
             ws.isAlive = false;
-            ws.ping();
         });
-    }, 30000);
+    }, 45000); // 45 seconds (Grace period > Client Ping 30s)
 
     wss.on('close', () => {
         clearInterval(interval);
+        clearInterval(cleanupInterval);
     });
 
     logger.info('✅ WebSocket Server initialized');
@@ -245,8 +246,12 @@ export const broadcastNotification = (userId, notification) => {
         let sentCount = 0;
         userClients.forEach((client) => {
             if (client.readyState === 1) { // OPEN
-                client.send(message);
-                sentCount++;
+                try {
+                    client.send(message);
+                    sentCount++;
+                } catch (e) {
+                    logger.error(`Failed to send notification to user ${userId}:`, e);
+                }
             }
         });
 
@@ -280,10 +285,20 @@ export const broadcastForceLogout = (excludeUserIds = []) => {
 
         userClients.forEach((ws) => {
             if (ws.readyState === 1) { // OPEN
-                ws.send(message);
-                disconnectedCount++;
+                try {
+                    ws.send(message);
+                    disconnectedCount++;
+                } catch (e) {
+                    logger.error('Failed to send force logout message:', e);
+                }
                 // Close connection gracefully after sending message
-                setTimeout(() => ws.close(1000, 'Maintenance Mode'), 100);
+                setTimeout(() => {
+                    try {
+                        ws.close(1000, 'Maintenance Mode');
+                    } catch (e) {
+                        // Ignore close errors
+                    }
+                }, 100);
             }
         });
     }
@@ -324,8 +339,12 @@ export const broadcastToAdmins = (eventType, queryKeys, metadata = {}) => {
     for (const [userId, adminData] of adminClients.entries()) {
         adminData.sockets.forEach((ws) => {
             if (ws.readyState === 1) { // OPEN
-                ws.send(message);
-                sentCount++;
+                try {
+                    ws.send(message);
+                    sentCount++;
+                } catch (e) {
+                    logger.error(`Failed to send admin update to ${userId}:`, e);
+                }
             }
         });
     }

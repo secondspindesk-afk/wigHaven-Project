@@ -9,3 +9,6 @@ compatibility_flags = ["nodejs_compat"]
 
 [vars]
 PRIVATE_BACKEND_URL = "https://ben820-wighaven-backend.hf.space"
+
+[triggers]
+crons = ["*/30 * * * *"]

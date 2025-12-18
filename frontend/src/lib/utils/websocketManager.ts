@@ -27,6 +27,7 @@ interface WebSocketManagerState {
     reconnectTimeout: NodeJS.Timeout | null;
     heartbeatInterval: NodeJS.Timeout | null;
     disconnectTimeout: NodeJS.Timeout | null;
+    connectionTimeout: NodeJS.Timeout | null;
     isIntentionalClose: boolean;
     isConnecting: boolean;
 }
@@ -47,9 +48,62 @@ class WebSocketManager {
         reconnectTimeout: null,
         heartbeatInterval: null,
         disconnectTimeout: null,
+        connectionTimeout: null,
         isIntentionalClose: false,
         isConnecting: false,
     };
+
+    // Track last message time for activity monitoring
+    private lastMessageTimestamp: number = 0;
+
+    /**
+     * Helper: Check if JWT is expired
+     */
+    private isTokenExpired(token: string): boolean {
+        try {
+            const base64Url = token.split('.')[1];
+            const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+            const jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function (c) {
+                return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+            }).join(''));
+            const { exp } = JSON.parse(jsonPayload);
+            // Expire 10 seconds early to be safe
+            return Date.now() >= (exp * 1000) - 10000;
+        } catch {
+            return true;
+        }
+    }
+
+    /**
+     * Helper: Refresh Auth Token
+     */
+    private async refreshAuthToken(): Promise<string | null> {
+        const refreshToken = tokenManager.getRefreshToken();
+        if (!refreshToken) return null;
+
+        try {
+            const apiUrl = import.meta.env.VITE_API_URL || '';
+            const response = await fetch(`${apiUrl}/api/auth/refresh`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ refreshToken })
+            });
+
+            if (!response.ok) throw new Error('Refresh failed');
+
+            const data = await response.json();
+            const { accessToken, refreshToken: newRefreshToken } = data.data;
+
+            if (accessToken) {
+                tokenManager.setTokens(accessToken, newRefreshToken || refreshToken);
+                return accessToken;
+            }
+            return null;
+        } catch (e) {
+            console.error('[WebSocketManager] Token refresh failed:', e);
+            return null;
+        }
+    }
 
     /**
      * Calculate reconnection delay with exponential backoff and jitter
@@ -63,7 +117,7 @@ class WebSocketManager {
     /**
      * Connect to WebSocket server (if not already connected)
      */
-    connect(): void {
+    async connect(): Promise<void> {
         // Cancel any pending disconnect (React Strict Mode re-mount)
         if (this.state.disconnectTimeout) {
             clearTimeout(this.state.disconnectTimeout);
@@ -75,15 +129,21 @@ class WebSocketManager {
             return;
         }
 
-        // Also check CONNECTING state
-        if (this.state.ws?.readyState === WebSocket.CONNECTING) {
-            return;
-        }
+        let token = tokenManager.getAccessToken();
+        if (!token) return;
 
-        const token = tokenManager.getAccessToken();
-        if (!token) {
-            // No token - silently skip connection
-            return;
+        // Check expiry and refresh if needed
+        if (this.isTokenExpired(token)) {
+            console.log('[WebSocketManager] Token expired, attempting refresh...');
+            const newToken = await this.refreshAuthToken();
+            if (newToken) {
+                token = newToken;
+            } else {
+                console.warn('[WebSocketManager] Failed to refresh token. Aborting connection.');
+                // Clear tokens to prevent infinite retry loops
+                // tokenManager.clearTokens(); // Optional: might be too aggressive if API is down
+                return;
+            }
         }
 
         this.state.isConnecting = true;
@@ -113,9 +173,24 @@ class WebSocketManager {
             ws.onopen = () => {
                 // Don't log URL for security
                 this.state.isConnecting = false;
-                this.state.reconnectAttempts = 0;
+                console.log('[WebSocketManager] Connection opened - Waiting for stability...');
+
+                // Reset activity timer
+                this.lastMessageTimestamp = Date.now();
+
+                // STABILITY CHECK: Don't reset attempts immediately.
+                // Only consider it a "success" if it stays connected for 5 seconds.
+                // This prevents "death spirals" where it connects -> fails immediately -> retries immediately.
+                if (this.state.connectionTimeout) clearTimeout(this.state.connectionTimeout);
+
+                this.state.connectionTimeout = setTimeout(() => {
+                    console.log('[WebSocketManager] Connection stabilized - Resetting attempts');
+                    this.state.reconnectAttempts = 0;
+                }, 5000);
 
                 // Notify all connect handlers
+                // Note: We intentionally call this immediately on open to sync state,
+                // trusting the WebSocketContext to handle de-duplication/logic.
                 this.state.onConnectHandlers.forEach(handler => {
                     try {
                         handler();
@@ -130,6 +205,9 @@ class WebSocketManager {
 
             ws.onmessage = (event) => {
                 try {
+                    // Update activity timestamp on ANY message (including PONG)
+                    this.lastMessageTimestamp = Date.now();
+
                     const message = JSON.parse(event.data);
 
                     // PONG is just a heartbeat response, no need to broadcast
@@ -151,11 +229,18 @@ class WebSocketManager {
             };
 
             ws.onerror = () => {
-                // Suppress error logs - noisy and expected during cleanup
                 this.state.isConnecting = false;
             };
 
             ws.onclose = (event) => {
+                console.warn(`[WebSocketManager] Closed: Code ${event.code}, Reason: "${event.reason || 'None'}"`);
+
+                // If we closed before stability check, cancel the success reset
+                if (this.state.connectionTimeout) {
+                    clearTimeout(this.state.connectionTimeout);
+                    this.state.connectionTimeout = null;
+                }
+
                 this.state.ws = null;
                 this.state.isConnecting = false;
                 this.stopHeartbeat();
@@ -178,6 +263,7 @@ class WebSocketManager {
                 }
 
                 // Schedule reconnection with exponential backoff
+
                 const delay = this.getReconnectDelay(this.state.reconnectAttempts);
                 this.state.reconnectAttempts++;
 
@@ -205,11 +291,21 @@ class WebSocketManager {
 
         this.state.heartbeatInterval = setInterval(() => {
             if (ws.readyState === WebSocket.OPEN) {
-                try {
-                    ws.send(JSON.stringify({ type: 'PING', timestamp: Date.now() }));
-                } catch {
-                    // Connection dead, will be handled by close event
+                // Check if connection is dead (no messages for > 45s)
+                const timeSinceLastMessage = Date.now() - this.lastMessageTimestamp;
+
+                if (timeSinceLastMessage > 45000) {
+                    // Connection is dead (no activity for > 45s)
+                    // We force close to trigger the robust reconnection logic
+                    ws.close(4000, 'Heartbeat timeout');
+                    return;
                 }
+            }
+
+            try {
+                ws.send(JSON.stringify({ type: 'PING', timestamp: Date.now() }));
+            } catch {
+                // Ignored
             }
         }, HEARTBEAT_INTERVAL);
     }
@@ -280,18 +376,21 @@ class WebSocketManager {
 
     /**
      * Register handler to be called on each successful connection
+     * NOTE: Handler is ONLY called on actual reconnection events, NOT immediately on subscription
+     * This prevents infinite loops when React useEffect re-runs with new callback references
      */
     onConnect(handler: ConnectionHandler): () => void {
         this.state.onConnectHandlers.add(handler);
 
-        // If already connected, call handler immediately
-        if (this.state.ws?.readyState === WebSocket.OPEN) {
-            try {
-                handler();
-            } catch (e) {
-                console.error('[WebSocketManager] Connect handler error:', e);
-            }
-        }
+        // REMOVED: Immediate call when already connected
+        // This was causing infinite loops because:
+        // 1. useEffect subscribes with wsManager.onConnect(handler)
+        // 2. If WS is open, handler was called immediately
+        // 3. Handler invalidates queries → component re-renders
+        // 4. useEffect re-runs with new callback reference → subscribes again → handler called again → LOOP!
+        //
+        // Now handlers are ONLY called when WebSocket actually reconnects,
+        // which is the intended behavior for syncing data after reconnection.
 
         return () => {
             this.state.onConnectHandlers.delete(handler);

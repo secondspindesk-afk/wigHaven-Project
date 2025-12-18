@@ -61,6 +61,32 @@ export default {
 
         // Regular HTTP proxy
         return handleHTTP(request, env, url);
+    },
+
+    /**
+     * Background Heartbeat - runs on a schedule to keep HF Space awake.
+     * This runs independently of the fetch handler and doesn't affect user performance.
+     */
+    async scheduled(event: any, env: Env, ctx: ExecutionContext) {
+        console.log('💓 Sending keep-awake heartbeat to HF Backend...');
+        const healthUrl = `${env.PRIVATE_BACKEND_URL}/gateway-health`;
+
+        try {
+            // ctx.waitUntil ensures the fetch finishes even if the scheduled worker context ends
+            ctx.waitUntil(
+                fetch(healthUrl, {
+                    headers: {
+                        'Authorization': `Bearer ${env.HF_TOKEN}`
+                    }
+                }).then(resp => {
+                    console.log(`✅ Heartbeat response: ${resp.status}`);
+                }).catch(err => {
+                    console.error('❌ Heartbeat failed:', err);
+                })
+            );
+        } catch (e) {
+            console.error('❌ Failed to trigger heartbeat:', e);
+        }
     }
 };
 

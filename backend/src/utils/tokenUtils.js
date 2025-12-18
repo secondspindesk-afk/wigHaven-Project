@@ -97,7 +97,7 @@ export const verifyToken = (token) => {
     } catch (error) {
         // DEBUG: Log detailed error info for troubleshooting
         const decoded = jwt.decode(token, { complete: true });
-        logger.error(`[JWT DEBUG] Verification failed:`, {
+        const debugInfo = {
             errorName: error.name,
             errorMessage: error.message,
             tokenExists: !!token,
@@ -106,15 +106,13 @@ export const verifyToken = (token) => {
             decodedHeader: decoded?.header,
             decodedPayload: decoded?.payload ? {
                 sub: decoded.payload.sub,
-                email: decoded.payload.email,
                 role: decoded.payload.role,
-                iat: decoded.payload.iat,
                 exp: decoded.payload.exp,
                 isExpired: decoded.payload.exp ? decoded.payload.exp < Math.floor(Date.now() / 1000) : 'unknown'
             } : 'failed to decode',
-            jwtSecretLength: JWT_SECRET?.length,
-            jwtSecretPreview: JWT_SECRET ? `${JWT_SECRET.substring(0, 4)}...${JWT_SECRET.substring(JWT_SECRET.length - 4)}` : 'null'
-        });
+            jwtSecretLength: JWT_SECRET?.length
+        };
+        logger.error(`[JWT DEBUG] Verification failed: ${JSON.stringify(debugInfo, null, 2)}`);
 
         if (error.name === 'TokenExpiredError') {
             throw new Error('Token expired');
@@ -148,7 +146,16 @@ export const extractTokenFromHeader = (authHeader) => {
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
         return null;
     }
-    return authHeader.substring(7); // Remove 'Bearer ' prefix
+    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+
+    // SMART: Skip Hugging Face internal tokens (assigned to Private Space access)
+    // These start with 'hf_' and are NOT application-level user tokens.
+    // If we don't skip them, we get "jwt malformed" errors in logs.
+    if (token.startsWith('hf_')) {
+        return null;
+    }
+
+    return token;
 };
 
 /**
