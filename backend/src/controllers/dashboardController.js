@@ -2,6 +2,7 @@ import analyticsService from '../services/analyticsService.js';
 import dashboardService from '../services/dashboardService.js';
 import { getPrisma } from '../config/database.js';
 import logger from '../utils/logger.js';
+import smartCache from '../utils/smartCache.js';
 
 /**
  * Dashboard Controller
@@ -174,6 +175,95 @@ export const getCartAbandonment = async (req, res) => {
 };
 
 /**
+ * Get Dashboard Snapshot (Bundled)
+ * Reduces 6-8 frontend requests into 1
+ */
+export const getDashboardSnapshot = async (req, res) => {
+    try {
+        const cacheKey = 'admin:dashboard:snapshot';
+        const snapshot = await smartCache.getOrSet(cacheKey, async () => {
+            const [
+                summary,
+                salesTrends,
+                orderStatus,
+                inventory,
+                recentOrdersData,
+                lowStock,
+                topProducts
+            ] = await Promise.all([
+                analyticsService.getDashboardSummary(),
+                analyticsService.getSalesTrends(30),
+                analyticsService.getOrderStatusBreakdown(),
+                analyticsService.getInventoryStatus(),
+                dashboardService.getRecentOrders(1, 10),
+                dashboardService.getLowStockAlerts(),
+                analyticsService.getTopProducts(30, 5)
+            ]);
+
+            return {
+                summary,
+                salesTrends,
+                orderStatus,
+                inventory,
+                recentOrders: recentOrdersData.orders,
+                lowStock,
+                topProducts,
+                timestamp: new Date().toISOString()
+            };
+        }, 300); // 5 minutes cache
+
+        res.json({ success: true, data: snapshot });
+    } catch (error) {
+        logger.error('Dashboard Snapshot Error:', error);
+        res.status(500).json({ success: false, error: 'Failed to fetch dashboard snapshot' });
+    }
+};
+
+/**
+ * Get Analytics Snapshot (Bundled)
+ * Bundles deep-dive metrics for the Analytics page
+ */
+export const getAnalyticsSnapshot = async (req, res) => {
+    try {
+        const range = parseInt(req.query.range) || 30;
+        const cacheKey = `admin:analytics:snapshot:${range}`;
+
+        const snapshot = await smartCache.getOrSet(cacheKey, async () => {
+            const [
+                revenueByCategory,
+                customerAnalytics,
+                paymentMethods,
+                cartAbandonment,
+                salesTrends,
+                topProducts
+            ] = await Promise.all([
+                analyticsService.getRevenueByCategory(range),
+                analyticsService.getCustomerAnalytics(range),
+                analyticsService.getPaymentMethods(),
+                analyticsService.getCartAbandonmentStats(),
+                analyticsService.getSalesTrends(range),
+                analyticsService.getTopProducts(range, 10)
+            ]);
+
+            return {
+                revenueByCategory,
+                customerAnalytics,
+                paymentMethods,
+                cartAbandonment,
+                salesTrends,
+                topProducts,
+                timestamp: new Date().toISOString()
+            };
+        }, 300); // 5 minutes cache
+
+        res.json({ success: true, data: snapshot });
+    } catch (error) {
+        logger.error('Analytics Snapshot Error:', error);
+        res.status(500).json({ success: false, error: 'Failed to fetch analytics snapshot' });
+    }
+};
+
+/**
  * Export Reports - STREAMING CSV
  * 
  * Memory-optimized: Uses cursor pagination to stream data in batches
@@ -311,42 +401,34 @@ export const exportReports = async (req, res) => {
 
 export const getSidebarStats = async (req, res) => {
     try {
-        const prisma = getPrisma();
+        const cacheKey = 'admin:sidebar:stats';
 
-        // Run queries in parallel for performance
-        const [
-            productsCount,
-            pendingOrdersCount,
-            usersCount,
-            pendingReviewsCount,
-            lowStockCount
-        ] = await Promise.all([
-            // Total Products
-            prisma.product.count({ where: { isActive: true } }),
+        const data = await smartCache.getOrSet(cacheKey, async () => {
+            const prisma = getPrisma();
+            const [
+                productsCount,
+                pendingOrdersCount,
+                usersCount,
+                pendingReviewsCount,
+                lowStockCount
+            ] = await Promise.all([
+                prisma.product.count({ where: { isActive: true } }),
+                prisma.order.count({ where: { status: 'pending' } }),
+                prisma.user.count({ where: { role: 'customer' } }),
+                prisma.review.count({ where: { isApproved: false } }),
+                prisma.variant.count({ where: { stock: { lte: 5 } } })
+            ]);
 
-            // Pending Orders
-            prisma.order.count({ where: { status: 'pending' } }),
-
-            // Total Users (excluding admins if needed, but usually total users is fine)
-            prisma.user.count({ where: { role: 'customer' } }),
-
-            // Pending Reviews (not approved yet)
-            prisma.review.count({ where: { isApproved: false } }),
-
-            // Low Stock Items (variants with stock <= 5)
-            prisma.variant.count({ where: { stock: { lte: 5 } } })
-        ]);
-
-        res.json({
-            success: true,
-            data: {
+            return {
                 products: productsCount,
                 orders: pendingOrdersCount,
                 users: usersCount,
                 reviews: pendingReviewsCount,
                 inventory: lowStockCount
-            }
-        });
+            };
+        }, 120); // 2 minutes cache for sidebar is enough
+
+        res.json({ success: true, data });
     } catch (error) {
         logger.error('Sidebar Stats Error:', error);
         res.status(500).json({ success: false, error: 'Failed to fetch sidebar stats' });
@@ -391,5 +473,7 @@ export default {
     getCartAbandonment,
     exportReports,
     getSidebarStats,
-    getCacheStats
+    getCacheStats,
+    getDashboardSnapshot,
+    getAnalyticsSnapshot
 };

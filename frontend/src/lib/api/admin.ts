@@ -125,6 +125,39 @@ export interface CacheStats {
     description: string;
 }
 
+export interface DashboardSnapshot {
+    summary: DashboardSummary;
+    salesTrends: SalesTrendsResponse;
+    orderStatus: OrderStatusBreakdown;
+    inventory: InventoryStatus;
+    recentOrders: RecentOrder[];
+    lowStock: LowStockItem[];
+    topProducts: TopProduct[];
+    timestamp: string;
+}
+
+export interface AnalyticsSnapshot {
+    revenueByCategory: RevenueByCategory[];
+    customerAnalytics: CustomerAnalytics;
+    paymentMethods: {
+        paystack: {
+            count: number;
+            revenue: number;
+            percent: number;
+        }
+    };
+    cartAbandonment: {
+        total_carts: number;
+        abandoned_carts: number;
+        recovered_carts: number;
+        abandonment_rate: number;
+        recovery_rate: number;
+    };
+    salesTrends: SalesTrendsResponse;
+    topProducts: TopProduct[];
+    timestamp: string;
+}
+
 // Helper to extract data from API response wrapper { success: true, data: ... }
 function extractData<T>(response: { data: { success: boolean; data: T } | T }): T {
     const outerData = response.data;
@@ -139,6 +172,18 @@ export const adminApi = {
     // Dashboard Summary
     getSummary: async (): Promise<DashboardSummary> => {
         const response = await api.get('/admin/dashboard/summary');
+        return extractData(response);
+    },
+
+    // Dashboard Snapshot (Bundled)
+    getDashboardSnapshot: async (): Promise<DashboardSnapshot> => {
+        const response = await api.get('/admin/dashboard/snapshot');
+        return extractData(response);
+    },
+
+    // Analytics Snapshot (Bundled)
+    getAnalyticsSnapshot: async (range: number = 30): Promise<AnalyticsSnapshot> => {
+        const response = await api.get(`/admin/dashboard/analytics-snapshot?range=${range}`);
         return extractData(response);
     },
 

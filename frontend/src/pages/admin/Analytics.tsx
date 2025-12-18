@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Download, TrendingUp, Users, CreditCard, Calendar, ShoppingCart, AlertTriangle, CheckCircle } from 'lucide-react';
 import { BarChart, Bar, PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { useRevenueByCategory, useCustomerAnalytics, usePaymentMethods, useSalesTrends, useTopProducts, useCartAbandonment } from '@/lib/hooks/useAdminDashboard';
+import { useAnalyticsSnapshot } from '@/lib/hooks/useAdminDashboard';
 import adminApi from '@/lib/api/admin';
 import { formatCurrency } from '@/lib/utils/currency';
 import { useToast } from '@/contexts/ToastContext';
@@ -46,12 +46,22 @@ export default function Analytics() {
     const [dateRange, setDateRange] = useState<30 | 90>(30);
     const [isExporting, setIsExporting] = useState(false);
 
-    const { data: revenueByCat, isLoading: catLoading } = useRevenueByCategory();
-    const { data: customerData, isLoading: customerLoading } = useCustomerAnalytics();
-    const { data: paymentMethodsData, isLoading: paymentLoading } = usePaymentMethods();
-    const { data: salesTrends, isLoading: trendsLoading } = useSalesTrends(dateRange);
-    const { data: topProducts, isLoading: productsLoading } = useTopProducts(5);
-    const { data: cartData } = useCartAbandonment();
+    const { data: snapshot, isLoading: snapshotLoading } = useAnalyticsSnapshot(dateRange);
+
+    // We only need to fetch specific trends if we need to switch ranges without refetching the snapshot
+    // But since snapshot takes dateRange, we can just use the snapshot's trends.
+    const revenueByCat = snapshot?.revenueByCategory;
+    const customerData = snapshot?.customerAnalytics;
+    const paymentMethodsData = snapshot?.paymentMethods;
+    const salesTrendsSnapshot = snapshot?.salesTrends;
+    const topProducts = snapshot?.topProducts;
+    const cartData = snapshot?.cartAbandonment;
+
+    const catLoading = snapshotLoading;
+    const customerLoading = snapshotLoading;
+    const paymentLoading = snapshotLoading;
+    const trendsLoading = snapshotLoading;
+    const productsLoading = snapshotLoading;
 
     const handleExport = async (type: 'orders' | 'products' | 'customers') => {
         try {
@@ -74,7 +84,7 @@ export default function Analytics() {
     const paymentData = paymentMethodsData ? Object.entries(paymentMethodsData).map(([method, data]: [string, any]) => ({
         name: method.charAt(0).toUpperCase() + method.slice(1), value: data.revenue, count: data.count, percent: data.percent
     })) : [];
-    const salesData = salesTrends?.daily?.map(day => ({
+    const salesData = salesTrendsSnapshot?.daily?.map(day => ({
         date: new Date(day.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }),
         revenue: day.revenue, orders: day.orders
     })) || [];

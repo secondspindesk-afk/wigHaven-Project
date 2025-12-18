@@ -7,8 +7,13 @@ import adminApi, {
     OrderStatusBreakdown,
     InventoryStatus,
     LowStockItem,
-    CacheStats
+    CacheStats,
+    DashboardSnapshot,
+    AnalyticsSnapshot
 } from '../api/admin';
+
+// Re-export types for consumer components
+export type { DashboardSnapshot, AnalyticsSnapshot, TopProduct, RecentOrder, LowStockItem, OrderStatusBreakdown };
 
 // ============================================
 // CACHE CONFIGURATION
@@ -18,9 +23,27 @@ import adminApi, {
 const ADMIN_CACHE_CONFIG = {
     staleTime: 5 * 60 * 1000,     // 5 minutes - data is fresh
     gcTime: 30 * 60 * 1000,       // 30 minutes - keep in memory
-    refetchOnWindowFocus: true,   // Refresh on tab switch (admins expect this)
+    refetchOnWindowFocus: false,  // DISABLED - WebSockets handle real-time updates more efficiently
     refetchOnMount: false,        // Don't refetch on every mount - WebSocket handles updates
 };
+
+// Dashboard Snapshot Hook (Bundled Overview)
+export function useAdminSnapshot() {
+    return useQuery<DashboardSnapshot>({
+        queryKey: ['admin', 'dashboard', 'snapshot'],
+        queryFn: adminApi.getDashboardSnapshot,
+        ...ADMIN_CACHE_CONFIG,
+    });
+}
+
+// Analytics Snapshot Hook (Bundled Deep-Dive)
+export function useAnalyticsSnapshot(range: number = 30) {
+    return useQuery<AnalyticsSnapshot>({
+        queryKey: ['admin', 'dashboard', 'analytics-snapshot', range],
+        queryFn: () => adminApi.getAnalyticsSnapshot(range),
+        ...ADMIN_CACHE_CONFIG,
+    });
+}
 
 // Dashboard Summary Hook
 export function useAdminSummary() {

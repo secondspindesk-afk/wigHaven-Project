@@ -35,6 +35,8 @@ router.get('/search', async (req, res) => {
 
 // Summary & Trends
 router.get('/summary', dashboardController.getSummary);
+router.get('/snapshot', dashboardController.getDashboardSnapshot);
+router.get('/analytics-snapshot', dashboardController.getAnalyticsSnapshot);
 router.get('/sales-trends', dashboardController.getSalesTrends);
 router.get('/top-products', dashboardController.getTopProducts);
 

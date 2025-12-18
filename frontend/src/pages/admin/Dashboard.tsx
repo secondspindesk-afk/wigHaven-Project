@@ -3,13 +3,8 @@ import { Link } from 'react-router-dom';
 import { RefreshCw, Clock, Package, TrendingUp, TrendingDown, AlertTriangle, ChevronRight } from 'lucide-react';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import {
-    useAdminSummary,
+    useAdminSnapshot,
     useSalesTrends,
-    useTopProducts,
-    useRecentOrders,
-    useOrderStatusBreakdown,
-    useInventoryStatus,
-    useLowStockAlerts,
     useCacheStats,
     useAdminActivity
 } from '@/lib/hooks/useAdminDashboard';
@@ -156,14 +151,27 @@ export default function AdminDashboard() {
     const [trendDays, setTrendDays] = useState<7 | 30 | 90>(30);
     const isMobile = useIsMobile();
 
-    const { data: summary, isLoading: summaryLoading, refetch: refetchSummary } = useAdminSummary();
-    const { data: salesTrends, isLoading: trendsLoading } = useSalesTrends(trendDays);
-    const { data: topProducts, isLoading: productsLoading } = useTopProducts(5);
-    const { data: recentOrders, isLoading: ordersLoading } = useRecentOrders(10);
-    const { data: orderStatus, isLoading: statusLoading } = useOrderStatusBreakdown();
-    const { data: inventoryStatus, isLoading: inventoryLoading } = useInventoryStatus();
-    const { data: lowStock, isLoading: lowStockLoading } = useLowStockAlerts();
+    const { data: snapshot, isLoading: snapshotLoading, refetch: refetchSnapshot } = useAdminSnapshot();
+    const { data: specificTrends, isLoading: trendsLoading } = useSalesTrends(trendDays === 30 ? 0 : trendDays); // Skip if already in snapshot
     const { data: cacheStats, isLoading: cacheLoading } = useCacheStats();
+
+    const summary = snapshot?.summary;
+    const recentOrders = snapshot?.recentOrders;
+    const orderStatus = snapshot?.orderStatus;
+    const inventoryStatus = snapshot?.inventory;
+    const lowStock = snapshot?.lowStock;
+    const topProducts = snapshot?.topProducts;
+
+    const summaryLoading = snapshotLoading;
+    const ordersLoading = snapshotLoading;
+    const statusLoading = snapshotLoading;
+    const inventoryLoading = snapshotLoading;
+    const lowStockLoading = snapshotLoading;
+    const productsLoading = snapshotLoading;
+
+    // Use specific trends if range isn't 30, otherwise use snapshot trends
+    const salesChartData = trendDays === 30 ? (snapshot?.salesTrends?.daily || []) : (specificTrends?.daily || []);
+    const trendsIsLoading = trendDays === 30 ? snapshotLoading : trendsLoading;
 
     const formatCurrency = (amount: number) => `GHS ${(amount || 0).toLocaleString()}`;
     const safeArray = <T,>(data: T[] | undefined | null): T[] => Array.isArray(data) ? data : [];
@@ -183,7 +191,6 @@ export default function AdminDashboard() {
         outOfStock: inventoryStatus.out_of_stock?.count || 0,
     } : undefined;
 
-    const salesChartData = salesTrends?.daily || [];
 
     // ==================== MOBILE LAYOUT ====================
     if (isMobile) {
@@ -196,7 +203,7 @@ export default function AdminDashboard() {
                         <p className="text-[10px] text-zinc-500 font-mono">Overview</p>
                     </div>
                     <button
-                        onClick={() => refetchSummary()}
+                        onClick={() => refetchSnapshot()}
                         className="p-2.5 bg-zinc-800 rounded-lg text-zinc-400 active:bg-zinc-700"
                     >
                         <RefreshCw size={18} />
@@ -263,7 +270,7 @@ export default function AdminDashboard() {
                 <div className="bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden">
                     <SalesChart
                         data={salesChartData}
-                        isLoading={trendsLoading}
+                        isLoading={trendsIsLoading}
                         range={trendDays}
                         onRangeChange={setTrendDays}
                     />
@@ -394,7 +401,7 @@ export default function AdminDashboard() {
                 </div>
                 <div className="flex gap-2">
                     <button
-                        onClick={() => refetchSummary()}
+                        onClick={() => refetchSnapshot()}
                         className="px-4 py-2 border border-[#27272a] bg-[#0A0A0A] text-zinc-400 hover:text-white hover:border-zinc-500 text-[10px] font-mono uppercase transition-all flex items-center gap-2"
                     >
                         <RefreshCw size={12} />
@@ -479,7 +486,7 @@ export default function AdminDashboard() {
                 <div className="lg:col-span-2">
                     <SalesChart
                         data={salesChartData}
-                        isLoading={trendsLoading}
+                        isLoading={trendsIsLoading}
                         range={trendDays}
                         onRangeChange={setTrendDays}
                     />
@@ -636,7 +643,7 @@ export default function AdminDashboard() {
                 <div className="px-6 py-4 border-b border-[#27272a] flex justify-between items-center">
                     <h3 className="text-xs font-bold text-white uppercase tracking-widest">System Logs (Admin Activity)</h3>
                     <Link to="/admin/settings" className="text-[10px] font-mono text-zinc-500 hover:text-white transition-colors">
-                        VIEW_ALL -&gt;
+                        VIEW_ALL &gt;
                     </Link>
                 </div>
                 <div className="p-6">

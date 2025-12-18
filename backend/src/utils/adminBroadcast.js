@@ -23,6 +23,8 @@ const QUERY_KEYS = {
     TOP_PRODUCTS: ['admin', 'dashboard', 'top-products'],
     SALES_TRENDS: ['admin', 'dashboard', 'sales-trends'],
     CUSTOMER_ANALYTICS: ['admin', 'dashboard', 'customer-analytics'],
+    DASHBOARD_SNAPSHOT: ['admin', 'dashboard', 'snapshot'],
+    ANALYTICS_SNAPSHOT: ['admin', 'dashboard', 'analytics-snapshot'],
 
     // Lists
     ADMIN_ORDERS: ['admin', 'orders'],
@@ -55,6 +57,8 @@ export const notifyOrdersChanged = (metadata = {}) => {
             QUERY_KEYS.SALES_TRENDS,
             QUERY_KEYS.ADMIN_ORDERS,
             QUERY_KEYS.SIDEBAR_STATS,
+            QUERY_KEYS.DASHBOARD_SNAPSHOT,
+            QUERY_KEYS.ANALYTICS_SNAPSHOT,
         ], metadata);
     } catch (error) {
         logger.warn('Failed to broadcast order update:', error.message);
@@ -72,6 +76,8 @@ export const notifyProductsChanged = (metadata = {}) => {
             QUERY_KEYS.TOP_PRODUCTS,
             QUERY_KEYS.ADMIN_PRODUCTS,
             QUERY_KEYS.SIDEBAR_STATS,
+            QUERY_KEYS.DASHBOARD_SNAPSHOT,
+            QUERY_KEYS.ANALYTICS_SNAPSHOT,
         ], metadata);
     } catch (error) {
         logger.warn('Failed to broadcast product update:', error.message);
@@ -89,6 +95,8 @@ export const notifyStockChanged = (metadata = {}) => {
             QUERY_KEYS.LOW_STOCK,
             QUERY_KEYS.ADMIN_PRODUCTS,
             QUERY_KEYS.SIDEBAR_STATS,
+            QUERY_KEYS.DASHBOARD_SNAPSHOT,
+            QUERY_KEYS.ANALYTICS_SNAPSHOT,
         ], metadata);
     } catch (error) {
         logger.warn('Failed to broadcast stock update:', error.message);
@@ -106,6 +114,8 @@ export const notifyUsersChanged = (metadata = {}) => {
             QUERY_KEYS.CUSTOMER_ANALYTICS,
             QUERY_KEYS.ADMIN_USERS,
             QUERY_KEYS.SIDEBAR_STATS,
+            QUERY_KEYS.DASHBOARD_SNAPSHOT,
+            QUERY_KEYS.ANALYTICS_SNAPSHOT,
         ], metadata);
     } catch (error) {
         logger.warn('Failed to broadcast user update:', error.message);
