@@ -4,15 +4,36 @@ import { invalidateMaintenanceCache } from '../middleware/maintenanceMode.js';
 import logger from '../utils/logger.js';
 
 import smartCache from '../utils/smartCache.js';
+import adminBroadcast from '../utils/adminBroadcast.js';
 
 /**
  * Invalidate the settings cache
- * Call this when settings are updated
+ * @deprecated Use adminBroadcast.notifySettingsChanged() instead
  */
-export const invalidateSettingsCache = () => {
-    smartCache.del(smartCache.keys.settings());
-    smartCache.del(smartCache.keys.settingsPublic());
-    logger.info('[CACHE] Settings cache invalidated');
+export const invalidateSettingsCache = async () => {
+    await adminBroadcast.notifySettingsChanged();
+};
+
+/**
+ * Default System Settings
+ * These are used as fallbacks if not explicitly set in the database.
+ */
+export const DEFAULT_SETTINGS = {
+    siteName: 'WigHaven',
+    siteUrl: process.env.FRONTEND_URL || 'http://localhost:3000',
+    supportEmail: process.env.SUPPORT_EMAIL || 'support@wighaven.com',
+    currencySymbol: '₵',
+    currencyCode: 'GHS',
+    lowStockThreshold: 5,
+    taxRate: 0,
+    shippingFlatRate: 10,
+    freeShippingThreshold: 100,
+    minOrderAmount: 0,
+    maxOrderAmount: 0,
+    maintenanceMode: false,
+    orderConfirmationEmail: true,
+    review_auto_approve: false,
+    minReviewLength: 10
 };
 
 /**
@@ -21,7 +42,7 @@ export const invalidateSettingsCache = () => {
 const parseValue = (value) => {
     if (value === 'true') return true;
     if (value === 'false') return false;
-    if (value && (value.startsWith('{') || value.startsWith('['))) {
+    if (value && typeof value === 'string' && (value.startsWith('{') || value.startsWith('['))) {
         try {
             return JSON.parse(value);
         } catch (e) {
@@ -33,19 +54,26 @@ const parseValue = (value) => {
 
 /**
  * Get a specific setting by key
- * Note: Individual settings are NOT cached to ensure critical reads are fresh
+ * SMART CACHED: 10 min TTL, invalidated on any setting change
  */
 export const getSetting = async (key) => {
-    const prisma = getPrisma();
-    const setting = await prisma.systemSetting.findUnique({
-        where: { key }
-    });
+    return smartCache.getOrFetch(
+        `setting:${key}`,
+        async () => {
+            const prisma = getPrisma();
+            const setting = await prisma.systemSetting.findUnique({
+                where: { key }
+            });
 
-    if (setting) {
-        return parseValue(setting.value);
-    }
+            if (setting) {
+                return parseValue(setting.value);
+            }
 
-    return null;
+            // Return default if available
+            return DEFAULT_SETTINGS[key] !== undefined ? DEFAULT_SETTINGS[key] : null;
+        },
+        { type: 'settings', swr: true }
+    );
 };
 
 /**
@@ -55,11 +83,18 @@ const fetchAllSettingsFromDB = async () => {
     const prisma = getPrisma();
     const settings = await prisma.systemSetting.findMany();
 
-    return settings.reduce((acc, curr) => {
+    const dbSettings = settings.reduce((acc, curr) => {
         acc[curr.key] = parseValue(curr.value);
         return acc;
     }, {});
+
+    // Merge with defaults
+    return {
+        ...DEFAULT_SETTINGS,
+        ...dbSettings
+    };
 };
+
 
 /**
  * Get all settings with SMART CACHING
@@ -98,7 +133,7 @@ export const updateSetting = async (key, value, userId) => {
     });
 
     // INVALIDATE CACHE after updating a setting
-    invalidateSettingsCache();
+    await invalidateSettingsCache();
 
     // Always invalidate maintenance cache when maintenance mode setting changes
     if (key === 'maintenanceMode' || key === 'maintenance_mode') {

@@ -19,10 +19,16 @@ const requestLogger = (req, res, next) => {
         // Log the request
         logger.logRequest(method, originalUrl, statusCode, responseTime);
 
+        // Request SLO Monitoring (Threshold: 500ms)
+        if (responseTime > 500 && statusCode < 400) {
+            logger.warn(`[SLO BREACH] ${method} ${originalUrl} took ${responseTime}ms`);
+        }
+
         // Log request details in debug mode
         if (process.env.NODE_ENV === 'development') {
             logger.debug(`IP: ${ip} | User-Agent: ${req.get('user-agent') || 'Unknown'}`);
         }
+
 
         // Call original end function
         originalEnd.apply(res, args);

@@ -17,8 +17,10 @@
 import smartCache from '../utils/smartCache.js';
 import logger from '../utils/logger.js';
 
-// Analytics-specific TTL (5 minutes)
-const ANALYTICS_TTL = 5 * 60 * 1000;
+// Analytics-specific TTL
+// STRATEGY: Cache LONG (1 hour) - adminBroadcast.invalidateForEntity() handles invalidation on changes
+// This maximizes cache hits and reduces DB load
+const ANALYTICS_TTL = 60 * 60 * 1000; // 1 hour
 
 // Cache key constants for consistency
 export const CACHE_KEYS = {

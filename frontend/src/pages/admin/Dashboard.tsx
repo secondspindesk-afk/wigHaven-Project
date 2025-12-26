@@ -11,6 +11,7 @@ import {
 import SalesChart from '@/components/admin/SalesChart';
 import OrderStatusChart from '@/components/admin/OrderStatusChart';
 import InventoryChart from '@/components/admin/InventoryChart';
+import Skeleton from '@/components/common/Skeleton';
 
 // ==================== STATUS BADGE ====================
 interface StatusBadgeProps {
@@ -306,7 +307,19 @@ export default function AdminDashboard() {
                     <div className="p-3 space-y-2">
                         {ordersLoading ? (
                             [...Array(3)].map((_, i) => (
-                                <div key={i} className="h-20 bg-zinc-800/50 rounded-xl animate-pulse" />
+                                <div key={i} className="p-4 bg-zinc-900/50 rounded-xl border border-zinc-800">
+                                    <div className="flex justify-between items-start mb-3">
+                                        <div className="space-y-2">
+                                            <Skeleton width={80} height={14} />
+                                            <Skeleton width={120} height={12} />
+                                        </div>
+                                        <Skeleton width={60} height={20} />
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                        <Skeleton width={40} height={10} />
+                                        <Skeleton width={60} height={14} />
+                                    </div>
+                                </div>
                             ))
                         ) : safeArray(recentOrders).length === 0 ? (
                             <p className="text-center text-zinc-500 font-mono text-xs py-8">No orders yet</p>
@@ -329,7 +342,14 @@ export default function AdminDashboard() {
                     <div className="p-3 space-y-2">
                         {productsLoading ? (
                             [...Array(3)].map((_, i) => (
-                                <div key={i} className="h-14 bg-zinc-800/50 rounded-xl animate-pulse" />
+                                <div key={i} className="flex items-center gap-3 p-3 bg-zinc-900/50 rounded-xl border border-zinc-800">
+                                    <Skeleton width={32} height={32} borderRadius="50%" />
+                                    <div className="flex-1 space-y-2">
+                                        <Skeleton width="60%" height={14} />
+                                        <Skeleton width="30%" height={10} />
+                                    </div>
+                                    <Skeleton width={60} height={14} />
+                                </div>
                             ))
                         ) : safeArray(topProducts).length === 0 ? (
                             <p className="text-center text-zinc-500 font-mono text-xs py-8">No products yet</p>
@@ -525,11 +545,11 @@ export default function AdminDashboard() {
                             <tbody className="divide-y divide-[#27272a]">
                                 {productsLoading ? (
                                     [...Array(3)].map((_, i) => (
-                                        <tr key={i} className="animate-pulse">
-                                            <td className="px-6 py-4"><div className="h-3 w-4 bg-zinc-800" /></td>
-                                            <td className="px-6 py-4"><div className="h-3 w-32 bg-zinc-800" /></td>
-                                            <td className="px-6 py-4 text-right"><div className="h-3 w-8 bg-zinc-800 ml-auto" /></td>
-                                            <td className="px-6 py-4 text-right"><div className="h-3 w-16 bg-zinc-800 ml-auto" /></td>
+                                        <tr key={i}>
+                                            <td className="px-6 py-4"><Skeleton width={20} height={14} /></td>
+                                            <td className="px-6 py-4"><Skeleton width={150} height={14} /></td>
+                                            <td className="px-6 py-4 text-right"><Skeleton width={40} height={14} className="ml-auto" /></td>
+                                            <td className="px-6 py-4 text-right"><Skeleton width={80} height={14} className="ml-auto" /></td>
                                         </tr>
                                     ))
                                 ) : safeArray(topProducts).length === 0 ? (
@@ -574,12 +594,12 @@ export default function AdminDashboard() {
                         <tbody className="divide-y divide-[#27272a]">
                             {ordersLoading ? (
                                 [...Array(3)].map((_, i) => (
-                                    <tr key={i} className="animate-pulse">
-                                        <td className="px-6 py-4"><div className="h-3 w-32 bg-zinc-800" /></td>
-                                        <td className="px-6 py-4"><div className="h-3 w-24 bg-zinc-800" /></td>
-                                        <td className="px-6 py-4"><div className="h-3 w-20 bg-zinc-800" /></td>
-                                        <td className="px-6 py-4"><div className="h-5 w-20 bg-zinc-800" /></td>
-                                        <td className="px-6 py-4 text-right"><div className="h-3 w-20 bg-zinc-800 ml-auto" /></td>
+                                    <tr key={i}>
+                                        <td className="px-6 py-4"><Skeleton width={100} height={14} /></td>
+                                        <td className="px-6 py-4"><Skeleton width={80} height={14} /></td>
+                                        <td className="px-6 py-4"><Skeleton width={120} height={14} /></td>
+                                        <td className="px-6 py-4"><Skeleton width={80} height={20} /></td>
+                                        <td className="px-6 py-4 text-right"><Skeleton width={100} height={14} className="ml-auto" /></td>
                                     </tr>
                                 ))
                             ) : safeArray(recentOrders).length === 0 ? (

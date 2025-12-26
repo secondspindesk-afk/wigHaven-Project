@@ -1,12 +1,18 @@
 import wishlistRepository from '../db/repositories/wishlistRepository.js';
 import { getPrisma } from '../config/database.js';
+import adminBroadcast from '../utils/adminBroadcast.js';
+import smartCache from '../utils/smartCache.js';
 import logger from '../utils/logger.js';
 
 /**
  * Get user's wishlist
  */
 export const getWishlist = async (userId) => {
-    return await wishlistRepository.getWishlistByUserId(userId);
+    return smartCache.getOrFetch(
+        smartCache.keys.wishlist(userId),
+        () => wishlistRepository.getWishlistByUserId(userId),
+        { type: 'wishlist', swr: true }
+    );
 };
 
 /**
@@ -41,7 +47,12 @@ export const addToWishlist = async (userId, productId) => {
 
     // Add to wishlist
     logger.info(`User ${userId} added product ${product.name} to wishlist`);
-    return await wishlistRepository.addToWishlist(userId, productId);
+    const result = await wishlistRepository.addToWishlist(userId, productId);
+
+    // 🔔 Real-time sync
+    await adminBroadcast.notifyWishlistChanged(userId);
+
+    return result;
 };
 
 /**
@@ -54,7 +65,12 @@ export const removeFromWishlist = async (userId, productId) => {
         throw new Error('Item not in wishlist');
     }
 
-    return await wishlistRepository.removeFromWishlist(userId, productId);
+    const result = await wishlistRepository.removeFromWishlist(userId, productId);
+
+    // 🔔 Real-time sync
+    await adminBroadcast.notifyWishlistChanged(userId);
+
+    return result;
 };
 
 export default {

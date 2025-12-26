@@ -21,17 +21,21 @@ export function useAdminSettings() {
         },
         staleTime: 2 * 60 * 1000, // 2 minutes - admin settings don't change often
         gcTime: 10 * 60 * 1000, // 10 minutes garbage collection
-        refetchOnWindowFocus: true,
+        refetchOnWindowFocus: false, // WebSocket handles updates
         retry: false // Don't retry on permission errors
     });
 }
 
 // Get Public Settings Hook (Public)
+// Cache FOREVER - WebSocket DATA_UPDATE is the ONLY trigger for refetch
 export function usePublicSettings() {
     return useQuery({
         queryKey: ['public', 'settings'],
         queryFn: settingsApi.getPublicSettings,
-        staleTime: 1000 * 60 * 5 // Cache for 5 minutes
+        staleTime: Infinity, // FOREVER - only WebSocket invalidation triggers refetch
+        gcTime: 1000 * 60 * 60, // 1 hour garbage collection
+        refetchOnWindowFocus: false,
+        refetchOnMount: true, // Refetch if invalidated
     });
 }
 
@@ -48,6 +52,7 @@ export function useUpdateSettings() {
         onSuccess: (newData) => {
             queryClient.setQueryData(['admin', 'settings'], newData);
             queryClient.invalidateQueries({ queryKey: ['admin', 'settings'] });
+            queryClient.invalidateQueries({ queryKey: ['public', 'settings'] }); // Also invalidate public settings
             showToast('Settings updated successfully', 'success');
         },
         onError: (error: any) => {

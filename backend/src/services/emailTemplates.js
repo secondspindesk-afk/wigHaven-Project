@@ -52,7 +52,7 @@ const loadTemplate = (templateName) => {
  * @param {string} defaultSubject - Default subject
  * @returns {string} Subject line
  */
-const extractSubject = (html, defaultSubject = 'WigHaven Notification') => {
+const extractSubject = (html, defaultSubject = 'Notification') => {
     const titleMatch = html.match(/<title>(.*?)<\/title>/i);
     return titleMatch ? titleMatch[1] : defaultSubject;
 };
@@ -100,13 +100,20 @@ export const renderEmailTemplate = async (templateName, variables = {}) => {
         // Compile the layout with the body injected
         const layoutCompiler = Handlebars.compile(layoutContent);
 
+        // Load system settings for defaults
+        const settingsService = (await import('./settingsService.js')).default;
+        const settings = await settingsService.getAllSettings();
+
         // Add current year helper if not present
         const mergedVariables = {
+            site_name: settings.siteName,
+            support_email: settings.supportEmail,
+            currency_symbol: settings.currencySymbol,
             ...variables,
             body: htmlBody,
             current_year: new Date().getFullYear(),
-            app_url: process.env.FRONTEND_URL || 'http://localhost:3000',
-            unsubscribe_url: variables.unsubscribe_url || `${process.env.FRONTEND_URL || 'http://localhost:3000'}/account/profile`
+            app_url: settings.siteUrl || process.env.FRONTEND_URL || 'http://localhost:3000',
+            unsubscribe_url: variables.unsubscribe_url || `${settings.siteUrl || process.env.FRONTEND_URL || 'http://localhost:3000'}/account/profile`
         };
 
         const finalHtml = layoutCompiler(mergedVariables);
@@ -122,7 +129,7 @@ export const renderEmailTemplate = async (templateName, variables = {}) => {
             if (subjectMatch) {
                 subject = subjectMatch[1];
             } else {
-                subject = 'WigHaven Notification';
+                subject = `${settings.siteName} Notification`;
             }
         }
 
@@ -137,11 +144,18 @@ export const renderEmailTemplate = async (templateName, variables = {}) => {
     } catch (error) {
         logger.error(`Failed to render template ${templateName}:`, error);
 
+        // Try to get siteName for fallback
+        let siteName = 'WigHaven';
+        try {
+            const settingsService = (await import('./settingsService.js')).default;
+            siteName = await settingsService.getSetting('siteName') || 'WigHaven';
+        } catch (e) { }
+
         // Return fallback
         return {
             html: `<p>Email content unavailable</p>`,
             text: 'Email content unavailable',
-            subject: 'WigHaven Notification',
+            subject: `${siteName} Notification`,
         };
     }
 };
@@ -158,9 +172,11 @@ export const clearTemplateCache = () => {
 /**
  * Register Handlebars helpers
  */
-Handlebars.registerHelper('formatCurrency', (amount) => {
-    return `$${parseFloat(amount).toFixed(2)}`;
+Handlebars.registerHelper('formatCurrency', function (amount, options) {
+    const symbol = options.data.root.currency_symbol || '₵';
+    return `${symbol}${parseFloat(amount).toFixed(2)}`;
 });
+
 
 Handlebars.registerHelper('formatDate', (date) => {
     return new Date(date).toLocaleDateString();

@@ -299,7 +299,7 @@ export const listProducts = async ({
                                 color: true, length: true, texture: true, size: true, isActive: true
                             }
                         }
-                    }
+                    },
                 });
 
                 // Re-sort in Javascript because IN clause doesn't guarantee order
@@ -423,40 +423,37 @@ export const listProducts = async ({
 
 /**
  * Get all unique categories with product counts
+ * Returns ALL active categories, even those with 0 products
  * @returns {Promise<Array>} Categories with counts
  */
 export const getCategories = async () => {
     try {
         const prisma = getPrisma();
-        // Group by category and count products
-        // Since we now have a relation, we group by categoryId
-        const categories = await prisma.product.groupBy({
-            by: ['categoryId'],
+
+        // Get all active categories first
+        const categoryDetails = await prisma.category.findMany({
             where: {
                 isActive: true,
             },
-            _count: {
-                categoryId: true,
+            include: {
+                _count: {
+                    select: {
+                        products: {
+                            where: { isActive: true }
+                        }
+                    }
+                }
             },
+            orderBy: { name: 'asc' }
         });
 
-        // Fetch category details for the IDs
-        const categoryDetails = await prisma.category.findMany({
-            where: {
-                id: { in: categories.map(c => c.categoryId) }
-            }
-        });
-
-        // Map counts to details
-        return categoryDetails.map(c => {
-            const count = categories.find(cat => cat.categoryId === c.id)?._count.categoryId || 0;
-            return {
-                id: c.slug, // Use slug as ID for frontend compatibility
-                label: c.name,
-                count,
-                image: c.image  // Include category image for home page display
-            };
-        });
+        // Map to frontend format
+        return categoryDetails.map(c => ({
+            id: c.slug, // Use slug as ID for frontend compatibility
+            label: c.name,
+            count: c._count?.products || 0,
+            image: c.image  // Include category image for home page display
+        }));
     } catch (error) {
         logger.error('Error fetching categories:', error);
         throw error;

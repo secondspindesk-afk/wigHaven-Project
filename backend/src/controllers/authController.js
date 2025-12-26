@@ -115,7 +115,7 @@ export const register = async (req, res, next) => {
 
         // 🔔 Real-time: Notify all admin dashboards of new user
         const { notifyUsersChanged } = await import('../utils/adminBroadcast.js');
-        notifyUsersChanged({ action: 'registered', userId: user.id });
+        await notifyUsersChanged({ action: 'registered', userId: user.id });
 
         logger.debug(`New user registered: ${user.email}`);
 
@@ -375,6 +375,12 @@ export const logout = async (req, res, next) => {
 
         logger.info(`User logged out: ${req.user.email}`);
 
+        // 3. Clear user-specific caches (Close logic loop)
+        const userId = req.user.id;
+        smartCache.del(smartCache.keys.profile(userId));
+        smartCache.del(smartCache.keys.wishlist(userId));
+        smartCache.invalidateByPrefix(`notifications:${userId}`);
+
         res.json({
             success: true,
             message: 'Logged out successfully',
@@ -507,6 +513,10 @@ export const confirmPasswordReset = async (req, res, next) => {
 
         logger.info(`Password reset successful for: ${user.email}`);
 
+        // 🔔 Real-time sync
+        const { notifyUsersChanged } = await import('../utils/adminBroadcast.js');
+        await notifyUsersChanged({ action: 'password_reset_confirmed', userId: user.id });
+
         res.json({
             success: true,
             message: 'Password has been reset successfully',
@@ -629,6 +639,10 @@ export const changePassword = async (req, res, next) => {
         });
 
         logger.info(`Password changed for user: ${user.email}`);
+
+        // 🔔 Real-time sync
+        const { notifyUsersChanged } = await import('../utils/adminBroadcast.js');
+        await notifyUsersChanged({ action: 'password_changed', userId: user.id });
 
         res.json({
             success: true,
@@ -755,6 +769,10 @@ export const verifyEmail = async (req, res, next) => {
         await notificationService.notifyEmailVerified(result.user.id);
 
         logger.info(`Email verified for: ${result.user.email}`);
+
+        // 🔔 Real-time sync
+        const { notifyUsersChanged } = await import('../utils/adminBroadcast.js');
+        await notifyUsersChanged({ action: 'verification_success', userId: result.user.id });
 
         res.json({
             success: true,

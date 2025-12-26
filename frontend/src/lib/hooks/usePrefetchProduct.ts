@@ -29,7 +29,7 @@ export function usePrefetchProduct() {
         queryClient.prefetchQuery({
             queryKey: ['product', productId],
             queryFn: () => productApi.getProduct(productId),
-            staleTime: 1000 * 60 * 15, // 15 minutes
+            staleTime: Infinity, // FOREVER - WebSocket handles invalidation
         });
     }, [queryClient]);
 
@@ -38,6 +38,7 @@ export function usePrefetchProduct() {
 
 /**
  * Hook to get a single product (with prefetch-aware caching)
+ * Cache FOREVER - WebSocket DATA_UPDATE is the ONLY trigger for refetch
  */
 import { useQuery } from '@tanstack/react-query';
 import type { Product } from '@/lib/types/product';
@@ -47,8 +48,9 @@ export function useProductDetail(id: string | undefined) {
         queryKey: ['product', id],
         queryFn: () => productApi.getProduct(id!),
         enabled: !!id,
-        staleTime: 1000 * 60 * 15, // 15 minutes - same as prefetch
-        gcTime: 1000 * 60 * 30, // 30 minutes
+        staleTime: Infinity, // FOREVER - only WebSocket invalidation triggers refetch
+        gcTime: 1000 * 60 * 60, // 1 hour garbage collection
         refetchOnWindowFocus: false,
+        refetchOnMount: true, // Refetch if invalidated
     });
 }

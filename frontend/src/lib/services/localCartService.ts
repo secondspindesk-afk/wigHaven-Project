@@ -21,6 +21,25 @@ export interface LocalCart {
     lastModified: number;
 }
 
+type CartChangeListener = (cart: LocalCart) => void;
+const cartListeners = new Set<CartChangeListener>();
+
+// Listen for changes from other tabs
+if (typeof window !== 'undefined') {
+    window.addEventListener('storage', (event) => {
+        if (event.key === CART_STORAGE_KEY) {
+            try {
+                const newCart = event.newValue ? JSON.parse(event.newValue) : null;
+                if (newCart) {
+                    cartListeners.forEach(listener => listener(newCart));
+                }
+            } catch (e) {
+                console.error('[LocalCart] Failed to sync cart from storage event:', e);
+            }
+        }
+    });
+}
+
 /**
  * Get cart from LocalStorage
  */
@@ -243,6 +262,14 @@ export const localCartToFullCart = (localCart: LocalCart): Cart => {
     };
 };
 
+/**
+ * Subscribe to cart changes (including cross-tab)
+ */
+export const subscribeToCartChanges = (listener: CartChangeListener): () => void => {
+    cartListeners.add(listener);
+    return () => cartListeners.delete(listener);
+};
+
 export default {
     getLocalCart,
     saveLocalCart,
@@ -256,4 +283,5 @@ export default {
     needsSync,
     calculateCartTotals,
     localCartToFullCart,
+    subscribeToCartChanges,
 };

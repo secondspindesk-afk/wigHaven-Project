@@ -53,6 +53,7 @@ export const createCart = async (userId) => {
 
 /**
  * Add or update item in cart
+ * ATOMIC: Uses Prisma upsert to prevent race conditions
  * @param {string} cartId - Cart ID
  * @param {string} variantId - Variant ID
  * @param {number} quantity - Quantity to add (or set)
@@ -64,38 +65,41 @@ export const upsertCartItem = async (cartId, variantId, quantity, isUpdate = fal
         const prisma = getPrisma();
         logger.info(`[REPO] Upserting item: Cart ${cartId}, Variant ${variantId}, Qty ${quantity}, Update ${isUpdate}`);
 
-        // Check if item exists
-        const existingItem = await prisma.cartItem.findUnique({
-            where: {
-                cartId_variantId: {
-                    cartId,
-                    variantId,
+        // ATOMIC UPSERT: Prevents race conditions
+        if (isUpdate) {
+            // Set mode: just set the quantity directly
+            return await prisma.cartItem.upsert({
+                where: {
+                    cartId_variantId: { cartId, variantId },
                 },
-            },
-        });
-
-        if (existingItem) {
-            const newQuantity = isUpdate ? quantity : existingItem.quantity + quantity;
-            logger.info(`[REPO] Updating existing item ${existingItem.id} to qty ${newQuantity}`);
-            return await prisma.cartItem.update({
-                where: { id: existingItem.id },
-                data: { quantity: newQuantity },
+                update: { quantity },
+                create: { cartId, variantId, quantity },
             });
         } else {
-            logger.info(`[REPO] Creating new item`);
-            return await prisma.cartItem.create({
-                data: {
-                    cartId,
-                    variantId,
-                    quantity,
-                },
-            });
+            // Add mode: use $transaction with increment for atomicity
+            return await prisma.$transaction(async (tx) => {
+                const existing = await tx.cartItem.findUnique({
+                    where: { cartId_variantId: { cartId, variantId } },
+                });
+
+                if (existing) {
+                    return await tx.cartItem.update({
+                        where: { id: existing.id },
+                        data: { quantity: { increment: quantity } },
+                    });
+                } else {
+                    return await tx.cartItem.create({
+                        data: { cartId, variantId, quantity },
+                    });
+                }
+            }, { isolationLevel: 'Serializable' }); // Serializable ensures no race conditions
         }
     } catch (error) {
         logger.error(`Error upserting cart item (Cart: ${cartId}, Variant: ${variantId}):`, error);
         throw error;
     }
 };
+
 
 /**
  * Remove item from cart
@@ -194,31 +198,50 @@ export default {
         }
     },
 
+    /**
+     * Add or update item in guest cart
+     * ATOMIC: Uses Prisma upsert to prevent race conditions
+     */
     upsertGuestCartItem: async (cartId, variantId, quantity, isUpdate = false) => {
         try {
             const prisma = getPrisma();
-            const existingItem = await prisma.guestCartItem.findUnique({
-                where: {
-                    cartId_variantId: { cartId, variantId },
-                },
-            });
+            logger.info(`[REPO] Upserting guest item: Cart ${cartId}, Variant ${variantId}, Qty ${quantity}, Update ${isUpdate}`);
 
-            if (existingItem) {
-                const newQuantity = isUpdate ? quantity : existingItem.quantity + quantity;
-                return await prisma.guestCartItem.update({
-                    where: { id: existingItem.id },
-                    data: { quantity: newQuantity },
+            // ATOMIC UPSERT: Prevents race conditions
+            if (isUpdate) {
+                // Set mode: just set the quantity directly
+                return await prisma.guestCartItem.upsert({
+                    where: {
+                        cartId_variantId: { cartId, variantId },
+                    },
+                    update: { quantity },
+                    create: { cartId, variantId, quantity },
                 });
             } else {
-                return await prisma.guestCartItem.create({
-                    data: { cartId, variantId, quantity },
-                });
+                // Add mode: use $transaction with increment for atomicity
+                return await prisma.$transaction(async (tx) => {
+                    const existing = await tx.guestCartItem.findUnique({
+                        where: { cartId_variantId: { cartId, variantId } },
+                    });
+
+                    if (existing) {
+                        return await tx.guestCartItem.update({
+                            where: { id: existing.id },
+                            data: { quantity: { increment: quantity } },
+                        });
+                    } else {
+                        return await tx.guestCartItem.create({
+                            data: { cartId, variantId, quantity },
+                        });
+                    }
+                }, { isolationLevel: 'Serializable' });
             }
         } catch (error) {
             logger.error(`Error upserting guest cart item:`, error);
             throw error;
         }
     },
+
 
     removeGuestItem: async (cartId, variantId) => {
         try {

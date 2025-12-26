@@ -1,6 +1,8 @@
 import discountRepository from '../db/repositories/discountRepository.js';
 import { getPrisma } from '../config/database.js';
 import logger from '../utils/logger.js';
+import adminBroadcast from '../utils/adminBroadcast.js';
+import smartCache from '../utils/smartCache.js';
 
 /**
  * Validate and apply a discount code
@@ -87,7 +89,9 @@ export const validateDiscount = async (code, cartTotal, userId = null) => {
 };
 
 export const deleteDiscount = async (id) => {
-    return await discountRepository.deleteDiscount(id);
+    const result = await discountRepository.deleteDiscount(id);
+    await adminBroadcast.notifyDiscountsChanged();
+    return result;
 };
 
 /**
@@ -118,14 +122,20 @@ export const createDiscount = async (data) => {
         throw new Error(`Discount code "${data.code}" already exists`);
     }
 
-    return await discountRepository.createDiscount(data);
+    const result = await discountRepository.createDiscount(data);
+    await adminBroadcast.notifyDiscountsChanged();
+    return result;
 };
 
 /**
  * Get all discounts
  */
 export const getAllDiscounts = async () => {
-    return await discountRepository.getAllDiscounts();
+    return smartCache.getOrFetch(
+        smartCache.keys.discountsAll(),
+        () => discountRepository.getAllDiscounts(),
+        { type: 'discounts', swr: true }
+    );
 };
 
 export const getDiscountById = async (id) => {
@@ -133,13 +143,37 @@ export const getDiscountById = async (id) => {
 };
 
 export const updateDiscount = async (id, data) => {
-    return await discountRepository.updateDiscount(id, data);
+    // OPTIMIZATION: Handle _changedFields directive
+    const frontendChangedFields = data._changedFields;
+    delete data._changedFields;
+
+    // Skip if no changes
+    if (frontendChangedFields && frontendChangedFields.length === 0) {
+        logger.info(`[PERF] No changes for discount ${id}, skipping update`);
+        return await discountRepository.findDiscountById(id);
+    }
+
+    const result = await discountRepository.updateDiscount(id, data);
+
+    // Conditional cache invalidation
+    const publicFields = ['code', 'type', 'value', 'isActive', 'startsAt', 'expiresAt', 'minimumPurchase'];
+    const hasPublicChanges = !frontendChangedFields || frontendChangedFields.some(f => publicFields.includes(f));
+
+    if (hasPublicChanges) {
+        await adminBroadcast.notifyDiscountsChanged();
+    } else {
+        logger.info(`[PERF] Skipping discount cache invalidation - no public changes`);
+    }
+
+    return result;
 };
 
 export const incrementUsage = async (code) => {
     const discount = await discountRepository.findDiscountByCode(code);
     if (discount) {
-        return await discountRepository.incrementUsage(discount.id);
+        const result = await discountRepository.incrementUsage(discount.id);
+        await adminBroadcast.notifyDiscountsChanged();
+        return result;
     }
 };
 
@@ -151,7 +185,9 @@ export const incrementUsage = async (code) => {
 export const decrementUsage = async (code) => {
     const discount = await discountRepository.findDiscountByCode(code);
     if (discount) {
-        return await discountRepository.decrementUsage(discount.id);
+        const result = await discountRepository.decrementUsage(discount.id);
+        await adminBroadcast.notifyDiscountsChanged();
+        return result;
     }
 };
 

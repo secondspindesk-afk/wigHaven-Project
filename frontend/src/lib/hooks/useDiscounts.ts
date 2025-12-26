@@ -6,7 +6,7 @@ export function useDiscounts() {
     return useQuery({
         queryKey: ['admin', 'discounts'],
         queryFn: discountApi.getAllDiscounts,
-        staleTime: 2 * 60 * 1000, // 2 minutes
+        staleTime: 5 * 60 * 1000, // 5 minutes - WebSocket handles updates
         gcTime: 10 * 60 * 1000,
     });
 }

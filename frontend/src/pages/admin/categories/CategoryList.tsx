@@ -96,6 +96,9 @@ export default function CategoryList() {
     const [isUploading, setIsUploading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    // OPTIMIZATION: Track original data for dirty tracking
+    const originalDataRef = useRef<CategoryFormData | null>(null);
+
     // Filters
     const [searchQuery, setSearchQuery] = useState('');
     const debouncedSearch = useDebounce(searchQuery, 300);
@@ -119,7 +122,10 @@ export default function CategoryList() {
 
     const openEditModal = (category: Category) => {
         setEditingCategory(category);
-        setFormData({ name: category.name, description: category.description || '', image: category.image, isActive: category.isActive, isFeatured: category.isFeatured, type: category.type });
+        const categoryData: CategoryFormData = { name: category.name, description: category.description || '', image: category.image, isActive: category.isActive, isFeatured: category.isFeatured, type: category.type };
+        setFormData(categoryData);
+        // Store original for dirty tracking
+        originalDataRef.current = JSON.parse(JSON.stringify(categoryData));
         setIsModalOpen(true);
     };
 
@@ -148,11 +154,41 @@ export default function CategoryList() {
         }
     };
 
+    // OPTIMIZATION: Calculate dirty fields for smart updates
+    const getDirtyPayload = () => {
+        if (!originalDataRef.current) return formData;
+
+        const original = originalDataRef.current;
+        const dirty: Partial<CategoryFormData> & { _changedFields?: string[] } = {};
+        const changedFields: string[] = [];
+
+        const fields: (keyof CategoryFormData)[] = ['name', 'description', 'image', 'isActive', 'isFeatured', 'type'];
+        for (const field of fields) {
+            if (JSON.stringify(formData[field]) !== JSON.stringify(original[field])) {
+                (dirty as any)[field] = formData[field];
+                changedFields.push(field);
+            }
+        }
+
+        dirty._changedFields = changedFields;
+        return dirty;
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
             if (editingCategory) {
-                await updateMutation.mutateAsync({ id: editingCategory.id, data: formData });
+                // OPTIMIZATION: Send only changed fields
+                const dirtyPayload = getDirtyPayload();
+
+                if (!('_changedFields' in dirtyPayload) || !dirtyPayload._changedFields || dirtyPayload._changedFields.length === 0) {
+                    showToast('No changes to save', 'info');
+                    closeModal();
+                    return;
+                }
+
+                console.log('[PERF] Sending only changed fields:', dirtyPayload._changedFields);
+                await updateMutation.mutateAsync({ id: editingCategory.id, data: dirtyPayload as CategoryFormData });
                 showToast('Category updated', 'success');
             } else {
                 await createMutation.mutateAsync(formData);

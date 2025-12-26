@@ -2,9 +2,10 @@ import * as stockRepository from '../db/repositories/stockRepository.js';
 import { getPrisma } from '../config/database.js';
 import * as emailService from './emailService.js';
 import notificationService from './notificationService.js';
-import sseService from './sseService.js';
 import settingsService from './settingsService.js';
+import adminBroadcast from '../utils/adminBroadcast.js';
 import logger from '../utils/logger.js';
+import smartCache from '../utils/smartCache.js';
 
 /**
  * Adjust stock manually (admin only)
@@ -57,25 +58,30 @@ export const adjustStock = async (variantId, adjustment, reason, adminId) => {
 
             // Send notifications asynchronously (non-blocking)
             if (alerts.length > 0) {
+                // OPTIMIZED: Batch-update all alerts first, then send notifications
+                const alertIds = alerts.map(a => a.id);
+
+                // Mark all as notified in a single batch operation
+                await prisma.backInStockAlert.updateMany({
+                    where: { id: { in: alertIds } },
+                    data: {
+                        notified: true,
+                        notifiedAt: new Date()
+                    }
+                });
+                logger.info(`[PERF] Batch-updated ${alertIds.length} back-in-stock alerts`);
+
+                // Send notifications in parallel (non-blocking)
                 Promise.all(alerts.map(async (alert) => {
                     try {
                         // Send email
                         await emailService.sendBackInStockAlert(alert.user, alert.variant);
 
-                        // Send in-app notification (DB + Real-time Push)
+                        // Send in-app notification (DB + Real-time Push via adminBroadcast)
                         const notification = await notificationService.notifyBackInStock(alert.user, alert.variant);
                         if (notification) {
-                            sseService.pushToUser(alert.user.id, notification);
+                            await adminBroadcast.notifyNotificationsChanged(alert.user.id);
                         }
-
-                        // Mark as notified
-                        await prisma.backInStockAlert.update({
-                            where: { id: alert.id },
-                            data: {
-                                notified: true,
-                                notifiedAt: new Date()
-                            }
-                        });
 
                         logger.info(`Back-in-stock alert (Email+App) sent to ${alert.user.email} for variant ${variantId}`);
                     } catch (error) {
@@ -86,6 +92,7 @@ export const adjustStock = async (variantId, adjustment, reason, adminId) => {
                 });
             }
         }
+
 
         // Notify admins for low/out of stock (CRITICAL)
         // Get low stock threshold from settings (default to 5 if not set)
@@ -105,6 +112,13 @@ export const adjustStock = async (variantId, adjustment, reason, adminId) => {
                 await notificationService.notifyAdminOutOfStock(variant, variant.product);
             }
         }
+
+        // Broadcast stock change with productId for specific cache invalidation
+        await adminBroadcast.notifyStockChanged({
+            productId: variant?.product?.id,
+            variantId,
+            action: 'stock_adjusted'
+        });
 
         return {
             variantId: result.variant.id,
@@ -135,37 +149,38 @@ export const adjustStock = async (variantId, adjustment, reason, adminId) => {
  * @returns {Promise<Object>} Movements and pagination
  */
 export const getMovements = async (options) => {
-    try {
-        const result = await stockRepository.getMovements(options);
+    return smartCache.getOrFetch(
+        smartCache.keys.stockMovements(options),
+        async () => {
+            const result = await stockRepository.getMovements(options);
 
-        // Format movements for response
-        const formattedMovements = result.movements.map((movement) => ({
-            id: movement.id,
-            variantId: movement.variantId,
-            productName: movement.variant?.product?.name || 'Unknown',
-            sku: movement.variant?.sku || 'Unknown',
-            type: movement.type,
-            quantity: movement.quantity,
-            previousStock: movement.previousStock,
-            newStock: movement.newStock,
-            reason: movement.reason,
-            orderId: movement.orderId,
-            createdByAdmin: movement.createdByUser ? {
-                id: movement.createdByUser.id,
-                email: movement.createdByUser.email,
-                name: `${movement.createdByUser.firstName || ''} ${movement.createdByUser.lastName || ''}`.trim(),
-            } : null,
-            createdAt: movement.createdAt,
-        }));
+            // Format movements for response
+            const formattedMovements = result.movements.map((movement) => ({
+                id: movement.id,
+                variantId: movement.variantId,
+                productName: movement.variant?.product?.name || 'Unknown',
+                sku: movement.variant?.sku || 'Unknown',
+                type: movement.type,
+                quantity: movement.quantity,
+                previousStock: movement.previousStock,
+                newStock: movement.newStock,
+                reason: movement.reason,
+                orderId: movement.orderId,
+                createdByAdmin: movement.createdByUser ? {
+                    id: movement.createdByUser.id,
+                    email: movement.createdByUser.email,
+                    name: `${movement.createdByUser.firstName || ''} ${movement.createdByUser.lastName || ''}`.trim(),
+                } : null,
+                createdAt: movement.createdAt,
+            }));
 
-        return {
-            movements: formattedMovements,
-            pagination: result.pagination,
-        };
-    } catch (error) {
-        logger.error('Error getting stock movements:', error);
-        throw error;
-    }
+            return {
+                movements: formattedMovements,
+                pagination: result.pagination,
+            };
+        },
+        { type: 'stock', swr: true }
+    );
 };
 
 /**
@@ -176,33 +191,34 @@ export const getMovements = async (options) => {
  * @returns {Promise<Object>} Low stock variants
  */
 export const getLowStock = async (threshold = 5, page = 1, limit = 50) => {
-    try {
-        const result = await stockRepository.getLowStockVariants(threshold, page, limit);
+    return smartCache.getOrFetch(
+        smartCache.keys.stockLow(threshold, page),
+        async () => {
+            const result = await stockRepository.getLowStockVariants(threshold, page, limit);
 
-        // Format variants for response
-        const formattedVariants = result.variants.map((variant) => ({
-            productId: variant.product.id,
-            productName: variant.product.name,
-            variantId: variant.id,
-            sku: variant.sku,
-            color: variant.color,
-            size: variant.size,
-            length: variant.length,
-            texture: variant.texture,
-            stock: variant.stock,
-            threshold,
-            percentageOfThreshold: variant.percentageOfThreshold,
-            reorderQuantity: variant.reorderQuantity,
-        }));
+            // Format variants for response
+            const formattedVariants = result.variants.map((variant) => ({
+                productId: variant.product.id,
+                productName: variant.product.name,
+                variantId: variant.id,
+                sku: variant.sku,
+                color: variant.color,
+                size: variant.size,
+                length: variant.length,
+                texture: variant.texture,
+                stock: variant.stock,
+                threshold,
+                percentageOfThreshold: variant.percentageOfThreshold,
+                reorderQuantity: variant.reorderQuantity,
+            }));
 
-        return {
-            variants: formattedVariants,
-            pagination: result.pagination,
-        };
-    } catch (error) {
-        logger.error('Error getting low stock:', error);
-        throw error;
-    }
+            return {
+                variants: formattedVariants,
+                pagination: result.pagination,
+            };
+        },
+        { type: 'stock', swr: true }
+    );
 };
 
 /**
@@ -210,14 +226,11 @@ export const getLowStock = async (threshold = 5, page = 1, limit = 50) => {
  * @returns {Promise<Object>} Stock summary
  */
 export const getSummary = async () => {
-    try {
-        // Direct database query (fast enough without cache)
-        const summary = await stockRepository.getStockSummary();
-        return summary;
-    } catch (error) {
-        logger.error('Error getting stock summary:', error);
-        throw error;
-    }
+    return smartCache.getOrFetch(
+        smartCache.keys.stockSummary(),
+        () => stockRepository.getStockSummary(),
+        { type: 'stock', swr: true }
+    );
 };
 
 export default {

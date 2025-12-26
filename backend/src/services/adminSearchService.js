@@ -1,5 +1,5 @@
 import { getPrisma } from '../config/database.js';
-import { getCached } from '../config/analyticsCache.js';
+import smartCache from '../utils/smartCache.js';
 import logger from '../utils/logger.js';
 
 /**
@@ -9,6 +9,7 @@ import logger from '../utils/logger.js';
  * OPTIMIZATIONS:
  * - 60-second cache for repeated searches (reduces 8 parallel queries to 0)
  * - Results are cached per normalized query
+ * - Invalidated instantly on any data change via adminBroadcast
  * 
  * SECURITY: All searches are sanitized and use Prisma's built-in query safety.
  * No raw SQL is used to prevent injection attacks.
@@ -33,9 +34,11 @@ export const unifiedSearch = async (query, options = {}) => {
     // Cache key: normalize search for consistency
     const cacheKey = `search:${searchTerm}:${limit}`;
 
-    return getCached(cacheKey, async () => {
-        return executeSearch(searchTerm, limit);
-    }, 60); // 60 second TTL for search results
+    return smartCache.getOrFetch(
+        cacheKey,
+        () => executeSearch(searchTerm, limit),
+        { type: 'search', swr: true }
+    );
 };
 
 /**

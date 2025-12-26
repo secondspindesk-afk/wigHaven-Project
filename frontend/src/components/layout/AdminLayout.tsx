@@ -17,6 +17,7 @@ export function AdminLayout() {
     const { data: systemHealth } = useSystemHealth(!!user && (user.role === 'admin' || user.role === 'super_admin'));
     const logoutMutation = useLogout();
     const isMobile = useIsMobile();
+    const location = useLocation(); // MOVED: Must be before any conditional returns
 
     // Global keyboard shortcut for search (Cmd/Ctrl + K)
     useEffect(() => {
@@ -176,7 +177,6 @@ export function AdminLayout() {
     }
 
     // ==================== DESKTOP LAYOUT ====================
-    const location = useLocation();
     const isSupportPage = location.pathname.startsWith('/admin/support');
 
     return (

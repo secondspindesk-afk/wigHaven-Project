@@ -3,8 +3,6 @@ import { createPortal } from 'react-dom';
 import { Heart, Share2, Minus, Plus, ShoppingBag, Bell, Check } from 'lucide-react';
 import { Product, Variant, getDefaultVariant } from '@/lib/types/product';
 import { useCurrencyContext } from '@/lib/context/CurrencyContext';
-import { useMutation } from '@tanstack/react-query';
-import productApi from '@/lib/api/product';
 import { useToast } from '@/contexts/ToastContext';
 import { useUser } from '@/lib/hooks/useUser';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -12,6 +10,7 @@ import { useCart } from '@/lib/hooks/useCart';
 import { useWishlist } from '@/lib/hooks/useWishlist';
 import { useAddToCart } from '@/lib/hooks/useAddToCart';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
+import RestockNotificationModal from './RestockNotificationModal';
 
 
 interface ProductInfoProps {
@@ -42,6 +41,7 @@ export default function ProductInfo({ product, onVariantChange }: ProductInfoPro
     const [selectedLength, setSelectedLength] = useState<string | null>(null);
     const [selectedTexture, setSelectedTexture] = useState<string | null>(null);
     const [selectedSize, setSelectedSize] = useState<string | null>(null);
+    const [isRestockModalOpen, setIsRestockModalOpen] = useState(false);
 
     // Extract available options
     const colors = Array.from(new Set(product.variants.map(v => v.color).filter(Boolean))) as string[];
@@ -176,35 +176,12 @@ export default function ProductInfo({ product, onVariantChange }: ProductInfoPro
 
     const addToCartMutation = useAddToCart();
 
-    const notifyMutation = useMutation({
-        mutationFn: (email: string) => productApi.subscribeToRestock(selectedVariant!.id, email),
-        onSuccess: () => showToast("You'll be notified when back in stock!", 'success'),
-        onError: (error: any) => {
-            const message = error.response?.data?.error || 'Failed to subscribe';
-            showToast(message, 'error');
-        }
-    });
-
     /**
      * Handle "Notify Me" button click
-     * - Logged in: Auto-subscribe using user's email
-     * - Guest: Prompt for email
      */
     const handleNotifyMe = () => {
         if (!selectedVariant) return;
-
-        if (user?.email) {
-            // Logged-in user: Auto-subscribe with their email
-            notifyMutation.mutate(user.email);
-        } else {
-            // Guest: Prompt for email
-            const email = prompt('Enter your email to be notified when this item is back in stock:');
-            if (email && email.includes('@')) {
-                notifyMutation.mutate(email);
-            } else if (email) {
-                showToast('Please enter a valid email address', 'error');
-            }
-        }
+        setIsRestockModalOpen(true);
     };
 
     const existingCartItem = selectedVariant
@@ -361,11 +338,10 @@ export default function ProductInfo({ product, onVariantChange }: ProductInfoPro
                     {isOutOfStock ? (
                         <button
                             onClick={handleNotifyMe}
-                            disabled={notifyMutation.isPending}
                             className="flex-1 py-4 bg-zinc-800 text-white font-bold text-sm rounded-lg flex items-center justify-center gap-2 disabled:opacity-60"
                         >
                             <Bell size={18} />
-                            {notifyMutation.isPending ? 'Subscribing...' : 'Notify Me'}
+                            Notify Me
                         </button>
                     ) : isAtMaxInCart ? (
                         <div className="flex-1 py-4 bg-green-500/10 border border-green-500 text-green-400 font-bold text-sm rounded-lg flex items-center justify-center gap-2">
@@ -615,11 +591,10 @@ export default function ProductInfo({ product, onVariantChange }: ProductInfoPro
                 ) : (
                     <button
                         onClick={handleNotifyMe}
-                        disabled={notifyMutation.isPending}
-                        className="w-full py-4 border border-[#27272a] text-white font-bold uppercase tracking-widest hover:bg-zinc-900 transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
+                        className="w-full py-4 border border-[#27272a] text-white font-bold uppercase tracking-widest hover:bg-zinc-900 transition-colors flex items-center justify-center gap-2"
                     >
                         <Bell size={20} />
-                        {notifyMutation.isPending ? 'Subscribing...' : 'Notify When Available'}
+                        Notify When Available
                     </button>
                 )}
 
@@ -627,6 +602,15 @@ export default function ProductInfo({ product, onVariantChange }: ProductInfoPro
                     SKU: {selectedVariant.sku}
                 </p>
             </div>
-        </div>
+
+            <RestockNotificationModal
+                isOpen={isRestockModalOpen}
+                onClose={() => setIsRestockModalOpen(false)}
+                productName={product.name}
+                variantName={[selectedVariant.color, selectedVariant.length, selectedVariant.texture, selectedVariant.size].filter(Boolean).join(' / ') || 'Default'}
+                variantId={selectedVariant.id}
+                initialEmail={user?.email || ''}
+            />
+        </div >
     );
 }

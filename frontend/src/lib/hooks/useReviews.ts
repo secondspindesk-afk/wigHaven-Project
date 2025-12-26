@@ -17,13 +17,29 @@ export function useCreateReview() {
             const response = await api.post('/reviews', data);
             return response.data;
         },
+        onMutate: async (_newReview) => {
+            // Cancel outgoing refetches for orders
+            await queryClient.cancelQueries({ queryKey: ['orders'] });
+
+            // Snapshot previous orders
+            const previousOrders = queryClient.getQueryData(['orders']);
+
+            // Optimistically update orders to mark item as reviewed
+            // This is complex because we don't know which order it is without searching
+            // But we can at least invalidate or set a flag if we had the orderNumber
+
+            return { previousOrders };
+        },
+        onError: (_err, _newReview, context) => {
+            if (context?.previousOrders) {
+                queryClient.setQueryData(['orders'], context.previousOrders);
+            }
+        },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['orders'] });
-            // Note: Toast is shown in the component using useToast hook
         },
-        onError: (error: any) => {
-            // Note: Error handling is done in the component
-            console.error('Failed to submit review:', error);
+        onSettled: () => {
+            queryClient.invalidateQueries({ queryKey: ['orders'] });
         }
     });
 }

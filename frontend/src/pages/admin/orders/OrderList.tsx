@@ -5,6 +5,8 @@ import {
     Eye, Package, Truck, CheckCircle, XCircle, Clock, AlertCircle,
     LayoutGrid, List as ListIcon, X, ChevronDown
 } from 'lucide-react';
+import Skeleton from '@/components/common/Skeleton';
+import TableSkeleton from '@/components/common/TableSkeleton';
 import { useAdminOrders, useUpdateOrderStatus, useBulkUpdateStatus, useExportOrders } from '@/lib/hooks/useOrders';
 import { OrderStatus } from '@/lib/api/orders';
 import { useToast } from '@/contexts/ToastContext';
@@ -344,7 +346,25 @@ export default function OrderList() {
                 <div className="space-y-3">
                     {isLoading ? (
                         [...Array(5)].map((_, i) => (
-                            <div key={i} className="h-28 bg-zinc-900 rounded-xl animate-pulse" />
+                            <div key={i} className="p-4 bg-zinc-900 rounded-xl border border-zinc-800 space-y-3">
+                                <div className="flex justify-between items-start">
+                                    <div className="space-y-2">
+                                        <Skeleton width={80} height={14} />
+                                        <Skeleton width={60} height={10} />
+                                    </div>
+                                    <div className="flex flex-col items-end gap-1.5">
+                                        <Skeleton width={70} height={22} />
+                                        <Skeleton width={50} height={16} />
+                                    </div>
+                                </div>
+                                <div className="flex justify-between items-end">
+                                    <div className="space-y-2">
+                                        <Skeleton width={120} height={14} />
+                                        <Skeleton width={150} height={10} />
+                                    </div>
+                                    <Skeleton width={80} height={20} />
+                                </div>
+                            </div>
                         ))
                     ) : orders.length === 0 ? (
                         <div className="text-center py-12">
@@ -599,15 +619,11 @@ export default function OrderList() {
                             </thead>
                             <tbody>
                                 {isLoading ? (
-                                    [...Array(5)].map((_, i) => (
-                                        <tr key={i} className="border-b border-[#27272a]">
-                                            {[...Array(8)].map((_, j) => (
-                                                <td key={j} className="px-4 py-4">
-                                                    <div className="h-4 bg-zinc-800 rounded animate-pulse" />
-                                                </td>
-                                            ))}
-                                        </tr>
-                                    ))
+                                    <tr>
+                                        <td colSpan={8} className="p-0">
+                                            <TableSkeleton rows={10} cols={6} showCheckbox showActions />
+                                        </td>
+                                    </tr>
                                 ) : orders.length === 0 ? (
                                     <tr>
                                         <td colSpan={8} className="px-4 py-12 text-center text-zinc-500 text-sm">

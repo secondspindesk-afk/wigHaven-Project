@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ChevronLeft, Save, Calendar, Tag, Users, AlertTriangle, Loader2 } from 'lucide-react';
 import { useCreateDiscount, useUpdateDiscount, useDiscount } from '@/lib/hooks/useDiscounts';
@@ -24,17 +24,43 @@ export default function DiscountForm() {
         maxUses: undefined, usesPerCustomer: 1, minimumPurchase: 0, isActive: true
     });
 
+    // OPTIMIZATION: Track original data for dirty tracking
+    const originalDataRef = useRef<DiscountFormData | null>(null);
+
     useEffect(() => {
         if (discount) {
-            setFormData({
+            const discountData: DiscountFormData = {
                 code: discount.code, type: discount.type, value: discount.value,
                 startsAt: new Date(discount.startsAt).toISOString().split('T')[0],
                 expiresAt: new Date(discount.expiresAt).toISOString().split('T')[0],
                 maxUses: discount.maxUses || undefined, usesPerCustomer: discount.usesPerCustomer,
                 minimumPurchase: discount.minimumPurchase || 0, isActive: discount.isActive
-            });
+            };
+            setFormData(discountData);
+            // Store original for dirty tracking
+            originalDataRef.current = JSON.parse(JSON.stringify(discountData));
         }
     }, [discount]);
+
+    // OPTIMIZATION: Calculate dirty fields for smart updates
+    const getDirtyPayload = useCallback(() => {
+        if (!originalDataRef.current) return formData;
+
+        const original = originalDataRef.current;
+        const dirty: Partial<DiscountFormData> & { _changedFields?: string[] } = {};
+        const changedFields: string[] = [];
+
+        const fields: (keyof DiscountFormData)[] = ['code', 'type', 'value', 'startsAt', 'expiresAt', 'maxUses', 'usesPerCustomer', 'minimumPurchase', 'isActive'];
+        for (const field of fields) {
+            if (JSON.stringify(formData[field]) !== JSON.stringify(original[field])) {
+                (dirty as any)[field] = formData[field];
+                changedFields.push(field);
+            }
+        }
+
+        dirty._changedFields = changedFields;
+        return dirty;
+    }, [formData]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -43,9 +69,24 @@ export default function DiscountForm() {
         if (new Date(formData.startsAt) > new Date(formData.expiresAt)) { showToast('End date must be after start', 'error'); return; }
 
         try {
-            const payload = { ...formData, value: Number(formData.value), maxUses: formData.maxUses ? Number(formData.maxUses) : undefined, usesPerCustomer: Number(formData.usesPerCustomer), minimumPurchase: formData.minimumPurchase ? Number(formData.minimumPurchase) : undefined, startsAt: new Date(formData.startsAt).toISOString(), expiresAt: new Date(formData.expiresAt).toISOString() };
-            if (isEditMode && id) { await updateMutation.mutateAsync({ id, data: payload }); showToast('Updated', 'success'); }
-            else { await createMutation.mutateAsync(payload); showToast('Created', 'success'); }
+            if (isEditMode && id) {
+                // OPTIMIZATION: Send only changed fields
+                const dirtyPayload = getDirtyPayload();
+
+                if (!('_changedFields' in dirtyPayload) || !dirtyPayload._changedFields || dirtyPayload._changedFields.length === 0) {
+                    showToast('No changes to save', 'info');
+                    return;
+                }
+
+                console.log('[PERF] Sending only changed fields:', dirtyPayload._changedFields);
+                const payload = { ...dirtyPayload, value: Number(formData.value), maxUses: formData.maxUses ? Number(formData.maxUses) : undefined, usesPerCustomer: Number(formData.usesPerCustomer), minimumPurchase: formData.minimumPurchase ? Number(formData.minimumPurchase) : undefined, startsAt: new Date(formData.startsAt).toISOString(), expiresAt: new Date(formData.expiresAt).toISOString() };
+                await updateMutation.mutateAsync({ id, data: payload as any });
+                showToast('Updated', 'success');
+            } else {
+                const payload = { ...formData, value: Number(formData.value), maxUses: formData.maxUses ? Number(formData.maxUses) : undefined, usesPerCustomer: Number(formData.usesPerCustomer), minimumPurchase: formData.minimumPurchase ? Number(formData.minimumPurchase) : undefined, startsAt: new Date(formData.startsAt).toISOString(), expiresAt: new Date(formData.expiresAt).toISOString() };
+                await createMutation.mutateAsync(payload);
+                showToast('Created', 'success');
+            }
             navigate('/admin/discounts');
         } catch (error: any) { showToast(error.message || 'Failed', 'error'); }
     };

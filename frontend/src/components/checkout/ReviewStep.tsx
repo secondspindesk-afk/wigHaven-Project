@@ -47,8 +47,15 @@ export default function ReviewStep({
     const discountAmount = cart.discount?.amount || 0;
     const total = Math.max(0, cart.subtotal - discountAmount + shippingCost + (cart.tax || 0));
 
+    // Order amount limits validation
+    const minOrderAmount = settings?.minOrderAmount ?? 0;
+    const maxOrderAmount = settings?.maxOrderAmount ?? 0;
+    const isBelowMinimum = minOrderAmount > 0 && cart.subtotal < minOrderAmount;
+    const isAboveMaximum = maxOrderAmount > 0 && cart.subtotal > maxOrderAmount;
+    const orderAmountValid = !isBelowMinimum && !isAboveMaximum;
+
     // Cash on Delivery is coming soon - don't allow it yet
-    const canProceed = paymentProvider !== 'cash' && phoneNumber.length >= 10;
+    const canProceed = paymentProvider !== 'cash' && phoneNumber.length >= 10 && orderAmountValid;
 
     // Lock body scroll for sticky button
     useEffect(() => {
@@ -216,12 +223,23 @@ export default function ReviewStep({
 
                 {/* Sticky Checkout Bar */}
                 <div className="fixed bottom-0 left-0 right-0 bg-[#0A0A0A] border-t border-zinc-800 p-4 z-50">
+                    {/* Order Amount Warnings */}
+                    {isBelowMinimum && (
+                        <div className="mb-3 p-2 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
+                            <p className="text-xs text-yellow-400">⚠️ Minimum order: {formatPrice(minOrderAmount)}</p>
+                        </div>
+                    )}
+                    {isAboveMaximum && (
+                        <div className="mb-3 p-2 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
+                            <p className="text-xs text-yellow-400">⚠️ Maximum order: {formatPrice(maxOrderAmount)}</p>
+                        </div>
+                    )}
                     <div className="flex items-center justify-between mb-3">
                         <div>
                             <p className="text-xs text-zinc-500">Total</p>
                             <p className="text-xl font-bold text-white">{formatPrice(total)}</p>
                         </div>
-                        {paymentProvider !== 'cash' && !canProceed && (
+                        {paymentProvider !== 'cash' && !canProceed && orderAmountValid && (
                             <p className="text-xs text-yellow-500">Enter phone number</p>
                         )}
                     </div>
@@ -363,7 +381,18 @@ export default function ReviewStep({
 
                     <button onClick={onBack} className="w-full mt-3 text-zinc-500 hover:text-white text-xs uppercase tracking-wider transition-colors">← Back</button>
 
-                    {!canProceed && paymentProvider !== 'cash' && <p className="text-yellow-500 text-[10px] text-center mt-3">Please enter your mobile money phone number</p>}
+                    {/* Order Amount Warnings */}
+                    {isBelowMinimum && (
+                        <div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
+                            <p className="text-xs text-yellow-400">⚠️ Minimum order amount is {formatPrice(minOrderAmount)}</p>
+                        </div>
+                    )}
+                    {isAboveMaximum && (
+                        <div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
+                            <p className="text-xs text-yellow-400">⚠️ Maximum order amount is {formatPrice(maxOrderAmount)}</p>
+                        </div>
+                    )}
+                    {!canProceed && paymentProvider !== 'cash' && orderAmountValid && <p className="text-yellow-500 text-[10px] text-center mt-3">Please enter your mobile money phone number</p>}
                 </div>
             </div>
         </div>

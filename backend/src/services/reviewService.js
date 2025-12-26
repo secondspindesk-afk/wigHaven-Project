@@ -1,6 +1,8 @@
 import reviewRepository from '../db/repositories/reviewRepository.js';
 import { getPrisma } from '../config/database.js';
 import logger from '../utils/logger.js';
+import adminBroadcast from '../utils/adminBroadcast.js';
+import smartCache from '../utils/smartCache.js';
 
 /**
  * Create review with verified purchase check and proper validation
@@ -139,6 +141,9 @@ export const createReview = async (userId, reviewData, user) => {
         });
     }
 
+    // Broadcast after creation
+    await adminBroadcast.notifyReviewsChanged();
+
     return review;
 };
 
@@ -151,38 +156,46 @@ export const getProductReviews = async (productId, page = 1, limit = 10) => {
     const safeLimit = Math.min(50, Math.max(1, parseInt(limit) || 10)); // Max 50 per page
     const skip = Math.max(0, (safePage - 1) * safeLimit);
 
-    const [reviews, total, distributionData] = await Promise.all([
-        reviewRepository.findReviewsByProductId(productId, skip, safeLimit),
-        reviewRepository.countReviewsByProductId(productId),
-        reviewRepository.getRatingDistribution(productId)
-    ]);
+    const cacheKey = smartCache.keys.reviews(productId, safePage);
 
-    // Calculate stats
-    const stats = {
-        total,
-        average: 0,
-        distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
-    };
+    return smartCache.getOrFetch(
+        cacheKey,
+        async () => {
+            const [reviews, total, distributionData] = await Promise.all([
+                reviewRepository.findReviewsByProductId(productId, skip, safeLimit),
+                reviewRepository.countReviewsByProductId(productId),
+                reviewRepository.getRatingDistribution(productId)
+            ]);
 
-    let sum = 0;
-    distributionData.forEach(d => {
-        stats.distribution[d.rating] = d._count.rating;
-        sum += d.rating * d._count.rating;
-    });
+            // Calculate stats
+            const stats = {
+                total,
+                average: 0,
+                distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
+            };
 
-    // Prevent division by zero
-    stats.average = total > 0 ? Number((sum / total).toFixed(1)) : 0;
+            let sum = 0;
+            distributionData.forEach(d => {
+                stats.distribution[d.rating] = d._count.rating;
+                sum += d.rating * d._count.rating;
+            });
 
-    return {
-        reviews,
-        stats,
-        pagination: {
-            page: safePage,
-            limit: safeLimit,
-            total,
-            pages: Math.ceil(total / safeLimit)
-        }
-    };
+            // Prevent division by zero
+            stats.average = total > 0 ? Number((sum / total).toFixed(1)) : 0;
+
+            return {
+                reviews,
+                stats,
+                pagination: {
+                    page: safePage,
+                    limit: safeLimit,
+                    total,
+                    pages: Math.ceil(total / safeLimit)
+                }
+            };
+        },
+        { type: 'reviews', swr: true }
+    );
 };
 
 /**
@@ -194,7 +207,9 @@ export const approveReview = async (id) => {
         throw new Error('Review not found');
     }
 
-    return await reviewRepository.updateReviewStatus(id, true);
+    const result = await reviewRepository.updateReviewStatus(id, true);
+    await adminBroadcast.notifyReviewsChanged();
+    return result;
 };
 
 /**
@@ -206,7 +221,9 @@ export const rejectReview = async (id) => {
         throw new Error('Review not found');
     }
 
-    return await reviewRepository.updateReviewStatus(id, false);
+    const result = await reviewRepository.updateReviewStatus(id, false);
+    await adminBroadcast.notifyReviewsChanged();
+    return result;
 };
 
 /**
@@ -218,7 +235,9 @@ export const deleteReview = async (id) => {
         throw new Error('Review not found');
     }
 
-    return await reviewRepository.deleteReview(id);
+    const result = await reviewRepository.deleteReview(id);
+    await adminBroadcast.notifyReviewsChanged({ productId: review.productId, action: 'delete' });
+    return result;
 };
 
 
@@ -248,12 +267,34 @@ export const getAllReviews = async (page = 1, limit = 20, filters = {}) => {
  * Update review content (Admin)
  */
 export const updateReview = async (id, data) => {
+    // OPTIMIZATION: Handle _changedFields directive
+    const frontendChangedFields = data._changedFields;
+    delete data._changedFields;
+
+    // Skip if no changes
+    if (frontendChangedFields && frontendChangedFields.length === 0) {
+        logger.info(`[PERF] No changes for review ${id}, skipping update`);
+        return await reviewRepository.findReviewById(id);
+    }
+
     const review = await reviewRepository.findReviewById(id);
     if (!review) {
         throw new Error('Review not found');
     }
 
-    return await reviewRepository.updateReview(id, data);
+    const result = await reviewRepository.updateReview(id, data);
+
+    // Conditional cache invalidation - only if approval status changed
+    const publicFields = ['isApproved', 'rating', 'comment'];
+    const hasPublicChanges = !frontendChangedFields || frontendChangedFields.some(f => publicFields.includes(f));
+
+    if (hasPublicChanges) {
+        await adminBroadcast.notifyReviewsChanged();
+    } else {
+        logger.info(`[PERF] Skipping review cache invalidation - no public changes`);
+    }
+
+    return result;
 };
 
 /**
@@ -311,27 +352,30 @@ export const markReviewHelpful = async (id, userId) => {
  */
 export const bulkUpdateReviews = async (ids, action) => {
     const prisma = getPrisma();
+    let result;
 
     if (action === 'delete') {
-        const result = await prisma.review.deleteMany({
+        result = await prisma.review.deleteMany({
             where: { id: { in: ids } }
         });
-        return { count: result.count, action: 'deleted' };
     } else if (action === 'approve') {
-        const result = await prisma.review.updateMany({
+        result = await prisma.review.updateMany({
             where: { id: { in: ids } },
             data: { isApproved: true }
         });
-        return { count: result.count, action: 'approved' };
     } else if (action === 'reject') {
-        const result = await prisma.review.updateMany({
+        result = await prisma.review.updateMany({
             where: { id: { in: ids } },
             data: { isApproved: false }
         });
-        return { count: result.count, action: 'rejected' };
+    } else {
+        throw new Error('Invalid bulk action');
     }
 
-    throw new Error('Invalid bulk action');
+    // 🔔 Real-time: Notify all admin dashboards
+    await adminBroadcast.notifyReviewsChanged();
+
+    return { count: result.count || result, action };
 };
 
 /**
@@ -348,6 +392,9 @@ export const updateUserReviewStatus = async (userId, status) => {
         where: { id: userId },
         data: { reviewStatus: status }
     });
+
+    // 🔔 Real-time sync
+    await adminBroadcast.notifyUsersChanged({ action: 'review_status_changed', userId });
 
     return user;
 };

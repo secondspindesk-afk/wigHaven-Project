@@ -2,53 +2,36 @@ import { getPrisma } from '../config/database.js';
 import logger from '../utils/logger.js';
 import { ServiceUnavailableError } from './errorHandler.js';
 
-// Cache maintenance status to avoid DB query on every request
-// Short TTL (10 seconds) balances responsiveness with performance
-let maintenanceCache = {
-    value: null,
-    expiresAt: 0
-};
-const CACHE_TTL_MS = 10_000; // 10 seconds
+import smartCache from '../utils/smartCache.js';
 
 /**
  * Get maintenance mode status with caching
  * @returns {Promise<boolean>} true if maintenance mode is enabled
  */
 const getMaintenanceStatus = async () => {
-    const now = Date.now();
-
-    // Return cached value if still valid
-    if (maintenanceCache.value !== null && now < maintenanceCache.expiresAt) {
-        return maintenanceCache.value;
-    }
-
-    const prisma = getPrisma();
-
-    const maintenanceSetting = await prisma.systemSetting.findFirst({
-        where: {
-            OR: [
-                { key: 'maintenance_mode' },
-                { key: 'maintenanceMode' }
-            ]
-        }
-    });
-
-    const isEnabled = maintenanceSetting?.value === 'true';
-
-    // Cache the result
-    maintenanceCache = {
-        value: isEnabled,
-        expiresAt: now + CACHE_TTL_MS
-    };
-
-    return isEnabled;
+    return smartCache.getOrFetch(
+        'maintenance:status',
+        async () => {
+            const prisma = getPrisma();
+            const maintenanceSetting = await prisma.systemSetting.findFirst({
+                where: {
+                    OR: [
+                        { key: 'maintenance_mode' },
+                        { key: 'maintenanceMode' }
+                    ]
+                }
+            });
+            return maintenanceSetting?.value === 'true';
+        },
+        { type: 'maintenance', swr: true }
+    );
 };
 
 /**
  * Invalidate maintenance cache (call this when setting changes)
  */
 export const invalidateMaintenanceCache = () => {
-    maintenanceCache = { value: null, expiresAt: 0 };
+    smartCache.del('maintenance:status');
 };
 
 /**

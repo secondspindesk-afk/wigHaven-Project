@@ -1,90 +1,134 @@
 import supportRepository from '../db/repositories/supportRepository.js';
 import * as emailService from './emailService.js';
 import * as notificationService from './notificationService.js';
+import adminBroadcast from '../utils/adminBroadcast.js';
 import logger from '../utils/logger.js';
+import { getPrisma } from '../config/database.js';
 
 /**
  * Create a new support ticket (logged-in user)
+ * TRANSACTIONAL: Ticket + Initial Message are created atomically
  */
 export const createTicket = async (userId, data) => {
     const { subject, message, priority } = data;
+    const prisma = getPrisma();
 
-    // Create ticket
-    const ticket = await supportRepository.createTicket({
-        userId,
-        subject,
-        priority: priority || 'medium',
-        status: 'open'
+    // ============================================
+    // ATOMIC TRANSACTION: Ticket + Initial Message
+    // ============================================
+    const ticket = await prisma.$transaction(async (tx) => {
+        // Create ticket
+        const newTicket = await tx.supportTicket.create({
+            data: {
+                userId,
+                subject,
+                priority: priority || 'medium',
+                status: 'open'
+            },
+            include: {
+                user: {
+                    select: {
+                        firstName: true,
+                        lastName: true,
+                        email: true
+                    }
+                }
+            }
+        });
+
+        // Add initial message
+        await tx.supportMessage.create({
+            data: {
+                ticketId: newTicket.id,
+                senderId: userId,
+                message,
+                isAdmin: false
+            }
+        });
+
+        return newTicket;
     });
 
-    // Add initial message
-    await supportRepository.addMessage({
-        ticketId: ticket.id,
-        senderId: userId,
-        message,
-        isAdmin: false
-    });
-
-    // Send confirmation email to logged-in user
+    // Send confirmation email to logged-in user (outside tx)
     if (ticket.user && ticket.user.email) {
         await emailService.sendSupportTicketCreated(ticket, ticket.user);
     }
 
-    logger.info('Support ticket created', { ticketId: ticket.id, ticketNumber: ticket.ticketNumber, userId });
+    logger.info('[TX] Support ticket created atomically', { ticketId: ticket.id, ticketNumber: ticket.ticketNumber, userId });
 
-    // Notify admins about new ticket
+    // Notify admins about new ticket (non-blocking)
     const userName = ticket.user
         ? `${ticket.user.firstName || ''} ${ticket.user.lastName || ''}`.trim() || 'A user'
         : 'A customer';
 
-    // We don't await this to avoid blocking the response
     notificationService.notifyAdminNewTicket(ticket, userName).catch(err =>
         logger.error('Failed to notify admins about new ticket', { error: err.message, ticketId: ticket.id })
     );
 
+    // Broadcast change
+    await adminBroadcast.notifySupportChanged();
+
     return ticket;
 };
+
 
 /**
  * Create a guest support ticket (unauthenticated users)
  * Stores contact info in the ticket for admin follow-up
+ * TRANSACTIONAL: Ticket + Initial Message are created atomically
  */
 export const createGuestTicket = async (data) => {
     const { name, email, subject, message, priority } = data;
+    const prisma = getPrisma();
 
-    // Create ticket without userId (guest)
-    const ticket = await supportRepository.createTicket({
-        userId: null, // Guest ticket - no user association
-        subject: `[GUEST] ${subject}`,
-        priority: priority || 'medium',
-        status: 'open',
-        guestName: name,
-        guestEmail: email
+    // ============================================
+    // ATOMIC TRANSACTION: Ticket + Initial Message
+    // ============================================
+    const ticket = await prisma.$transaction(async (tx) => {
+        // Create ticket without userId (guest)
+        const newTicket = await tx.supportTicket.create({
+            data: {
+                userId: null,
+                subject: `[GUEST] ${subject}`,
+                priority: priority || 'medium',
+                status: 'open',
+                guestName: name,
+                guestEmail: email
+            }
+        });
+
+        // Add initial message with contact info
+        await tx.supportMessage.create({
+            data: {
+                ticketId: newTicket.id,
+                senderId: null,
+                message: `**Guest Contact:**\nName: ${name}\nEmail: ${email}\n\n**Message:**\n${message}`,
+                isAdmin: false
+            }
+        });
+
+        return newTicket;
     });
 
-    // Add initial message with contact info
-    await supportRepository.addMessage({
-        ticketId: ticket.id,
-        senderId: null, // Guest - no sender ID
-        message: `**Guest Contact:**\nName: ${name}\nEmail: ${email}\n\n**Message:**\n${message}`,
-        isAdmin: false
-    });
-
-    // Send confirmation email to guest
+    // Send confirmation email to guest (outside tx)
     await emailService.sendGuestTicketReply(ticket,
         `Thank you for contacting us. We've received your inquiry and will respond within 24 hours.\n\nYour ticket number is #${ticket.ticketNumber}`,
         { email, name }
     );
 
-    logger.info('Guest support ticket created', { ticketId: ticket.id, ticketNumber: ticket.ticketNumber, guestEmail: email });
+    logger.info('[TX] Guest support ticket created atomically', { ticketId: ticket.id, ticketNumber: ticket.ticketNumber, guestEmail: email });
 
-    // Notify admins about new guest ticket
+    // Notify admins about new guest ticket (non-blocking)
     notificationService.notifyAdminNewTicket(ticket, name || 'Guest').catch(err =>
         logger.error('Failed to notify admins about new guest ticket', { error: err.message, ticketId: ticket.id })
     );
 
+    // Broadcast change
+    await adminBroadcast.notifySupportChanged();
+
     return ticket;
 };
+
 
 /**
  * Reply to a ticket
@@ -143,15 +187,25 @@ export const replyTicket = async (ticketId, userId, message, isAdmin = false) =>
         });
     }
 
-    return reply;
+    const result = reply;
+    await adminBroadcast.notifySupportChanged();
+    return result;
 };
+
+import smartCache from '../utils/smartCache.js';
 
 /**
  * Get user tickets
  */
 export const getUserTickets = async (userId, page = 1, limit = 20) => {
-    const skip = (page - 1) * limit;
-    return await supportRepository.findUserTickets(userId, skip, limit);
+    return smartCache.getOrFetch(
+        smartCache.keys.supportUserTickets(userId, page),
+        async () => {
+            const skip = (page - 1) * limit;
+            return await supportRepository.findUserTickets(userId, skip, limit);
+        },
+        { type: 'support', swr: true }
+    );
 };
 
 /**
@@ -161,7 +215,11 @@ export const getUserTickets = async (userId, page = 1, limit = 20) => {
  * @param {boolean} isAdmin - If true, skip ownership check (admins can view any ticket)
  */
 export const getTicketById = async (ticketId, userId, isAdmin = false) => {
-    const ticket = await supportRepository.findTicketById(ticketId);
+    const ticket = await smartCache.getOrFetch(
+        smartCache.keys.supportTicket(ticketId),
+        () => supportRepository.findTicketById(ticketId),
+        { type: 'support', swr: true }
+    );
 
     if (!ticket) {
         throw new Error('Ticket not found');
@@ -179,9 +237,16 @@ export const getTicketById = async (ticketId, userId, isAdmin = false) => {
 /**
  * Get all tickets (Admin)
  */
-export const getAllTickets = async ({ page = 1, limit = 20, status, priority }) => {
-    const skip = (page - 1) * limit;
-    return await supportRepository.findAllTickets({ skip, limit, status, priority });
+export const getAllTickets = async (options) => {
+    const { page = 1, limit = 20 } = options;
+    return smartCache.getOrFetch(
+        smartCache.keys.supportAllTickets(options),
+        async () => {
+            const skip = (page - 1) * limit;
+            return await supportRepository.findAllTickets({ ...options, skip, limit });
+        },
+        { type: 'support', swr: true }
+    );
 };
 
 /**
@@ -225,7 +290,9 @@ export const updateTicketStatus = async (ticketId, status) => {
         }
     }
 
-    return updatedTicket;
+    const result = updatedTicket;
+    await adminBroadcast.notifySupportChanged();
+    return result;
 };
 
 export default {

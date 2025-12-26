@@ -4,6 +4,8 @@ import { useAdminProducts, useBulkUpdateVariants } from '@/lib/hooks/useProducts
 import { useToast } from '@/contexts/ToastContext';
 import { Variant } from '@/lib/api/products';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
+import Skeleton from '@/components/common/Skeleton';
+import TableSkeleton from '@/components/common/TableSkeleton';
 
 interface InventoryItem extends Variant { productName: string; productImage?: string; }
 
@@ -58,7 +60,18 @@ export default function InventoryList() {
                 {/* Divider */}
                 <div className="h-px bg-zinc-800/50 -mx-4" />
                 <div className="space-y-3">
-                    {isLoading ? [...Array(3)].map((_, i) => <div key={i} className="h-20 bg-zinc-900 rounded-xl animate-pulse" />) : filteredItems.length === 0 ? <div className="text-center py-12"><Package size={40} className="mx-auto text-zinc-700 mb-4" /><p className="text-zinc-500 text-sm">No items</p></div> : filteredItems.map(item => {
+                    {isLoading ? (
+                        [...Array(5)].map((_, i) => (
+                            <div key={i} className="p-3 bg-zinc-900 rounded-xl border border-zinc-800 flex items-center gap-3">
+                                <Skeleton width={48} height={48} borderRadius="0.5rem" />
+                                <div className="flex-1 space-y-2">
+                                    <Skeleton width="60%" height={14} />
+                                    <Skeleton width="30%" height={10} />
+                                </div>
+                                <Skeleton width={64} height={40} borderRadius="0.5rem" />
+                            </div>
+                        ))
+                    ) : filteredItems.length === 0 ? <div className="text-center py-12"><Package size={40} className="mx-auto text-zinc-700 mb-4" /><p className="text-zinc-500 text-sm">No items</p></div> : filteredItems.map(item => {
                         const cur = modifiedStock[item.id!] ?? item.stock;
                         const mod = modifiedStock[item.id!] !== undefined;
                         const low = cur > 0 && cur <= 5, out = cur === 0;
@@ -91,7 +104,13 @@ export default function InventoryList() {
                     <table className="w-full">
                         <thead><tr className="border-b border-[#27272a]"><th className="px-4 py-3 text-left text-[9px] text-zinc-500 font-bold uppercase">Product</th><th className="px-4 py-3 text-left text-[9px] text-zinc-500 font-bold uppercase">SKU</th><th className="px-4 py-3 text-left text-[9px] text-zinc-500 font-bold uppercase">Attributes</th><th className="px-4 py-3 text-left text-[9px] text-zinc-500 font-bold uppercase">Stock</th><th className="px-4 py-3 text-left text-[9px] text-zinc-500 font-bold uppercase">Status</th></tr></thead>
                         <tbody className="divide-y divide-[#27272a]">
-                            {isLoading ? [...Array(5)].map((_, i) => <tr key={i}><td colSpan={5} className="px-4 py-4"><div className="h-4 bg-zinc-800 rounded animate-pulse" /></td></tr>) : filteredItems.length === 0 ? <tr><td colSpan={5} className="px-4 py-12 text-center text-zinc-500 text-sm">No items</td></tr> : filteredItems.map(item => {
+                            {isLoading ? (
+                                <tr>
+                                    <td colSpan={5} className="p-0">
+                                        <TableSkeleton rows={10} cols={4} />
+                                    </td>
+                                </tr>
+                            ) : filteredItems.length === 0 ? <tr><td colSpan={5} className="px-4 py-12 text-center text-zinc-500 text-sm">No items</td></tr> : filteredItems.map(item => {
                                 const cur = modifiedStock[item.id!] ?? item.stock;
                                 const mod = modifiedStock[item.id!] !== undefined;
                                 const low = cur > 0 && cur <= 5, out = cur === 0;

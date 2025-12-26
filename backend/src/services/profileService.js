@@ -2,35 +2,58 @@ import userRepository from '../db/repositories/userRepository.js';
 import { getPrisma } from '../config/database.js';
 import bcrypt from 'bcryptjs';
 import logger from '../utils/logger.js';
+import adminBroadcast from '../utils/adminBroadcast.js';
+
+import smartCache from '../utils/smartCache.js';
 
 /**
  * Get user profile with addresses
  */
 export const getProfile = async (userId) => {
-    const prisma = getPrisma();
-    const user = await prisma.user.findUnique({
-        where: { id: userId },
-        include: {
-            addresses: {
-                orderBy: [
-                    { isDefault: 'desc' },
-                    { createdAt: 'desc' }
-                ]
+    return smartCache.getOrFetch(
+        smartCache.keys.profile(userId),
+        async () => {
+            const prisma = getPrisma();
+            const user = await prisma.user.findUnique({
+                where: { id: userId },
+                include: {
+                    addresses: {
+                        orderBy: [
+                            { isDefault: 'desc' },
+                            { createdAt: 'desc' }
+                        ]
+                    }
+                }
+            });
+
+            if (user) {
+                delete user.password; // Never expose password hash
             }
-        }
-    });
 
-    if (user) {
-        delete user.password; // Never expose password hash
-    }
-
-    return user;
+            return user;
+        },
+        { type: 'users', swr: true }
+    );
 };
 
 /**
  * Update profile with validation
+ * OPTIMIZED: Supports _changedFields directive, skips empty updates
  */
 export const updateProfile = async (userId, data) => {
+    // OPTIMIZATION: Extract _changedFields directive if present
+    const frontendChangedFields = data._changedFields;
+    delete data._changedFields;
+
+    // OPTIMIZATION: Skip if frontend reports no changes
+    if (frontendChangedFields && frontendChangedFields.length === 0) {
+        logger.info(`[PERF] Profile update skipped - no changes for user ${userId}`);
+        const prisma = getPrisma();
+        const user = await prisma.user.findUnique({ where: { id: userId } });
+        delete user.password;
+        return user;
+    }
+
     // FIXED BUG #7: Input validation
     const updates = {};
 
@@ -58,6 +81,15 @@ export const updateProfile = async (userId, data) => {
         updates.phone = phone || null;
     }
 
+    // OPTIMIZATION: Skip DB call if no actual updates
+    if (Object.keys(updates).length === 0) {
+        logger.info(`[PERF] Profile update skipped - empty updates for user ${userId}`);
+        const prisma = getPrisma();
+        const user = await prisma.user.findUnique({ where: { id: userId } });
+        delete user.password;
+        return user;
+    }
+
     const prisma = getPrisma();
     const user = await prisma.user.update({
         where: { id: userId },
@@ -65,7 +97,11 @@ export const updateProfile = async (userId, data) => {
     });
 
     delete user.password;
-    logger.info(`User ${userId} updated profile`);
+    logger.info(`[PERF] User ${userId} profile updated (${Object.keys(updates).join(', ')})`);
+
+    // 🔔 Real-time: Notify admin and sync caches
+    await adminBroadcast.notifyUsersChanged({ action: 'profile_updated', userId });
+
     return user;
 };
 
@@ -108,6 +144,9 @@ export const updatePassword = async (userId, currentPassword, newPassword) => {
 
     await userRepository.updateUserPassword(userId, hashedPassword);
     logger.info(`User ${userId} changed password`);
+
+    // 🔔 Real-time sync
+    await adminBroadcast.notifyUsersChanged({ action: 'password_changed', userId });
 };
 
 /**
@@ -147,7 +186,7 @@ export const addAddress = async (userId, addressData) => {
             });
         }
 
-        return await tx.address.create({
+        const address = await tx.address.create({
             data: {
                 userId,
                 name: addressData.name.trim(),
@@ -160,13 +199,23 @@ export const addAddress = async (userId, addressData) => {
                 isDefault: addressData.isDefault || false
             }
         });
+
+        // 🔔 Real-time sync
+        await adminBroadcast.notifyUsersChanged({ action: 'address_added', userId });
+
+        return address;
     });
 };
 
 /**
  * Update address with atomic default handling
+ * OPTIMIZED: Supports _changedFields directive, skips empty updates
  */
 export const updateAddress = async (userId, addressId, addressData) => {
+    // OPTIMIZATION: Extract _changedFields directive if present
+    const frontendChangedFields = addressData._changedFields;
+    delete addressData._changedFields;
+
     const prisma = getPrisma();
 
     // Verify ownership
@@ -177,6 +226,12 @@ export const updateAddress = async (userId, addressId, addressData) => {
 
     if (existing.userId !== userId) {
         throw new Error('Access denied');
+    }
+
+    // OPTIMIZATION: Skip if frontend reports no changes
+    if (frontendChangedFields && frontendChangedFields.length === 0) {
+        logger.info(`[PERF] Address update skipped - no changes for ${addressId}`);
+        return existing;
     }
 
     // FIXED BUG #10: Validate fields if provided
@@ -224,6 +279,12 @@ export const updateAddress = async (userId, addressId, addressData) => {
         updates.isDefault = addressData.isDefault;
     }
 
+    // OPTIMIZATION: Skip transaction if no actual updates
+    if (Object.keys(updates).length === 0) {
+        logger.info(`[PERF] Address update skipped - empty updates for ${addressId}`);
+        return existing;
+    }
+
     // FIXED BUG #8: Use transaction
     return await prisma.$transaction(async (tx) => {
         if (updates.isDefault) {
@@ -233,10 +294,15 @@ export const updateAddress = async (userId, addressId, addressData) => {
             });
         }
 
-        return await tx.address.update({
+        const address = await tx.address.update({
             where: { id: addressId },
             data: updates
         });
+
+        // 🔔 Real-time sync
+        await adminBroadcast.notifyUsersChanged({ action: 'address_updated', userId });
+
+        return address;
     });
 };
 
@@ -257,6 +323,9 @@ export const deleteAddress = async (userId, addressId) => {
 
     await prisma.address.delete({ where: { id: addressId } });
     logger.info(`User ${userId} deleted address ${addressId}`);
+
+    // 🔔 Real-time sync
+    await adminBroadcast.notifyUsersChanged({ action: 'address_deleted', userId });
 };
 
 export default {

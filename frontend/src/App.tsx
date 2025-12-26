@@ -66,6 +66,8 @@ import { useNavigate } from 'react-router-dom';
 import ScrollToTop from '@/components/common/ScrollToTop';
 import BackToTop from '@/components/common/BackToTop';
 import RouteProgress from '@/components/common/RouteProgress';
+import CartSyncListener from '@/components/cart/CartSyncListener';
+import TopBarLoader from '@/components/common/TopBarLoader';
 
 // Handles auth:logout events from axios interceptor - uses React Router instead of full page reload
 function AuthRedirectListener() {
@@ -93,6 +95,8 @@ function App() {
     <ErrorBoundary>
       <Router>
         <AuthRedirectListener />
+        <CartSyncListener />
+        <TopBarLoader />
         <RouteProgress />
         <ScrollToTop />
         <BackToTop />

@@ -10,8 +10,8 @@ export const createVariant = async (req, res, next) => {
         const variant = await productService.createVariant(req.body);
 
         // 🔔 Real-time: Notify all admin dashboards
-        notifyProductsChanged({ action: 'variant_created', variantId: variant.id });
-        notifyStockChanged({ action: 'variant_created' });
+        await notifyProductsChanged({ action: 'variant_created', variantId: variant.id });
+        await notifyStockChanged({ action: 'variant_created', productId: variant.productId, variantId: variant.id });
 
         res.status(201).json({
             success: true,
@@ -36,9 +36,9 @@ export const updateVariant = async (req, res, next) => {
         const variant = await productService.updateVariant(req.params.id, req.body);
 
         // 🔔 Real-time: Notify all admin dashboards
-        notifyProductsChanged({ action: 'variant_updated', variantId: req.params.id });
+        await notifyProductsChanged({ action: 'variant_updated', variantId: req.params.id });
         if (req.body.stock !== undefined) {
-            notifyStockChanged({ action: 'stock_adjusted', variantId: req.params.id });
+            await notifyStockChanged({ action: 'stock_adjusted', productId: variant.productId, variantId: req.params.id });
         }
 
         res.json({
@@ -80,9 +80,10 @@ export const bulkUpdateVariants = async (req, res, next) => {
         const results = await productService.bulkUpdateVariants(variantIds, updates);
 
         // 🔔 Real-time: Notify all admin dashboards
-        notifyProductsChanged({ action: 'bulk_variant_update', count: results.length });
+        await notifyProductsChanged({ action: 'bulk_variant_update', count: results.length });
         if (updates.stock !== undefined) {
-            notifyStockChanged({ action: 'bulk_stock_adjusted' });
+            // Bulk update: can't target specific product, invalidate all
+            await notifyStockChanged({ action: 'bulk_stock_adjusted' });
         }
 
         res.json({

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -44,17 +44,20 @@ export default function AddressBook() {
         reset,
         setValue,
         watch,
-        formState: { errors, isSubmitting },
+        formState: { errors, isSubmitting, dirtyFields },
     } = useForm<AddressFormData>({
         resolver: zodResolver(addressSchema),
     });
+
+    // OPTIMIZATION: Track original data for _changedFields
+    const originalDataRef = useRef<AddressFormData | null>(null);
 
     const selectedRegion = watch('state');
 
     const openModal = (address?: Address) => {
         if (address) {
             setEditingAddress(address);
-            reset({
+            const addressData = {
                 name: address.name,
                 street: address.street,
                 city: address.city,
@@ -63,9 +66,13 @@ export default function AddressBook() {
                 country: address.country,
                 phone: address.phone,
                 isDefault: address.isDefault,
-            });
+            };
+            reset(addressData);
+            // Store original for dirty tracking
+            originalDataRef.current = addressData;
         } else {
             setEditingAddress(null);
+            originalDataRef.current = null;
             reset({
                 name: '', street: '', city: '', state: '', zipCode: '',
                 country: 'Ghana', phone: '', isDefault: false,
@@ -81,13 +88,34 @@ export default function AddressBook() {
         reset();
     };
 
+    // OPTIMIZATION: Send only changed fields with _changedFields directive
     const onSubmit = (data: AddressFormData) => {
         if (editingAddress) {
-            updateAddress.mutate({ id: editingAddress.id, data }, { onSuccess: closeModal });
+            const changedFieldNames = Object.keys(dirtyFields) as (keyof AddressFormData)[];
+
+            // Skip if nothing changed
+            if (changedFieldNames.length === 0) {
+                showToast('No changes to save', 'info');
+                closeModal();
+                return;
+            }
+
+            // Build payload with only changed fields
+            const payload: Partial<AddressFormData> & { _changedFields: string[] } = {
+                _changedFields: changedFieldNames
+            };
+            changedFieldNames.forEach(field => {
+                (payload as any)[field] = data[field];
+            });
+
+            console.log('[PERF] Sending only changed fields:', changedFieldNames);
+            updateAddress.mutate({ id: editingAddress.id, data: payload as any }, { onSuccess: closeModal });
         } else {
             addAddress.mutate(data, { onSuccess: closeModal });
         }
     };
+
+    const { showToast } = useToast();
 
     // Lock body scroll when modal is open on mobile
     useEffect(() => {

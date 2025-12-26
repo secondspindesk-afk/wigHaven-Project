@@ -48,7 +48,7 @@ export const findVariantById = async (id) => {
             where: { id },
             include: {
                 product: true,
-            },
+            }
         });
     } catch (error) {
         logger.error(`Error finding variant ${id}:`, error);
@@ -158,6 +158,7 @@ export const hardDeleteVariant = async (id, moveImageToTrash = null) => {
         return {
             success: true,
             deletedVariant,
+            productId: variant.productId,
             imagesMovedToTrash: imageUrls.length
         };
     } catch (error) {
@@ -181,7 +182,7 @@ export const getProductVariants = async (productId) => {
             },
             orderBy: {
                 price: 'asc',
-            },
+            }
         });
     } catch (error) {
         logger.error(`Error getting variants for product ${productId}:`, error);

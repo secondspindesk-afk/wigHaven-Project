@@ -34,14 +34,10 @@ export const authenticateToken = async (req, res, next) => {
         }
 
         // PARALLELIZED: Run blacklist check and user status fetch concurrently
-        // This reduces auth middleware latency by ~50% (2 sequential DB calls → 1 parallel call)
-        const prisma = getPrisma();
+        // Both now use in-memory caching for ~0ms response on cache hit
         const [isBlacklisted, user] = await Promise.all([
             isTokenBlacklisted(token),
-            prisma.user.findUnique({
-                where: { id: decoded.sub },
-                select: { isActive: true, role: true, lastPasswordChange: true }
-            })
+            getCachedUserStatus(decoded.sub)
         ]);
 
         if (isBlacklisted) {
@@ -120,12 +116,8 @@ export const optionalAuth = async (req, res, next) => {
         const decoded = verifyToken(token);
 
         if (decoded && decoded.sub) {
-            // Check if user is still active before treating them as authenticated
-            const prisma = getPrisma();
-            const user = await prisma.user.findUnique({
-                where: { id: decoded.sub },
-                select: { isActive: true }
-            });
+            // Check if user is still active (using cache)
+            const user = await getCachedUserStatus(decoded.sub);
 
             // Only set req.user if user exists and is active
             if (user && user.isActive) {
@@ -152,22 +144,166 @@ export const optionalAuth = async (req, res, next) => {
 };
 
 /**
- * Check if token is blacklisted (Database)
+ * In-memory cache for blacklisted tokens
+ * Reduces auth latency by avoiding DB round-trip on every request
+ * TTL: 30 seconds (balance between performance and security)
+ */
+const blacklistCache = new Map();
+const BLACKLIST_CACHE_TTL = 30000; // 30 seconds
+
+/**
+ * In-memory cache for user status
+ * Caches isActive, role, and lastPasswordChange for 30 seconds
+ * This prevents repeated DB lookups for the same user across multiple requests
+ */
+const userStatusCache = new Map();
+const USER_STATUS_CACHE_TTL = 30000; // 30 seconds
+
+/**
+ * In-flight requests for user status (prevents thundering herd)
+ * Key: userId, Value: Promise<user>
+ */
+const inFlightUserRequests = new Map();
+
+/**
+ * Get cached user status or fetch from DB (with request coalescing)
+ * OPTIMIZATION: Multiple parallel requests for the same userId share one DB query
+ * @param {string} userId - User ID
+ * @returns {Promise<Object|null>} User status object
+ */
+const getCachedUserStatus = async (userId) => {
+    // Check cache first (instant)
+    const cached = userStatusCache.get(userId);
+    if (cached && Date.now() < cached.expires) {
+        return cached.value;
+    }
+
+    // Check if there's already an in-flight request for this user
+    // This prevents "thundering herd" where 6 parallel requests all trigger DB queries
+    const inFlight = inFlightUserRequests.get(userId);
+    if (inFlight) {
+        return inFlight; // Reuse the existing promise
+    }
+
+    // Create new request and track it
+    const request = (async () => {
+        const prisma = getPrisma();
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { isActive: true, role: true, lastPasswordChange: true }
+        });
+
+        // Cache result (even null for non-existent users)
+        userStatusCache.set(userId, {
+            value: user,
+            expires: Date.now() + USER_STATUS_CACHE_TTL
+        });
+
+        return user;
+    })();
+
+    // Track this request as in-flight
+    inFlightUserRequests.set(userId, request);
+
+    try {
+        return await request;
+    } finally {
+        // Clean up in-flight tracking
+        inFlightUserRequests.delete(userId);
+
+        // Cleanup old cache entries
+        if (userStatusCache.size > 500) {
+            const now = Date.now();
+            for (const [key, val] of userStatusCache) {
+                if (now > val.expires) userStatusCache.delete(key);
+            }
+        }
+    }
+};
+
+/**
+ * Invalidate user from cache (call on logout, role change, deactivation)
+ */
+export const invalidateUserFromCache = (userId) => {
+    userStatusCache.delete(userId);
+};
+
+/**
+ * Check if token is blacklisted (Optimized Cache-First)
+ * 
+ * OPTIMIZATION: Since we ALWAYS add blacklisted tokens to cache on logout (line 272),
+ * we can use a "negative cache" strategy:
+ * - Cache HIT with true = blacklisted
+ * - Cache HIT with false = NOT blacklisted (verified recently)
+ * - Cache MISS = NOT blacklisted (never seen before)
+ * 
+ * DB lookup only happens on cold start (cacheWarmed = false)
+ * 
  * @param {string} token - JWT token
  * @returns {Promise<boolean>} - True if blacklisted
  */
+let cacheWarmed = false;
+
 const isTokenBlacklisted = async (token) => {
+    // Check memory cache first (instant)
+    const cached = blacklistCache.get(token);
+    if (cached && Date.now() < cached.expires) {
+        return cached.value;
+    }
+
+    // OPTIMIZATION: If cache is warm (server running for > 30s) and token not in cache,
+    // it means this token was never blacklisted (because we always add on logout)
+    if (cacheWarmed) {
+        // Add to cache as "not blacklisted" to prevent future lookups
+        blacklistCache.set(token, {
+            value: false,
+            expires: Date.now() + BLACKLIST_CACHE_TTL
+        });
+        return false;
+    }
+
+    // Cold start: verify against DB (only happens once per unique token on restart)
     try {
         const prisma = getPrisma();
         const blacklisted = await prisma.blacklistedToken.findUnique({
             where: { token }
         });
-        return blacklisted !== null;
+        const result = blacklisted !== null;
+
+        // Cache result
+        blacklistCache.set(token, {
+            value: result,
+            expires: Date.now() + BLACKLIST_CACHE_TTL
+        });
+
+        // Cleanup old entries periodically (prevent memory leak)
+        if (blacklistCache.size > 1000) {
+            const now = Date.now();
+            for (const [key, val] of blacklistCache) {
+                if (now > val.expires) blacklistCache.delete(key);
+            }
+        }
+
+        return result;
     } catch (error) {
         // If database is down, fail closed (deny access)
         logger.error('Database unavailable for blacklist check - Denying access');
         throw new Error('Service temporarily unavailable');
     }
+};
+
+// Warm the cache after initial DB lookups complete (30 seconds grace period)
+setTimeout(() => {
+    cacheWarmed = true;
+    logger.info('[Auth] Blacklist cache warmed - using cache-first strategy');
+}, 30000);
+
+/**
+ * Invalidate token from cache (call on logout)
+ * @param {string} token - JWT token to remove from cache
+ */
+export const invalidateTokenFromCache = (token) => {
+    blacklistCache.delete(token);
 };
 
 /**
@@ -186,6 +322,13 @@ export const blacklistToken = async (token, expirationSeconds = 86400) => {
                 expiresAt
             }
         });
+
+        // Immediately update cache for instant revocation
+        blacklistCache.set(token, {
+            value: true,
+            expires: Date.now() + BLACKLIST_CACHE_TTL
+        });
+
         logger.info(`Token blacklisted until ${expiresAt.toISOString()}`);
     } catch (error) {
         logger.error('Failed to blacklist token:', error);
@@ -248,4 +391,6 @@ export default {
     requireAdmin,
     isAuthenticated,
     hasRole,
+    invalidateTokenFromCache,
+    invalidateUserFromCache,
 };

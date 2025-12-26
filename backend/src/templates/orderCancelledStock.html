@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Order Cancelled - Item Out of Stock</title>
+</head>
+<body>
+    <div class="header">
+        <h1>Order Cancelled</h1>
+    </div>
+    <div class="content">
+        <p>Hello {{customer_name}},</p>
+        <p>We're sorry to inform you that your Order <strong>#{{order_number}}</strong> has been cancelled and fully refunded.</p>
+        
+        <div class="alert">
+            <p><strong>Reason:</strong> One or more items in your order sold out while you were completing your payment.</p>
+        </div>
+
+        <h3>Affected Items:</h3>
+        <ul>
+            {{#each items}}
+            <li>{{sku}}: Requested {{requested}}, but only {{available}} remained.</li>
+            {{/each}}
+        </ul>
+
+        <p>A full refund has been initiated via Paystack and should appear in your account within 3-5 business days (depending on your bank).</p>
+        
+        <p>We apologize for the inconvenience. Our high-demand items can sometimes sell out in seconds during sales!</p>
+        
+        <a href="{{app_url}}/shop" class="button">Return to Shop</a>
+    </div>
+</body>
+</html>

@@ -9,6 +9,8 @@ import notificationService from './notificationService.js';
 import emailService from './emailService.js';
 import { getPrisma } from '../config/database.js';
 import logger from '../utils/logger.js';
+import adminBroadcast from '../utils/adminBroadcast.js';
+import smartCache from '../utils/smartCache.js';
 
 /**
  * Create order from cart
@@ -28,22 +30,26 @@ export const createOrder = async (cart, orderData) => {
         }
 
         // 1b. Validate order limits from settings (parallelized for efficiency)
-        const [minOrderAmount, maxOrderAmount] = await Promise.all([
+        const [minOrderAmount, maxOrderAmount, currencySymbol] = await Promise.all([
             settingsService.getSetting('minOrderAmount'),
-            settingsService.getSetting('maxOrderAmount')
+            settingsService.getSetting('maxOrderAmount'),
+            settingsService.getSetting('currencySymbol')
         ]);
 
+        const symbol = currencySymbol || '₵';
+
         if (minOrderAmount && Number(minOrderAmount) > 0 && cart.total < Number(minOrderAmount)) {
-            const error = new Error(`Minimum order amount is ₵${Number(minOrderAmount).toFixed(2)}`);
+            const error = new Error(`Minimum order amount is ${symbol}${Number(minOrderAmount).toFixed(2)}`);
             error.statusCode = 400;
             throw error;
         }
 
         if (maxOrderAmount && Number(maxOrderAmount) > 0 && cart.total > Number(maxOrderAmount)) {
-            const error = new Error(`Maximum order amount is ₵${Number(maxOrderAmount).toFixed(2)}`);
+            const error = new Error(`Maximum order amount is ${symbol}${Number(maxOrderAmount).toFixed(2)}`);
             error.statusCode = 400;
             throw error;
         }
+
 
         // 2. Generate order number & reference (cryptographically secure)
         const now = new Date();
@@ -52,7 +58,7 @@ export const createOrder = async (cart, orderData) => {
         const paystackReference = `ref_${Date.now()}_${crypto.randomUUID().slice(0, 9)}`;
 
         // 3. Determine user context
-        const cartContext = cart.userId ? { type: 'user', userId: cart.userId } : { type: 'guest', guestId: cart.guestId };
+        const cartContext = cart.userId ? { type: 'user', userId: cart.userId } : { type: 'guest', sessionId: cart.sessionId };
 
         // 4. Transaction: Validate Stock → Create Order → Create Items (NO DEDUCTION YET)
         const { order, orderItems } = await prisma.$transaction(async (tx) => {
@@ -70,8 +76,9 @@ export const createOrder = async (cart, orderData) => {
                     throw new Error(`Product is no longer available: ${item.product_name}`);
                 }
 
-                if (variant.stock < item.quantity) {
-                    throw new Error(`Insufficient stock for ${item.product_name}. Available: ${variant.stock}`);
+                const availableStock = variant.stock - variant.reservedStock;
+                if (availableStock < item.quantity) {
+                    throw new Error(`Insufficient stock for ${item.product_name}. Available: ${availableStock} (after reservations)`);
                 }
 
                 // ✅ Stock validated but NOT deducted
@@ -139,7 +146,7 @@ export const createOrder = async (cart, orderData) => {
                 }
 
                 // Re-validate usage limit
-                if (discountRecord.usageLimit !== null && discountRecord.usedCount >= discountRecord.usageLimit) {
+                if (discountRecord.maxUses !== null && discountRecord.usedCount >= discountRecord.maxUses) {
                     throw new Error(`Coupon code "${cart.discount.code}" has reached its usage limit.`);
                 }
 
@@ -151,8 +158,16 @@ export const createOrder = async (cart, orderData) => {
                 logger.info(`Discount usage incremented for code: ${cart.discount.code}`);
             }
 
+            // E. Increment RESERVED STOCK
+            for (const item of cart.items) {
+                await tx.variant.update({
+                    where: { id: item.variant_id },
+                    data: { reservedStock: { increment: item.quantity } }
+                });
+            }
+
             return { order: newOrder, orderItems: itemsData };
-        });
+        }, { timeout: 15000 });
 
         // 5. Initialize Mobile Money Payment (Server-Side - Outside transaction)
         let payment = null;
@@ -248,7 +263,7 @@ export const createOrder = async (cart, orderData) => {
         logger.info(`Order created: ${orderNumber}`);
 
         // 7. Return order with payment info
-        return {
+        const response = {
             order: {
                 id: order.id,
                 order_number: orderNumber,
@@ -265,6 +280,15 @@ export const createOrder = async (cart, orderData) => {
             },
             payment,
         };
+
+        // Broadcast after creation
+        await adminBroadcast.notifyOrdersChanged({
+            action: 'created',
+            orderNumber: orderNumber,
+            total: order.total
+        });
+
+        return response;
     } catch (error) {
         logger.error('Error creating order:', error);
         throw error;
@@ -376,15 +400,36 @@ export const cancelOrder = async (orderNumber, context) => {
             throw error;
         }
 
-        // Cancel order
-        const updatedOrder = await orderRepository.updateOrderStatus(order.id, {
-            status: 'cancelled',
-            paymentStatus: order.paymentStatus === 'pending' ? 'failed' : order.paymentStatus,
+        // Cancel order and release reservation
+        const prisma = getPrisma();
+        const updatedOrder = await prisma.$transaction(async (tx) => {
+            const orderWithItems = await tx.order.findUnique({
+                where: { id: order.id },
+                include: { items: true }
+            });
+
+            // RELEASE RESERVATION
+            for (const item of orderWithItems.items) {
+                await tx.variant.update({
+                    where: { id: item.variantId },
+                    data: { reservedStock: { decrement: item.quantity } }
+                });
+            }
+
+            return await tx.order.update({
+                where: { id: order.id },
+                data: {
+                    status: 'cancelled',
+                    paymentStatus: order.paymentStatus === 'pending' ? 'failed' : order.paymentStatus,
+                }
+            });
         });
 
         logger.info(`Order ${orderNumber} cancelled`);
 
-        return formatOrder(updatedOrder);
+        const result = formatOrder(updatedOrder);
+        await adminBroadcast.notifyOrdersChanged();
+        return result;
     } catch (error) {
         logger.error(`Error cancelling order ${orderNumber}:`, error);
         throw error;
@@ -439,7 +484,10 @@ export const refundOrder = async (orderId) => {
         }, updatedOrder.total);
 
         logger.info(`Order ${order.orderNumber} refunded`);
-        return formatOrder(updatedOrder);
+
+        const result = formatOrder(updatedOrder);
+        await adminBroadcast.notifyOrdersChanged();
+        return result;
     } catch (error) {
         logger.error(`Error refunding order ${orderId}:`, error);
         throw error;
@@ -515,7 +563,9 @@ export const updateStatus = async (orderNumber, status) => {
             }, order.status, status);
         }
 
-        return formatOrder(updatedOrder);
+        const result = formatOrder(updatedOrder);
+        await adminBroadcast.notifyOrdersChanged();
+        return result;
     } catch (error) {
         logger.error(`Error updating status for order ${orderNumber}:`, error);
         throw error;
@@ -529,11 +579,19 @@ export const updateStatus = async (orderNumber, status) => {
  */
 export const getAllOrders = async (options) => {
     try {
-        const result = await orderRepository.findAllOrders(options);
-        return {
-            orders: result.orders.map(formatOrder),
-            pagination: result.pagination,
-        };
+        const cacheKey = `orders:list:${JSON.stringify(options)}`;
+
+        return smartCache.getOrFetch(
+            cacheKey,
+            async () => {
+                const result = await orderRepository.findAllOrders(options);
+                return {
+                    orders: result.orders.map(formatOrder),
+                    pagination: result.pagination,
+                };
+            },
+            { type: 'orders', swr: true }
+        );
     } catch (error) {
         logger.error('Error getting all orders:', error);
         throw error;
@@ -542,6 +600,7 @@ export const getAllOrders = async (options) => {
 
 /**
  * Bulk update order status (Admin)
+ * OPTIMIZED: Uses Promise.allSettled for parallel processing
  * @param {Array<string>} orderNumbers - Array of order numbers
  * @param {string} status - New status
  * @returns {Promise<Object>} Results object with success/failed arrays
@@ -555,30 +614,53 @@ export const bulkUpdateStatus = async (orderNumbers, status) => {
             throw error;
         }
 
-        const results = {
-            success: [],
-            failed: [],
-        };
-
-        for (const orderNumber of orderNumbers) {
-            try {
-                await updateStatus(orderNumber, status);
-                results.success.push(orderNumber);
-            } catch (error) {
-                results.failed.push({
-                    orderNumber,
-                    error: error.message,
-                });
-            }
+        // OPTIMIZATION: Skip if empty array
+        if (!orderNumbers || orderNumbers.length === 0) {
+            logger.info('[PERF] Bulk update skipped - empty order list');
+            return { success: [], failed: [] };
         }
 
-        logger.info(`Bulk status update: ${results.success.length} succeeded, ${results.failed.length} failed`);
-        return results;
+        logger.info(`[PERF] Bulk updating ${orderNumbers.length} orders to ${status} (parallel)...`);
+
+        // OPTIMIZATION: Process in parallel with Promise.allSettled
+        const results = await Promise.allSettled(
+            orderNumbers.map(orderNumber => updateStatus(orderNumber, status))
+        );
+
+        // Categorize results
+        const success = [];
+        const failed = [];
+
+        results.forEach((result, index) => {
+            const orderNumber = orderNumbers[index];
+            if (result.status === 'fulfilled') {
+                success.push(orderNumber);
+            } else {
+                failed.push({
+                    orderNumber,
+                    error: result.reason?.message || 'Unknown error',
+                });
+            }
+        });
+
+        logger.info(`[PERF] Bulk status update complete: ${success.length} succeeded, ${failed.length} failed`);
+
+        if (success.length > 0) {
+            await adminBroadcast.notifyOrdersChanged({
+                action: 'bulk_status_update',
+                status,
+                count: success.length,
+                orderNumbers: success
+            });
+        }
+
+        return { success, failed };
     } catch (error) {
         logger.error('Error in bulk update:', error);
         throw error;
     }
 };
+
 
 /**
  * Format order for API response

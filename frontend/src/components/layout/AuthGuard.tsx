@@ -8,9 +8,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
     // Only show loader on initial load. Background refresh (isFetching) should not block UI.
     if (isLoading) {
-        if (isLoading) {
-            return <PageLoader />;
-        }
+        return <PageLoader />;
     }
 
     if (!user) {
@@ -24,9 +22,7 @@ export function RequireGuest({ children }: { children: React.ReactNode }) {
     const { data: user, isLoading } = useUser();
 
     if (isLoading) {
-        if (isLoading) {
-            return <PageLoader />;
-        }
+        return <PageLoader />;
     }
 
     if (user) {

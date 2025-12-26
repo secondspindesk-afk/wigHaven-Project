@@ -6,6 +6,7 @@ import { tokenManager } from '@/lib/utils/tokenManager';
 import { WebSocketMessageSchema } from '@/lib/schemas/websocketSchemas';
 import { wsManager } from '@/lib/utils/websocketManager';
 import { NotificationsResponse, Notification } from '@/lib/api/notifications';
+import debounce from 'lodash/debounce';
 
 /**
  * WebSocket Context
@@ -41,6 +42,41 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     userRoleRef.current = user?.role;
 
     /**
+     * Optimized Query Invalidation
+     * 
+     * Collects all query keys received during the debounce window and invalidates
+     * them all at once. This prevents missing updates when multiple messages
+     * arrive in quick succession.
+     */
+    const pendingQueryKeysRef = useRef<Set<string>>(new Set());
+
+    const processPendingInvalidations = useCallback(
+        debounce(() => {
+            const keysToInvalidate = Array.from(pendingQueryKeysRef.current);
+            if (keysToInvalidate.length === 0) return;
+
+            console.log(`🔄 [WebSocket] Processing ${keysToInvalidate.length} pending invalidations`);
+
+            keysToInvalidate.forEach((keyStr) => {
+                try {
+                    const queryKey = JSON.parse(keyStr);
+                    console.log('   - Invalidating:', queryKey);
+                    queryClient.invalidateQueries({
+                        queryKey,
+                        refetchType: 'all'
+                    });
+                } catch (e) {
+                    console.error('❌ [WebSocket] Failed to parse query key:', keyStr);
+                }
+            });
+
+            pendingQueryKeysRef.current.clear();
+            console.log('✅ [WebSocket] All pending queries invalidated');
+        }, 500),
+        [queryClient]
+    );
+
+    /**
      * Handle incoming WebSocket messages - SINGLE HANDLER for entire app
      */
     const handleMessage = useCallback((rawData: unknown) => {
@@ -74,12 +110,33 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
                 return;
             }
 
-            // Handle DATA_UPDATE (admin dashboard)
+            // Handle DATA_UPDATE (admin dashboard AND storefront)
             if (message.type === 'DATA_UPDATE') {
-                // Data update - invalidate queries
-                message.queryKeys.forEach((queryKey: string[]) => {
-                    queryClient.invalidateQueries({ queryKey });
+                console.log('📡 [WebSocket] Received DATA_UPDATE:', message.eventType, message.queryKeys);
+
+                // Add all query keys to the pending set (as JSON strings for uniqueness)
+                message.queryKeys.forEach(key => {
+                    pendingQueryKeysRef.current.add(JSON.stringify(key));
                 });
+
+                // For stock/product events, also invalidate specific product if productId in metadata
+                if (message.metadata?.productId &&
+                    (message.eventType === 'stock' || message.eventType === 'products')) {
+                    pendingQueryKeysRef.current.add(JSON.stringify(['product', message.metadata.productId]));
+                }
+
+                // For order events, also invalidate specific order if orderNumber in metadata
+                if (message.metadata?.orderNumber && message.eventType === 'orders') {
+                    pendingQueryKeysRef.current.add(JSON.stringify(['order', message.metadata.orderNumber]));
+                }
+
+                // Handle currency updates
+                if (message.eventType === 'currency') {
+                    pendingQueryKeysRef.current.add(JSON.stringify(['currency', 'rates']));
+                }
+
+                // Trigger debounced processing
+                processPendingInvalidations();
                 return;
             }
 
@@ -101,54 +158,56 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
                 };
             });
 
-            // Cache invalidation based on notification type
+            // Cache invalidation based on notification type - using debounced system
             switch (notification.type) {
-                case 'payment': // Backend uses NotificationTypes.PAYMENT for payment success
+                case 'payment':
                 case 'order_payment_confirmed':
                 case 'order_placed':
                 case 'order_status':
                 case 'order_cancelled':
                 case 'order_refunded':
-                    queryClient.invalidateQueries({ queryKey: ['orders'] });
+                    pendingQueryKeysRef.current.add(JSON.stringify(['orders']));
                     if (notification.data?.orderNumber) {
-                        queryClient.invalidateQueries({ queryKey: ['order', notification.data.orderNumber] });
+                        pendingQueryKeysRef.current.add(JSON.stringify(['order', notification.data.orderNumber]));
                     }
                     break;
 
                 case 'back_in_stock':
                     if (notification.data?.productId) {
-                        queryClient.invalidateQueries({ queryKey: ['product', notification.data.productId] });
+                        pendingQueryKeysRef.current.add(JSON.stringify(['product', notification.data.productId]));
                     }
-                    queryClient.invalidateQueries({ queryKey: ['products'] });
+                    pendingQueryKeysRef.current.add(JSON.stringify(['products']));
                     break;
 
                 case 'review_approved':
                 case 'review_rejected':
-                    queryClient.invalidateQueries({ queryKey: ['reviews'] });
+                    pendingQueryKeysRef.current.add(JSON.stringify(['reviews']));
                     if (notification.data?.productId) {
-                        queryClient.invalidateQueries({ queryKey: ['product', notification.data.productId] });
+                        pendingQueryKeysRef.current.add(JSON.stringify(['product', notification.data.productId]));
                     }
                     break;
 
                 case 'sale_alert':
                 case 'promotional':
-                    queryClient.invalidateQueries({ queryKey: ['products'] });
+                    pendingQueryKeysRef.current.add(JSON.stringify(['products']));
                     break;
 
                 case 'support_reply':
                 case 'support_resolved':
-                    queryClient.invalidateQueries({ queryKey: ['support'] });
+                    pendingQueryKeysRef.current.add(JSON.stringify(['support']));
                     break;
 
                 case 'admin_support_reply':
-                    // User replied to ticket - refresh admin support list
-                    queryClient.invalidateQueries({ queryKey: ['admin', 'support'] });
-                    queryClient.invalidateQueries({ queryKey: ['support', 'ticket'] });
+                    pendingQueryKeysRef.current.add(JSON.stringify(['admin', 'support']));
+                    pendingQueryKeysRef.current.add(JSON.stringify(['support', 'ticket']));
                     break;
 
                 default:
                     break;
             }
+
+            // Trigger debounced processing
+            processPendingInvalidations();
 
             // Show toast - ONLY ONCE from this central handler!
             showToast(notification.message, 'info');
@@ -185,9 +244,17 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
                 console.log('[WebSocket] Reconnected - syncing data');
                 queryClient.invalidateQueries({ queryKey: ['notifications'] });
                 queryClient.invalidateQueries({ queryKey: ['orders'] });
+                queryClient.invalidateQueries({ queryKey: ['products'] });
+                queryClient.invalidateQueries({ queryKey: ['categories'] });
+                queryClient.invalidateQueries({ queryKey: ['public', 'banners'] });
+                queryClient.invalidateQueries({ queryKey: ['reviews'] });
+                queryClient.invalidateQueries({ queryKey: ['public', 'settings'] });
 
                 if (userRoleRef.current === 'admin' || userRoleRef.current === 'super_admin') {
                     queryClient.invalidateQueries({ queryKey: ['admin'] });
+                    queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
+                    queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard', 'inventory-status'] });
+                    queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard', 'low-stock'] });
                 }
             }
             hasConnectedOnceRef.current = true;

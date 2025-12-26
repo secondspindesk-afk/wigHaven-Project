@@ -1,25 +1,6 @@
 import { getPrisma } from '../../config/database.js';
 import logger from '../../utils/logger.js';
 
-/**
- * Create order
- * @param {Object} orderData - Order data
- * @returns {Promise<Object>} Created order
- */
-export const createOrder = async (orderData) => {
-    try {
-        const prisma = getPrisma();
-        return await prisma.order.create({
-            data: orderData,
-            include: {
-                items: true,
-            },
-        });
-    } catch (error) {
-        logger.error('Error creating order:', error);
-        throw error;
-    }
-};
 
 /**
  * Create order items
@@ -51,11 +32,27 @@ export const findOrderById = async (id) => {
             include: {
                 items: {
                     include: {
-                        variant: true
-                    }
+                        variant: {
+                            include: {
+                                product: {
+                                    select: {
+                                        name: true,
+                                        images: true,
+                                    },
+                                },
+                            },
+                        },
+                    },
                 },
-                user: true
-            }
+                user: {
+                    select: {
+                        id: true,
+                        email: true,
+                        firstName: true,
+                        lastName: true,
+                    },
+                },
+            },
         });
     } catch (error) {
         logger.error(`Error finding order by ID ${id}:`, error);
@@ -165,7 +162,7 @@ export const findOrdersByUser = async (userId, { page = 1, limit = 10, status = 
                 },
                 orderBy: { createdAt: 'desc' },
                 skip,
-                take: limit,
+                take: limit
             }),
             prisma.order.count({ where }),
         ]);
@@ -236,7 +233,7 @@ export const findAllOrders = async ({ page = 1, limit = 20, status, payment_stat
                 },
                 orderBy: { createdAt: 'desc' },
                 skip,
-                take: limit,
+                take: limit
             }),
             prisma.order.count({ where }),
         ]);
@@ -276,7 +273,6 @@ export const updateOrderStatus = async (orderId, updates) => {
 };
 
 export default {
-    createOrder,
     createOrderItems,
     findOrderById,
     findOrderByNumber,

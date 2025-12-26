@@ -6,20 +6,22 @@ export function useBanners() {
     return useQuery({
         queryKey: ['admin', 'banners'],
         queryFn: bannerApi.getAllBanners,
-        staleTime: 2 * 60 * 1000, // 2 minutes
+        staleTime: 5 * 60 * 1000, // 5 minutes - WebSocket handles updates
         gcTime: 10 * 60 * 1000,
     });
 }
 
 // Get Active Banners Hook (Public - no auth required)
-// Banners rarely change - aggressive caching is safe
+// Cache FOREVER - WebSocket DATA_UPDATE is the ONLY trigger for refetch
+// This creates a real-time system without polling overhead
 export function usePublicBanners() {
     return useQuery({
         queryKey: ['public', 'banners'],
         queryFn: bannerApi.getActiveBanners,
-        staleTime: 1000 * 60 * 30, // 30 minutes - banners rarely change
+        staleTime: 10 * 60 * 1000, // 10 minute safety window
         gcTime: 1000 * 60 * 60, // 1 hour garbage collection
         refetchOnWindowFocus: false,
+        refetchOnMount: true, // Refetch if invalidated
     });
 }
 
@@ -40,6 +42,7 @@ export function useCreateBanner() {
         mutationFn: bannerApi.createBanner,
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['admin', 'banners'] });
+            queryClient.invalidateQueries({ queryKey: ['public', 'banners'] }); // Also invalidate public banners
         }
     });
 }
@@ -52,6 +55,7 @@ export function useUpdateBanner() {
             bannerApi.updateBanner(id, data),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['admin', 'banners'] });
+            queryClient.invalidateQueries({ queryKey: ['public', 'banners'] }); // Also invalidate public banners
         }
     });
 }
@@ -63,6 +67,7 @@ export function useDeleteBanner() {
         mutationFn: bannerApi.deleteBanner,
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['admin', 'banners'] });
+            queryClient.invalidateQueries({ queryKey: ['public', 'banners'] }); // Also invalidate public banners
         }
     });
 }

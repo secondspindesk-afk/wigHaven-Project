@@ -8,6 +8,7 @@ import ProductTabs from '@/components/product/ProductTabs';
 import RelatedProducts from '@/components/product/RelatedProducts';
 import { ChevronLeft } from 'lucide-react';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
+import ProductSkeleton from '@/components/common/ProductSkeleton';
 
 export default function ProductDetails() {
     const { id } = useParams<{ id: string }>();
@@ -50,11 +51,7 @@ export default function ProductDetails() {
     };
 
     if (isLoading) {
-        return (
-            <div className="min-h-screen flex items-center justify-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white"></div>
-            </div>
-        );
+        return <ProductSkeleton />;
     }
 
     if (error || !product) {

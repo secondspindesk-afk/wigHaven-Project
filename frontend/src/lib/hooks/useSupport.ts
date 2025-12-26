@@ -7,7 +7,7 @@ export function useSupportTickets(page = 1) {
     return useQuery({
         queryKey: ['support', 'tickets', page],
         queryFn: () => supportApi.getTickets(page),
-        staleTime: 1 * 60 * 1000, // 1 minute
+        staleTime: 5 * 60 * 1000, // 5 minutes - WebSocket handles updates
         gcTime: 5 * 60 * 1000,
     });
 }
@@ -18,7 +18,7 @@ export function useSupportTicket(id: string) {
         queryFn: () => supportApi.getTicket(id),
         enabled: !!id,
         // NO POLLING: WebSocket SUPPORT_REPLY notification invalidates this cache
-        staleTime: 30 * 1000, // 30 seconds
+        staleTime: 5 * 60 * 1000, // 5 minutes - WebSocket handles updates
     });
 }
 

@@ -49,9 +49,13 @@ export const sendEmailDirectly = async (emailOptions) => {
     try {
         logger.info(`[EMAIL DEBUG] Attempting to send email to: ${emailOptions.to}`);
 
-        // Get sender from env (must be verified in Brevo)
+        // Get sender from settings
+        const settingsService = (await import('../services/settingsService.js')).default;
+        const siteName = await settingsService.getSetting('siteName') || 'WigHaven';
+
         const senderEmail = process.env.EMAIL_FROM;
-        const senderName = process.env.EMAIL_FROM_NAME || 'WigHaven';
+        const senderName = process.env.EMAIL_FROM_NAME || siteName;
+
 
         logger.info(`[EMAIL DEBUG] Mail options: from=${senderName} <${senderEmail}>, subject=${emailOptions.subject}`);
 

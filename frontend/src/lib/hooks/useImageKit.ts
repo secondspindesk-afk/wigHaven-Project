@@ -15,7 +15,7 @@ export function useImageKitFiles(params: ListFilesParams = {}) {
     return useQuery({
         queryKey: imagekitKeys.files(params),
         queryFn: () => imagekitApi.listFiles(params),
-        staleTime: 30000, // 30 seconds
+        staleTime: 5 * 60 * 1000, // 5 minutes
     });
 }
 

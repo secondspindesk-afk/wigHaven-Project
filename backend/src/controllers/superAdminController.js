@@ -215,6 +215,9 @@ export const resetUserPassword = async (req, res) => {
             data: { password: hashedPassword }
         });
 
+        // 🔔 Real-time: Notify all admin dashboards
+        await notifyUsersChanged({ action: 'password_reset', userId });
+
         logger.warn(`[SUPER_ADMIN] Reset password for user: ${userId}`);
         res.json({ success: true, message: 'Password reset successfully' });
     } catch (error) {
@@ -237,7 +240,7 @@ export const forceLogoutUser = async (req, res) => {
         });
 
         // 🔔 Real-time: Notify all admin dashboards
-        notifyUsersChanged({ action: 'deactivated', userId });
+        await notifyUsersChanged({ action: 'deactivated', userId });
 
         logger.warn(`[SUPER_ADMIN] Deactivated user (Force Logout): ${userId}`);
         res.json({ success: true, message: 'User deactivated. They will be blocked on next request.' });
@@ -262,7 +265,7 @@ export const updateUserRole = async (req, res) => {
         });
 
         // 🔔 Real-time: Notify all admin dashboards
-        notifyUsersChanged({ action: 'role_changed', userId, newRole: role });
+        await notifyUsersChanged({ action: 'role_changed', userId, newRole: role });
 
         logger.warn(`[SUPER_ADMIN] Updated role for user ${userId} to ${role}`);
         res.json({ success: true, user });
@@ -282,6 +285,9 @@ export const updateUserDetails = async (req, res) => {
             where: { id },
             data: { firstName, lastName, email, phone }
         });
+
+        // 🔔 Real-time: Notify all admin dashboards
+        await notifyUsersChanged({ action: 'details_updated', userId: id });
 
         logger.info(`[SUPER_ADMIN] Updated details for user ${id}`);
         res.json({ success: true, user });
@@ -342,7 +348,7 @@ export const updateSystemSetting = async (req, res) => {
         }
 
         // 🔔 Real-time: Notify all admin dashboards
-        notifySettingsChanged({ key, action: 'updated' });
+        await notifySettingsChanged({ key, action: 'updated' });
 
         res.json({ success: true, setting });
     } catch (error) {
@@ -485,7 +491,7 @@ export const globalStockUpdate = async (req, res) => {
         // Placeholder for global stock update logic
 
         // 🔔 Real-time: Notify all admin dashboards
-        notifyStockChanged({ action: 'global_update' });
+        await notifyStockChanged({ action: 'global_update' });
 
         res.json({ success: true, message: 'Global stock update triggered' });
     } catch (error) {

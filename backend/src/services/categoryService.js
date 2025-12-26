@@ -1,5 +1,7 @@
 import categoryRepository from '../db/repositories/categoryRepository.js';
 import { getPrisma } from '../config/database.js';
+import adminBroadcast from '../utils/adminBroadcast.js';
+import smartCache from '../utils/smartCache.js';
 import logger from '../utils/logger.js';
 
 /**
@@ -69,27 +71,54 @@ const createCategory = async (data) => {
         });
     }
 
+    // Invalidate caches
+    await adminBroadcast.notifyCategoriesChanged();
+
     return category;
 };
 
 /**
  * Get all categories
+ * SMART CACHED: 24 hour TTL, invalidated on admin change via WebSocket
  */
 const getCategories = async (params) => {
-    return await categoryRepository.getCategories(params);
+    // Generate cache key based on params
+    const cacheKey = params ? `categories:list:${JSON.stringify(params)}` : smartCache.keys.categories();
+
+    return smartCache.getOrFetch(
+        cacheKey,
+        () => categoryRepository.getCategories(params),
+        { type: 'categories', swr: true }
+    );
 };
 
 /**
  * Get category by ID
  */
 const getCategoryById = async (id) => {
-    return await categoryRepository.findCategoryById(id);
+    return smartCache.getOrFetch(
+        smartCache.keys.category(id),
+        () => categoryRepository.findCategoryById(id),
+        { type: 'categories', swr: true }
+    );
 };
 
 /**
  * Update category
  */
 const updateCategory = async (id, data) => {
+    // ============================================
+    // FRONTEND-DRIVEN OPTIMIZATION
+    // ============================================
+    const frontendChangedFields = data._changedFields;
+    delete data._changedFields;
+
+    // Skip if no changes reported
+    if (frontendChangedFields && frontendChangedFields.length === 0) {
+        logger.info(`[PERF] No changes reported for category ${id}, skipping update`);
+        return await categoryRepository.findCategoryById(id);
+    }
+
     // If updating slug, check uniqueness
     if (data.slug) {
         const existingSlug = await categoryRepository.findCategoryBySlug(data.slug);
@@ -98,19 +127,18 @@ const updateCategory = async (id, data) => {
         }
     }
 
-    // Handle image update
-    if (data.image) {
+    // Handle image update (only if image field changed)
+    const shouldProcessImage = !frontendChangedFields || frontendChangedFields.includes('image');
+    if (data.image && shouldProcessImage) {
         const prisma = getPrisma();
 
         // Only validate ImageKit URLs against media table
-        // External URLs (like Unsplash) are allowed directly
         const isImageKitUrl = data.image.includes('ik.imagekit.io');
 
         if (isImageKitUrl) {
-            // Strip query parameters for media lookup (cache-busting params like ?v=...)
             const imageUrlWithoutParams = data.image.split('?')[0];
 
-            // 1. Validate new image exists in media table
+            // 1. Validate new image exists
             const media = await prisma.media.findFirst({
                 where: {
                     url: imageUrlWithoutParams,
@@ -143,10 +171,21 @@ const updateCategory = async (id, data) => {
                 }
             });
         }
-        // External URLs are allowed without media table validation
     }
 
-    return await categoryRepository.updateCategory(id, data);
+    const updatedCategory = await categoryRepository.updateCategory(id, data);
+
+    // Conditional cache invalidation - only if public-facing fields changed
+    const publicFields = ['name', 'slug', 'description', 'image', 'isActive', 'isFeatured'];
+    const hasPublicChanges = !frontendChangedFields || frontendChangedFields.some(f => publicFields.includes(f));
+
+    if (hasPublicChanges) {
+        await adminBroadcast.notifyCategoriesChanged();
+    } else {
+        logger.info(`[PERF] Skipping category cache invalidation - no public changes`);
+    }
+
+    return updatedCategory;
 };
 
 /**
@@ -183,7 +222,12 @@ const deleteCategory = async (id, transferToId) => {
         }
     }
 
-    return await categoryRepository.deleteCategory(id);
+    const result = await categoryRepository.deleteCategory(id);
+
+    // Invalidate caches
+    await adminBroadcast.notifyCategoriesChanged();
+
+    return result;
 };
 
 export default {

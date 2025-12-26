@@ -1,13 +1,13 @@
 import express from 'express';
 import categoryController from '../controllers/categoryController.js';
 import { authenticateToken, requireAdmin } from '../middleware/auth.js';
-import { longCache } from '../middleware/cacheControl.js';
+import { noCache } from '../middleware/cacheControl.js';
 
 const router = express.Router();
 
-// Public Routes (with cache - categories rarely change)
-router.get('/categories', longCache, categoryController.listCategories);
-router.get('/categories/:id', longCache, categoryController.getCategory);
+// Public Routes - noCache for real-time WebSocket updates
+router.get('/categories', noCache, categoryController.listCategories);
+router.get('/categories/:id', noCache, categoryController.getCategory);
 
 // Admin Routes
 router.get(

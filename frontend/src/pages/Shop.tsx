@@ -7,6 +7,7 @@ import { useProducts } from '@/lib/hooks/useProducts';
 import { useCategories } from '@/lib/hooks/useCategories';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import type { ProductFilters } from '@/lib/types/product';
+import ShopSkeleton from '@/components/common/ShopSkeleton';
 
 export default function Shop() {
     const [searchParams, _setSearchParams] = useSearchParams();
@@ -520,17 +521,7 @@ export default function Shop() {
 
                         {/* Loading Skeletons */}
                         {isLoading && (
-                            <div className={`grid gap-3 md:gap-6 ${isMobile ? (mobileGridCols === 2 ? 'grid-cols-2' : 'grid-cols-1') : 'grid-cols-2 lg:grid-cols-3'}`}>
-                                {[...Array(6)].map((_, i) => (
-                                    <div key={i} className="bg-[#0A0A0A] border border-zinc-800 rounded-xl overflow-hidden animate-pulse">
-                                        <div className="aspect-[3/4] bg-zinc-900" />
-                                        <div className="p-3 space-y-2">
-                                            <div className="h-3 bg-zinc-800 w-3/4 rounded" />
-                                            <div className="h-4 bg-zinc-800 w-1/2 rounded" />
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
+                            <ShopSkeleton isMobile={isMobile} mobileGridCols={mobileGridCols} />
                         )}
 
                         {/* Products Grid */}

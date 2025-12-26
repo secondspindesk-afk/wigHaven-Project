@@ -15,52 +15,76 @@ export const adjustStock = async (variantId, adjustment, type, reason = null, cr
     try {
         const prisma = getPrisma();
 
-        // Use transaction to ensure atomicity
-        const result = await prisma.$transaction(async (tx) => {
-            // 1. Get current state (for logging/validation)
-            const variant = await tx.variant.findUnique({
-                where: { id: variantId },
-                include: { product: { select: { name: true } } }
-            });
+        // Use transaction to ensure atomicity with retry logic for deadlocks
+        let retries = 3;
+        let lastError;
 
-            if (!variant) throw new Error('Variant not found');
+        while (retries > 0) {
+            try {
+                const result = await prisma.$transaction(async (tx) => {
+                    // 1. Get current state (for logging/validation)
+                    const variant = await tx.variant.findUnique({
+                        where: { id: variantId },
+                        include: { product: { select: { name: true } } }
+                    });
 
-            // 2. Validate sufficient stock for deduction
-            if (adjustment < 0 && variant.stock + adjustment < 0) {
-                throw new Error(`Insufficient stock. Current: ${variant.stock}, Requested: ${Math.abs(adjustment)}`);
-            }
+                    if (!variant) throw new Error('Variant not found');
 
-            // 3. Atomic Update (The "Gospel Truth" way to handle concurrency)
-            // Using increment handles the race condition at the DB level
-            const updatedVariant = await tx.variant.update({
-                where: { id: variantId },
-                data: {
-                    stock: { increment: adjustment }
+                    // 2. Validate sufficient stock for deduction
+                    if (adjustment < 0 && variant.stock + adjustment < 0) {
+                        throw new Error(`Insufficient stock. Current: ${variant.stock}, Requested: ${Math.abs(adjustment)}`);
+                    }
+
+                    // 3. Atomic Update (The "Gospel Truth" way to handle concurrency)
+                    // Using increment handles the race condition at the DB level
+                    const updatedVariant = await tx.variant.update({
+                        where: { id: variantId },
+                        data: {
+                            stock: { increment: adjustment }
+                        }
+                    });
+
+                    // 4. Create movement record
+                    const movement = await tx.stockMovement.create({
+                        data: {
+                            variantId,
+                            orderId,
+                            type,
+                            quantity: adjustment,
+                            previousStock: variant.stock, // Snapshot at start of tx
+                            newStock: updatedVariant.stock, // Actual new value from DB
+                            reason,
+                            createdBy,
+                        },
+                    });
+
+                    return {
+                        variant: updatedVariant,
+                        movement,
+                        previousStock: variant.stock,
+                        newStock: updatedVariant.stock,
+                        productName: variant.product.name,
+                    };
+                }, { timeout: 10000 });
+
+                logger.info(`Stock adjusted: ${variantId} (${result.previousStock} → ${result.newStock})`);
+                return result;
+            } catch (error) {
+                lastError = error;
+                // P2034 is the Prisma error code for transaction deadlocks/conflicts
+                if (error.code === 'P2034' || error.message.includes('deadlock')) {
+                    retries--;
+                    if (retries > 0) {
+                        const delay = (3 - retries) * 200; // 200ms, 400ms backoff
+                        logger.warn(`Stock adjustment deadlock for ${variantId}. Retrying in ${delay}ms... (${retries} left)`);
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        continue;
+                    }
                 }
-            });
-
-            // 4. Create movement record
-            const movement = await tx.stockMovement.create({
-                data: {
-                    variantId,
-                    orderId,
-                    type,
-                    quantity: adjustment,
-                    previousStock: variant.stock, // Snapshot at start of tx
-                    newStock: updatedVariant.stock, // Actual new value from DB
-                    reason,
-                    createdBy,
-                },
-            });
-
-            return {
-                variant: updatedVariant,
-                movement,
-                previousStock: variant.stock,
-                newStock: updatedVariant.stock,
-                productName: variant.product.name,
-            };
-        });
+                throw error;
+            }
+        }
+        throw lastError;
 
         logger.info(`Stock adjusted: ${variantId} (${result.previousStock} → ${result.newStock})`);
         return result;

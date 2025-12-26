@@ -68,25 +68,13 @@ export default {
      * This runs independently of the fetch handler and doesn't affect user performance.
      */
     async scheduled(event: any, env: Env, ctx: ExecutionContext) {
-        console.log('💓 Sending keep-awake heartbeat to HF Backend...');
         const healthUrl = `${env.PRIVATE_BACKEND_URL}/gateway-health`;
-
-        try {
-            // ctx.waitUntil ensures the fetch finishes even if the scheduled worker context ends
-            ctx.waitUntil(
-                fetch(healthUrl, {
-                    headers: {
-                        'Authorization': `Bearer ${env.HF_TOKEN}`
-                    }
-                }).then(resp => {
-                    console.log(`✅ Heartbeat response: ${resp.status}`);
-                }).catch(err => {
-                    console.error('❌ Heartbeat failed:', err);
-                })
-            );
-        } catch (e) {
-            console.error('❌ Failed to trigger heartbeat:', e);
-        }
+        // Background heartbeat - errors logged only on failure
+        ctx.waitUntil(
+            fetch(healthUrl, {
+                headers: { 'Authorization': `Bearer ${env.HF_TOKEN}` }
+            }).catch(() => { /* Heartbeat failed - HF may be cold */ })
+        );
     }
 };
 
@@ -146,7 +134,7 @@ async function handleHTTP(request: Request, env: Env, url: URL): Promise<Respons
             headers: responseHeaders
         });
     } catch (error) {
-        console.error('Proxy error:', error);
+        // Log only critical proxy errors
         return new Response(JSON.stringify({
             error: 'Backend connection failed',
             message: error instanceof Error ? error.message : 'Unknown error'
@@ -179,7 +167,7 @@ async function handleWebSocket(request: Request, env: Env, url: URL): Promise<Re
         .replace('http://', 'ws://');
     const targetUrl = `${backendUrl}${url.pathname}`;
 
-    console.log(`[WS] Proxying to: ${targetUrl}`);
+    // WebSocket proxy - no logging in hot path
 
     const upstreamHeaders = new Headers();
 
@@ -197,7 +185,6 @@ async function handleWebSocket(request: Request, env: Env, url: URL): Promise<Re
         });
 
         if (upstreamResponse.status !== 101) {
-            console.error(`[WS] Upstream rejected upgrade: ${upstreamResponse.status}`);
             return new Response(`Upstream WebSocket failed: ${upstreamResponse.status}`, {
                 status: 502,
                 headers: corsHeaders
@@ -207,7 +194,6 @@ async function handleWebSocket(request: Request, env: Env, url: URL): Promise<Re
         // @ts-ignore - Cloudflare-specific API
         const upstreamWs = upstreamResponse.webSocket;
         if (!upstreamWs) {
-            console.error('[WS] No webSocket in upstream response');
             return new Response('No WebSocket from upstream', {
                 status: 502,
                 headers: corsHeaders
@@ -226,9 +212,7 @@ async function handleWebSocket(request: Request, env: Env, url: URL): Promise<Re
                 if (upstreamWs.readyState === WebSocket.OPEN) {
                     upstreamWs.send(event.data);
                 }
-            } catch (e) {
-                console.error('[WS] Error forwarding to upstream:', e);
-            }
+            } catch { /* Connection closed */ }
         });
 
         serverWs.addEventListener('close', (event: CloseEvent) => {
@@ -240,9 +224,7 @@ async function handleWebSocket(request: Request, env: Env, url: URL): Promise<Re
                 if (serverWs.readyState === WebSocket.OPEN) {
                     serverWs.send(event.data);
                 }
-            } catch (e) {
-                console.error('[WS] Error forwarding to client:', e);
-            }
+            } catch { /* Connection closed */ }
         });
 
         upstreamWs.addEventListener('close', (event: CloseEvent) => {
@@ -263,7 +245,6 @@ async function handleWebSocket(request: Request, env: Env, url: URL): Promise<Re
         });
 
     } catch (error) {
-        console.error('[WS] Proxy error:', error);
         return new Response(`WebSocket connection failed: ${error instanceof Error ? error.message : 'Unknown'}`, {
             status: 502,
             headers: corsHeaders

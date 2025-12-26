@@ -1,6 +1,10 @@
 /**
  * Utility to manage authentication tokens
- * Stores tokens in localStorage for persistence
+ * 
+ * IMPORTANT: Always uses localStorage (not sessionStorage) because:
+ * - sessionStorage is PER-TAB and not shared between tabs
+ * - This would break cross-tab session sharing
+ * - The rememberMe flag should only affect server-side token expiry
  */
 
 const ACCESS_TOKEN_KEY = 'access_token';
@@ -21,6 +25,7 @@ class TokenManager extends EventTarget {
     }
 
     getAccessToken() {
+        // Check both for backwards compatibility during migration
         return localStorage.getItem(ACCESS_TOKEN_KEY) || sessionStorage.getItem(ACCESS_TOKEN_KEY);
     }
 
@@ -28,16 +33,16 @@ class TokenManager extends EventTarget {
         return localStorage.getItem(REFRESH_TOKEN_KEY) || sessionStorage.getItem(REFRESH_TOKEN_KEY);
     }
 
-    setTokens(accessToken: string, refreshToken: string, rememberMe: boolean = true) {
-        const storage = rememberMe ? localStorage : sessionStorage;
+    setTokens(accessToken: string, refreshToken: string, _rememberMe: boolean = true) {
+        // ALWAYS use localStorage for cross-tab sharing
+        // sessionStorage is per-tab and breaks multi-tab functionality
 
-        // Clear other storage to avoid duplicates
-        const otherStorage = rememberMe ? sessionStorage : localStorage;
-        otherStorage.removeItem(ACCESS_TOKEN_KEY);
-        otherStorage.removeItem(REFRESH_TOKEN_KEY);
+        // Clean up any old sessionStorage tokens
+        sessionStorage.removeItem(ACCESS_TOKEN_KEY);
+        sessionStorage.removeItem(REFRESH_TOKEN_KEY);
 
-        storage.setItem(ACCESS_TOKEN_KEY, accessToken);
-        storage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+        localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
+        localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
         this.dispatchEvent(new Event('token-change'));
     }
 
@@ -55,3 +60,4 @@ class TokenManager extends EventTarget {
 }
 
 export const tokenManager = TokenManager.getInstance();
+

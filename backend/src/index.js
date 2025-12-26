@@ -1,17 +1,10 @@
-import dotenv from 'dotenv';
+import 'dotenv/config';
 import createApp from './server.js';
 import { initializePrisma, disconnectPrisma } from './config/database.js';
 import { startWorker } from './workers/webhookWorker.js';
 import { startCronJobs } from './jobs/cronJobs.js';
 import logger from './utils/logger.js';
-
-// Load environment variables
-dotenv.config();
-
 import validateEnv from './config/env.js';
-
-// Load environment variables
-dotenv.config();
 
 // Validate environment variables
 validateEnv();

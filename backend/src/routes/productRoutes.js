@@ -4,26 +4,29 @@ import variantController from '../controllers/variantController.js';
 import * as reviewController from '../controllers/reviewController.js';
 import { authenticateToken, requireAdmin } from '../middleware/auth.js';
 import { validateRequest, createProductSchema, updateProductSchema, createVariantSchema, updateVariantSchema } from '../utils/validators.js';
-import { shortCache, mediumCache, longCache } from '../middleware/cacheControl.js';
+import { shortCache, noCache } from '../middleware/cacheControl.js';
 
 const router = express.Router();
 
-// --- PUBLIC ENDPOINTS (with Cache-Control for Cloudflare CDN) ---
+// --- PUBLIC ENDPOINTS ---
+// NOTE: Using noCache for products/categories because WebSocket handles real-time
+// invalidation via React Query. HTTP caching (even ETag) would cause browsers 
+// to serve stale data even after WebSocket invalidation.
 
 // Search products (must be before :id to avoid conflict)
-router.get('/products/search', shortCache, productController.searchProducts);
+router.get('/products/search', noCache, productController.searchProducts);
 
-// Get categories with counts (changes rarely)
-router.get('/products/categories', longCache, productController.getCategories);
+// Get categories with counts (real-time updates)
+router.get('/products/categories', noCache, productController.getCategories);
 
-// List products (frequently accessed, short cache)
-router.get('/products', shortCache, productController.listProducts);
+// List products (real-time updates via WebSocket)
+router.get('/products', noCache, productController.listProducts);
 
-// Get single product (semi-static, medium cache)
-router.get('/products/:id', mediumCache, productController.getProduct);
+// Get single product (real-time updates via WebSocket)
+router.get('/products/:id', noCache, productController.getProduct);
 
-// Get product variants (tied to product, medium cache)
-router.get('/products/:id/variants', mediumCache, variantController.getProductVariants);
+// Get product variants (real-time updates)
+router.get('/products/:id/variants', noCache, variantController.getProductVariants);
 
 // Get product reviews (public route, short cache since reviews change)
 router.get('/products/:id/reviews', shortCache, (req, res) => {
@@ -31,8 +34,8 @@ router.get('/products/:id/reviews', shortCache, (req, res) => {
     return reviewController.getProductReviews(req, res);
 });
 
-// Get single variant by ID (medium cache)
-router.get('/variants/:id', mediumCache, variantController.getVariant);
+// Get single variant by ID (real-time updates)
+router.get('/variants/:id', noCache, variantController.getVariant);
 
 
 import multer from 'multer';

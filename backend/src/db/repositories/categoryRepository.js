@@ -28,7 +28,7 @@ const createCategory = async (data) => {
 const findCategoryById = async (id) => {
     const prisma = getPrisma();
     return await prisma.category.findUnique({
-        where: { id },
+        where: { id }
     });
 };
 
@@ -38,7 +38,7 @@ const findCategoryById = async (id) => {
 const findCategoryBySlug = async (slug) => {
     const prisma = getPrisma();
     return await prisma.category.findUnique({
-        where: { slug },
+        where: { slug }
     });
 };
 
@@ -75,7 +75,7 @@ const getCategories = async ({ isActive, type, search, page = 1, limit = 20 }) =
                 _count: {
                     select: { products: true }
                 }
-            }
+            },
         }),
         prisma.category.count({ where }),
     ]);

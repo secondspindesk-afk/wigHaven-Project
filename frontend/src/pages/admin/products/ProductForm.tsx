@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Save, Upload, Plus, Trash2, Loader2, AlertCircle, Star, ChevronLeft } from 'lucide-react';
 import { useProduct, useCreateProduct, useUpdateProduct, useCategories } from '@/lib/hooks/useProducts';
@@ -22,6 +22,9 @@ export default function ProductForm() {
     const [activeTab, setActiveTab] = useState<'basic' | 'variants'>('basic');
     const [variantImageUrlInputs, setVariantImageUrlInputs] = useState<Record<number, string>>({});
 
+    // OPTIMIZATION: Track original data to detect actual changes
+    const originalDataRef = useRef<ProductFormData | null>(null);
+
     const { data: product, isLoading: isLoadingProduct } = useProduct(id as string);
     const { data: categories = [] } = useCategories();
     const createMutation = useCreateProduct();
@@ -30,7 +33,7 @@ export default function ProductForm() {
     useEffect(() => {
         if (product && isEditMode) {
             const p = product as any;
-            setFormData({
+            const productData: ProductFormData = {
                 name: p.name || '', description: p.description || '', basePrice: Number(p.basePrice) || 0,
                 categoryId: p.categoryId || '', isActive: p.isActive ?? true, isFeatured: p.isFeatured ?? false,
                 images: p.images || [],
@@ -39,12 +42,16 @@ export default function ProductForm() {
                     color: v.color || '', length: v.length || '', texture: v.texture || '', size: v.size || '',
                     images: v.images || [], isActive: v.isActive ?? true
                 }))
-            });
+            };
+            setFormData(productData);
+            // Store original for dirty tracking
+            originalDataRef.current = JSON.parse(JSON.stringify(productData));
         } else if (!isEditMode) {
             setFormData(prev => ({
                 ...prev,
                 variants: [{ sku: '', price: 0, stock: 0, color: '', length: '', texture: '', size: '', images: [], isActive: true }]
             }));
+            originalDataRef.current = null;
         }
     }, [product, isEditMode]);
 
@@ -131,15 +138,73 @@ export default function ProductForm() {
         if (imageUrl?.includes('ik.imagekit.io')) productApi.deleteImage(imageUrl).catch(() => { });
     };
 
+    // OPTIMIZATION: Calculate dirty fields for smart updates
+    const getDirtyPayload = useCallback(() => {
+        if (!originalDataRef.current) return formData;
+
+        const original = originalDataRef.current;
+        const dirty: Partial<ProductFormData> & { _changedFields?: string[]; variants?: any[] } = {};
+        const changedFields: string[] = [];
+
+        // Check product-level fields
+        const productFields: (keyof ProductFormData)[] = ['name', 'description', 'basePrice', 'categoryId', 'isActive', 'isFeatured'];
+        for (const field of productFields) {
+            if (JSON.stringify(formData[field]) !== JSON.stringify(original[field])) {
+                (dirty as any)[field] = formData[field];
+                changedFields.push(field);
+            }
+        }
+
+        // Check variants - deep compare each variant
+        const originalVariants = original.variants || [];
+        const currentVariants = formData.variants || [];
+
+        // Always include variants if any have changed
+        const hasVariantChanges = JSON.stringify(originalVariants) !== JSON.stringify(currentVariants);
+        if (hasVariantChanges) {
+            // Only include variants that actually changed
+            const changedVariants = currentVariants.map((cv, i) => {
+                const ov = originalVariants[i];
+                if (!ov) return { ...cv, _isNew: true }; // New variant
+                if (JSON.stringify(cv) !== JSON.stringify(ov)) return cv; // Changed variant
+                return { id: cv.id, _unchanged: true }; // Unchanged - send only ID
+            }).filter(v => !(v as any)._unchanged);
+
+            if (changedVariants.length > 0) {
+                dirty.variants = changedVariants as any[];
+                changedFields.push('variants');
+            }
+        }
+
+        dirty._changedFields = changedFields;
+        return dirty;
+    }, [formData]);
+
     const handleSubmit = async (e?: React.FormEvent) => {
         e?.preventDefault();
         if (!formData.name) { showToast('Name required', 'error'); return; }
         if (!formData.categoryId) { showToast('Category required', 'error'); return; }
         if (formData.basePrice <= 0) { showToast('Price must be > 0', 'error'); return; }
         if (!formData.description || formData.description.length < 3) { showToast('Description required (min 3 characters)', 'error'); return; }
+
         try {
-            if (isEditMode && id) { await updateMutation.mutateAsync({ id, data: formData }); showToast('Updated', 'success'); }
-            else { await createMutation.mutateAsync(formData); showToast('Created', 'success'); }
+            if (isEditMode && id) {
+                // OPTIMIZATION: Send only changed fields
+                const dirtyPayload = getDirtyPayload();
+
+                // Skip update if nothing changed
+                if (!('_changedFields' in dirtyPayload) || !dirtyPayload._changedFields || dirtyPayload._changedFields.length === 0) {
+                    showToast('No changes to save', 'info');
+                    return;
+                }
+
+                console.log('[PERF] Sending only changed fields:', dirtyPayload._changedFields);
+                await updateMutation.mutateAsync({ id, data: dirtyPayload as ProductFormData });
+                showToast('Updated', 'success');
+            } else {
+                await createMutation.mutateAsync(formData);
+                showToast('Created', 'success');
+            }
             navigate('/admin/products');
         } catch (error: any) {
             // Extract detailed validation errors from backend

@@ -1,11 +1,13 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
 }
 
+// Primary Database: Xata PostgreSQL
+// Backup: Neon (see .env.neon-backup)
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model User {
@@ -97,6 +99,7 @@ model Variant {
   sku               String             @unique @db.VarChar(100)
   price             Decimal            @db.Decimal(10, 2)
   stock             Int                @default(0)
+  reservedStock     Int                @default(0) @map("reserved_stock")
   length            String?            @db.VarChar(50)
   color             String?            @db.VarChar(50)
   texture           String?            @db.VarChar(50)
@@ -262,6 +265,7 @@ model Notification {
   message   String
   link      String?   @db.VarChar(500)
   isRead    Boolean   @default(false) @map("is_read")
+  data      Json?
   createdAt DateTime  @default(now()) @map("created_at")
   expiresAt DateTime? @map("expires_at")
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)

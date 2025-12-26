@@ -11,7 +11,7 @@ export function useCurrency() {
 
     // Fetch rates
     const { data: ratesData } = useQuery({
-        queryKey: ['currency_rates'],
+        queryKey: ['currency', 'rates'],
         queryFn: currencyService.getExchangeRates,
         staleTime: 1000 * 60 * 60, // 1 hour
     });

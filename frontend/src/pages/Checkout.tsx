@@ -7,6 +7,9 @@ import { useAddresses } from '@/lib/hooks/useAddresses';
 
 import ShippingStep from '@/components/checkout/ShippingStep';
 import ReviewStep from '@/components/checkout/ReviewStep';
+import InsufficientStockModal from '@/components/checkout/InsufficientStockModal';
+import { getStockErrorDetails } from '@/lib/utils/errorUtils';
+import { updateLocalCartItem } from '@/lib/services/localCartService';
 
 type CheckoutStep = 'shipping' | 'review' | 'payment';
 
@@ -15,6 +18,7 @@ export default function Checkout() {
     const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
     const [phoneNumber, setPhoneNumber] = useState('');
     const [paymentProvider, setPaymentProvider] = useState('mtn');
+    const [stockErrorItems, setStockErrorItems] = useState<{ name: string; requested: number; available: number }[] | null>(null);
 
 
     const { data: user } = useUser();
@@ -68,8 +72,28 @@ export default function Checkout() {
                 const orderNumber = data.order.order_number;
                 const email = data.order.customer_email;
                 navigate(`/order-confirmation/${orderNumber}${email ? `?email=${encodeURIComponent(email)}` : ''}`);
+            },
+            onError: (error: any) => {
+                const stockDetails = getStockErrorDetails(error);
+                if (stockDetails) {
+                    setStockErrorItems(stockDetails);
+                }
             }
         });
+    };
+
+    const handleUpdateCartAfterStockError = () => {
+        if (!stockErrorItems) return;
+
+        stockErrorItems.forEach(item => {
+            // Find the variant ID for this item in the cart
+            const cartItem = cart?.items.find(i => i.product_name === item.name);
+            if (cartItem) {
+                updateLocalCartItem(cartItem.variant_id, item.available);
+            }
+        });
+
+        setStockErrorItems(null);
     };
 
 
@@ -108,7 +132,12 @@ export default function Checkout() {
                 />
             )}
 
-
+            <InsufficientStockModal
+                isOpen={!!stockErrorItems}
+                onClose={() => setStockErrorItems(null)}
+                items={stockErrorItems || []}
+                onUpdateCart={handleUpdateCartAfterStockError}
+            />
         </div>
     );
 }

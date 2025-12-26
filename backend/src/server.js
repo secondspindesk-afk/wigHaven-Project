@@ -175,7 +175,7 @@ const createApp = () => {
 
     // Root route handler - Required for Hugging Face Spaces platform health checks
     // HF sends GET / and GET /?logs=container&__sign=... for container monitoring
-    app.get('/', (req, res) => {
+    app.get('/', async (req, res) => {
         // If this is an HF internal request (logs/container check), return simple OK
         if (req.query.logs || req.query.__sign) {
             return res.status(200).json({
@@ -185,10 +185,13 @@ const createApp = () => {
             });
         }
 
+        const settingsService = (await import('./services/settingsService.js')).default;
+        const siteName = await settingsService.getSetting('siteName') || 'WigHaven';
+
         // For regular root requests, return API info
         res.json({
             success: true,
-            message: 'WigHaven Backend API',
+            message: `${siteName} Backend API`,
             version: '1.0.0',
             health: '/api/health',
             docs: '/api'
@@ -196,10 +199,13 @@ const createApp = () => {
     });
 
     // API Routes
-    app.get('/api', (req, res) => {
+    app.get('/api', async (req, res) => {
+        const settingsService = (await import('./services/settingsService.js')).default;
+        const siteName = await settingsService.getSetting('siteName') || 'WigHaven';
+
         res.json({
             success: true,
-            message: 'WigHaven API - Phase 5 Complete ✅',
+            message: `${siteName} API - Phase 5 Complete ✅`,
             version: '1.0.0',
             endpoints: {
                 health: '/api/health',
@@ -212,6 +218,7 @@ const createApp = () => {
             },
         });
     });
+
 
     // Order Confirmation Page (Root Level)
     app.get('/order/confirmation', (req, res) => {

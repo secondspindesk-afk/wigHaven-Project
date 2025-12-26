@@ -170,7 +170,7 @@ export const findUserById = async (userId, includePassword = false) => {
 
         const user = await prisma.user.findUnique({
             where: { id: userId },
-            select,
+            select
         });
 
         return user;
@@ -343,7 +343,7 @@ export const getAllUsers = async ({ page = 1, limit = 20, search = '' } = {}) =>
                     _count: {
                         select: { orders: true }
                     }
-                },
+                }
             }),
             prisma.user.count({ where }),
         ]);
@@ -413,7 +413,7 @@ export const getUserDetails = async (userId) => {
                     addresses: true,
                     orders: {
                         orderBy: { createdAt: 'desc' },
-                        take: 10, // Limit to last 10 orders
+                        take: 10,
                         select: {
                             id: true,
                             orderNumber: true,

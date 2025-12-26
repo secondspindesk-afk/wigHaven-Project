@@ -31,11 +31,13 @@ export async function processWebhookPayload(webhookData) {
         logger.info(`Processing webhook ${reference} (${event})`);
 
         // 1. Check idempotency - webhook already processed?
-        const webhookLog = await prisma.webhookLog.findUnique({
+        // (Initial check outside transaction for performance, 
+        // will be re-verified inside transaction for absolute safety)
+        const initialLog = await prisma.webhookLog.findUnique({
             where: { reference }
         });
 
-        if (webhookLog?.isProcessed) {
+        if (initialLog?.isProcessed) {
             logger.info(`Webhook ${reference} already processed. Skipping.`);
             return;
         }
@@ -46,6 +48,16 @@ export async function processWebhookPayload(webhookData) {
             let insufficientStockItems = [];
 
             await prisma.$transaction(async (tx) => {
+                // 1. Re-verify idempotency INSIDE transaction (Absolute Safety)
+                const webhookLog = await tx.webhookLog.findUnique({
+                    where: { reference }
+                });
+
+                if (webhookLog?.isProcessed) {
+                    logger.info(`[TX] Webhook ${reference} already processed. Skipping.`);
+                    return;
+                }
+
                 // Find the order
                 const order = await tx.order.findUnique({
                     where: { paystackReference: reference },
@@ -102,6 +114,14 @@ export async function processWebhookPayload(webhookData) {
                         });
                     }
 
+                    // RELEASE RESERVATION on cancellation
+                    for (const item of order.items) {
+                        await tx.variant.update({
+                            where: { id: item.variantId },
+                            data: { reservedStock: { decrement: item.quantity } }
+                        });
+                    }
+
                     logger.error(`❌ OVERSELLING PREVENTED for Order ${order.orderNumber}. Triggering refund.`);
                     return;
                 }
@@ -114,7 +134,10 @@ export async function processWebhookPayload(webhookData) {
 
                     await tx.variant.update({
                         where: { id: item.variantId },
-                        data: { stock: { decrement: item.quantity } }
+                        data: {
+                            stock: { decrement: item.quantity },
+                            reservedStock: { decrement: item.quantity } // Convert reservation to sale
+                        }
                     });
 
                     await tx.stockMovement.create({
@@ -140,10 +163,19 @@ export async function processWebhookPayload(webhookData) {
                     }
                 });
 
-                // Update Webhook Log
-                await tx.webhookLog.update({
+                // Update Webhook Log (Upsert for resilience)
+                await tx.webhookLog.upsert({
                     where: { reference },
-                    data: {
+                    create: {
+                        reference,
+                        provider: 'paystack',
+                        event: 'charge.success',
+                        status: 'processed',
+                        isProcessed: true,
+                        orderId: order.id,
+                        payload: webhookData
+                    },
+                    update: {
                         status: 'processed',
                         isProcessed: true,
                         orderId: order.id
@@ -153,9 +185,9 @@ export async function processWebhookPayload(webhookData) {
                 logger.info(`✅ Order ${order.orderNumber} paid and stock deducted.`);
 
                 // 🔔 Real-time: Notify all admin dashboards of payment
-                notifyOrdersChanged({ action: 'payment_confirmed', orderNumber: order.orderNumber });
-                notifyStockChanged({ action: 'deducted', orderNumber: order.orderNumber });
-            });
+                await notifyOrdersChanged({ action: 'payment_confirmed', orderNumber: order.orderNumber });
+                await notifyStockChanged({ action: 'deducted', orderNumber: order.orderNumber });
+            }, { timeout: 15000 });
 
             // Handle refund OUTSIDE transaction (Paystack API call)
             if (stockCheckFailed) {

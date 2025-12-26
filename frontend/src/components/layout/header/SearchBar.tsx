@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import axios from '@/lib/api/axios';
 import { Link } from 'react-router-dom';
 import { useCurrencyContext } from '@/lib/context/CurrencyContext';
+import debounce from 'lodash/debounce';
 
 interface SearchResult {
     id: string;
@@ -24,15 +25,25 @@ export default function SearchBar() {
     const dropdownRef = useRef<HTMLDivElement>(null);
     const { formatPrice } = useCurrencyContext();
 
-    // Live search query (only if typing and focused) - WITH ERROR HANDLING
+    // Live search query (only if typing and focused) - WITH DEBOUNCING
+    const [debouncedQuery, setDebouncedQuery] = useState(query);
+
+    useEffect(() => {
+        const handler = debounce((q: string) => {
+            setDebouncedQuery(q);
+        }, 300);
+        handler(query);
+        return () => handler.cancel();
+    }, [query]);
+
     const { data: searchResults, isError } = useQuery({
-        queryKey: ['search', query],
+        queryKey: ['search', debouncedQuery],
         queryFn: async () => {
-            if (query.length < 2) return null;
-            const response = await axios.get(`/products/search?q=${encodeURIComponent(query)}&page=1`);
+            if (debouncedQuery.length < 2) return null;
+            const response = await axios.get(`/products/search?q=${encodeURIComponent(debouncedQuery)}&page=1`);
             return response.data.data.products.slice(0, 5); // Show top 5 results
         },
-        enabled: query.length >= 2 && isFocused,
+        enabled: debouncedQuery.length >= 2 && isFocused,
         staleTime: 1000 * 60 * 2, // 2 minutes
         retry: 2,
     });

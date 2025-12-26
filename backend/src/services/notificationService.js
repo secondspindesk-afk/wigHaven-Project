@@ -2,6 +2,8 @@ import notificationRepository from '../db/repositories/notificationRepository.js
 import logger from '../utils/logger.js';
 import { broadcastNotification } from '../config/websocket.js';
 import { getPrisma } from '../config/database.js';
+import adminBroadcast from '../utils/adminBroadcast.js';
+import smartCache from '../utils/smartCache.js';
 
 /**
  * Notification Types Constant
@@ -38,7 +40,7 @@ export const NotificationTypes = {
 /**
  * Internal helper to create notification
  */
-const createNotification = async (userId, type, title, message, link = null) => {
+const createNotification = async (userId, type, title, message, link = null, data = null) => {
     try {
         logger.info(`Creating notification for user ${userId}: ${type} - ${title}`);
 
@@ -52,6 +54,7 @@ const createNotification = async (userId, type, title, message, link = null) => 
             title,
             message,
             link,
+            data,
             isRead: false,
             expiresAt
         });
@@ -72,10 +75,13 @@ const createNotification = async (userId, type, title, message, link = null) => 
  * Notify user of successful registration
  */
 export const notifyWelcome = async (user) => {
+    const settingsService = (await import('./settingsService.js')).default;
+    const siteName = await settingsService.getSetting('siteName') || 'WigHaven';
+
     return createNotification(
         user.id,
         NotificationTypes.WELCOME,
-        'Welcome to WigHaven!',
+        `Welcome to ${siteName}!`,
         'Thank you for creating an account. We are excited to have you with us.',
         '/shop'
     );
@@ -90,12 +96,16 @@ export const notifyOrderPlaced = async (order) => {
         return null;
     }
 
+    const settingsService = (await import('./settingsService.js')).default;
+    const currencySymbol = await settingsService.getSetting('currencySymbol') || '₵';
+
     return createNotification(
         order.userId,
         NotificationTypes.ORDER_PLACED,
         `Order Placed #${order.orderNumber}`,
-        `Your order for ₵${order.total} has been placed successfully.`,
-        `/account/orders/${order.orderNumber}`
+        `Your order for ${currencySymbol}${order.total} has been placed successfully.`,
+        `/account/orders/${order.orderNumber}`,
+        { orderNumber: order.orderNumber }
     );
 };
 
@@ -118,7 +128,8 @@ export const notifyOrderStatusChanged = async (order, oldStatus, newStatus) => {
         NotificationTypes.ORDER_STATUS,
         `Order Update #${order.orderNumber}`,
         `Your order ${message}`,
-        `/account/orders/${order.orderNumber}`
+        `/account/orders/${order.orderNumber}`,
+        { orderNumber: order.orderNumber, status: newStatus }
     );
 };
 
@@ -126,14 +137,19 @@ export const notifyOrderStatusChanged = async (order, oldStatus, newStatus) => {
  * Notify user of successful payment
  */
 export const notifyPaymentSuccess = async (order) => {
+    const settingsService = (await import('./settingsService.js')).default;
+    const currencySymbol = await settingsService.getSetting('currencySymbol') || '₵';
+
     return createNotification(
         order.userId,
         NotificationTypes.PAYMENT,
         `Payment Confirmed #${order.orderNumber}`,
-        `We have received your payment of ₵${order.total}. We will start processing your order shortly.`,
-        `/account/orders/${order.orderNumber}`
+        `We have received your payment of ${currencySymbol}${order.total}. We will start processing your order shortly.`,
+        `/account/orders/${order.orderNumber}`,
+        { orderNumber: order.orderNumber }
     );
 };
+
 
 /**
  * Notify user of password change
@@ -175,7 +191,8 @@ export const notifyOrderCancelled = async (order, reason = 'Payment not received
         NotificationTypes.ORDER_CANCELLED,
         `Order Cancelled #${order.orderNumber}`,
         `Your order has been automatically cancelled. Reason: ${reason}`,
-        `/account/orders/${order.orderNumber}`
+        `/account/orders/${order.orderNumber}`,
+        { orderNumber: order.orderNumber }
     );
 };
 
@@ -227,6 +244,7 @@ const notifyAllAdmins = async (type, title, message, link = null) => {
 
 /**
  * Broadcast promotional notification to ALL active users
+ * OPTIMIZED: Uses createMany for batch insert (100x fewer DB calls)
  */
 const broadcastToAllUsers = async (type, title, message, link = null) => {
     try {
@@ -237,10 +255,14 @@ const broadcastToAllUsers = async (type, title, message, link = null) => {
             where: { isActive: true, role: 'customer' }
         });
 
-        logger.info(`Broadcasting to ${userCount} users...`);
+        logger.info(`[PERF] Broadcasting to ${userCount} users with batch inserts...`);
 
-        // Process in batches of 100 to avoid memory issues
-        const batchSize = 100;
+        // OPTIMIZATION: Set expiry date once (30 days from now)
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + 30);
+
+        // Process in batches of 500 (increased from 100 since we're using createMany)
+        const batchSize = 500;
         let processedCount = 0;
 
         for (let skip = 0; skip < userCount; skip += batchSize) {
@@ -251,22 +273,40 @@ const broadcastToAllUsers = async (type, title, message, link = null) => {
                 take: batchSize
             });
 
-            await Promise.all(
-                batch.map(user =>
-                    createNotification(user.id, type, title, message, link)
-                )
-            );
+            // OPTIMIZATION: Single batch insert instead of N individual creates
+            const notificationsData = batch.map(user => ({
+                userId: user.id,
+                type,
+                title,
+                message,
+                link,
+                isRead: false,
+                expiresAt
+            }));
+
+            // createMany = 1 DB call for entire batch
+            await prisma.notification.createMany({
+                data: notificationsData,
+                skipDuplicates: true
+            });
+
+            // Broadcast via WebSocket (still individual for real-time push)
+            batch.forEach(user => {
+                broadcastNotification(user.id, { type, title, message, link, isRead: false });
+            });
 
             processedCount += batch.length;
+            logger.info(`[PERF] Batch inserted ${batch.length} notifications (${processedCount}/${userCount})`);
         }
 
-        logger.info(`Broadcast complete: ${processedCount} notifications sent`);
+        logger.info(`[PERF] Broadcast complete: ${processedCount} notifications via createMany`);
         return { sentCount: processedCount };
     } catch (error) {
         logger.error('Error broadcasting to users:', error);
         return { sentCount: 0, error: error.message };
     }
 };
+
 
 // ============================================
 // ADMIN NOTIFICATIONS (CRITICAL EVENTS ONLY)
@@ -276,10 +316,13 @@ const broadcastToAllUsers = async (type, title, message, link = null) => {
  * Notify admins: New order placed (CRITICAL - new revenue)
  */
 export const notifyAdminNewOrder = async (order) => {
-    let message = `₵${order.total} from ${order.customerEmail}`;
+    const settingsService = (await import('./settingsService.js')).default;
+    const currencySymbol = await settingsService.getSetting('currencySymbol') || '₵';
+    let message = `${currencySymbol}${order.total} from ${order.customerEmail}`;
     if (order.couponCode || order.coupon_code) {
         message += ` (Used coupon: ${order.couponCode || order.coupon_code})`;
     }
+
 
     return notifyAllAdmins(
         NotificationTypes.ADMIN_NEW_ORDER,
@@ -345,11 +388,14 @@ export const notifyAdminPaymentFailed = async (order, reason) => {
  * Notify admins: Business milestone achieved (CELEBRATION)
  */
 export const notifyAdminMilestone = async (type, threshold, currentValue) => {
+    const settingsService = (await import('./settingsService.js')).default;
+    const currencySymbol = await settingsService.getSetting('currencySymbol') || '₵';
     const messages = {
         order_count: `🎉 ${currentValue} orders processed!`,
-        daily_sales: `💰 Daily sales hit ₵${currentValue}!`,
-        monthly_revenue: `📈 Monthly revenue: ₵${currentValue}!`
+        daily_sales: `💰 Daily sales hit ${currencySymbol}${currentValue}!`,
+        monthly_revenue: `📈 Monthly revenue: ${currencySymbol}${currentValue}!`
     };
+
 
     return notifyAllAdmins(
         NotificationTypes.ADMIN_MILESTONE,
@@ -395,13 +441,18 @@ export const notifyAdminNewTicket = async (ticket, userName) => {
 export const notifyOrderRefunded = async (order) => {
     if (!order.userId) return null;
 
+    const settingsService = (await import('./settingsService.js')).default;
+    const currencySymbol = await settingsService.getSetting('currencySymbol') || '₵';
+
     return createNotification(
         order.userId,
         NotificationTypes.ORDER_REFUNDED,
         `Order Refunded #${order.orderNumber}`,
-        `Your payment of ₵${order.total} has been refunded. It may take 3-5 business days to appear in your account.`,
-        `/account/orders/${order.orderNumber}`
+        `Your payment of ${currencySymbol}${order.total} has been refunded. It may take 3-5 business days to appear in your account.`,
+        `/account/orders/${order.orderNumber}`,
+        { orderNumber: order.orderNumber }
     );
+
 };
 
 /**
@@ -517,20 +568,28 @@ export const getUserNotifications = async (userId, page = 1, limit = 20) => {
     const safeLimit = Math.min(100, Math.max(1, parseInt(limit) || 20)); // FIXED BUG #14: Max 100 per request
     const skip = Math.max(0, (safePage - 1) * safeLimit);
 
-    const [notifications, total, unreadCount] = await Promise.all([
-        notificationRepository.findNotificationsByUserId(userId, skip, safeLimit),
-        notificationRepository.countNotifications(userId),
-        notificationRepository.countUnreadNotifications(userId)
-    ]);
+    const cacheKey = smartCache.keys.userNotifications(userId, safePage, safeLimit);
 
-    return {
-        notifications,
-        total,
-        unreadCount,
-        page: safePage,
-        limit: safeLimit,
-        pages: Math.ceil(total / safeLimit)
-    };
+    return smartCache.getOrFetch(
+        cacheKey,
+        async () => {
+            const [notifications, total, unreadCount] = await Promise.all([
+                notificationRepository.findNotificationsByUserId(userId, skip, safeLimit),
+                notificationRepository.countNotifications(userId),
+                notificationRepository.countUnreadNotifications(userId)
+            ]);
+
+            return {
+                notifications,
+                total,
+                unreadCount,
+                page: safePage,
+                limit: safeLimit,
+                pages: Math.ceil(total / safeLimit)
+            };
+        },
+        { type: 'notifications', swr: true }
+    );
 };
 
 /**
@@ -547,14 +606,18 @@ export const markAsRead = async (id, userId) => {
         throw new Error('Access denied');
     }
 
-    return await notificationRepository.markNotificationAsRead(id);
+    const result = await notificationRepository.markNotificationAsRead(id);
+    await adminBroadcast.notifyNotificationsChanged(userId);
+    return result;
 };
 
 /**
  * Mark all user notifications as read
  */
 export const markAllAsRead = async (userId) => {
-    return await notificationRepository.markAllNotificationsAsRead(userId);
+    const result = await notificationRepository.markAllNotificationsAsRead(userId);
+    await adminBroadcast.notifyNotificationsChanged(userId);
+    return result;
 };
 
 /**
@@ -571,14 +634,18 @@ export const deleteNotification = async (id, userId) => {
         throw new Error('Access denied');
     }
 
-    return await notificationRepository.deleteNotification(id);
+    const result = await notificationRepository.deleteNotification(id);
+    await adminBroadcast.notifyNotificationsChanged(userId);
+    return result;
 };
 
 /**
  * Delete all notifications for a user
  */
 export const deleteAllNotifications = async (userId) => {
-    return await notificationRepository.deleteAllNotifications(userId);
+    const result = await notificationRepository.deleteAllNotifications(userId);
+    await adminBroadcast.notifyNotificationsChanged(userId);
+    return result;
 };
 
 export default {
@@ -611,6 +678,7 @@ export default {
     notifyAdminPaymentFailed,
     notifyAdminMilestone,
     notifyAdminSupportReply,
+    notifyAdminNewTicket,
 
     // Utilities
     getUserNotifications,

@@ -76,17 +76,20 @@ export const sendOrderConfirmation = async (order) => {
  * Send password reset email
  */
 export const sendPasswordResetEmail = async (email, resetToken, resetLink) => {
+  const settings = await (await import('./settingsService.js')).default.getAllSettings();
   const emailData = {
     type: 'password_reset',
     to_email: email,
-    subject: 'Password Reset Request - WigHaven',
+    subject: `Password Reset Request - ${settings.siteName}`,
     template: 'passwordReset',
     variables: {
+      site_name: settings.siteName,
       name: email.split('@')[0],
       reset_link: resetLink,
       expiry_time: '1 hour',
     },
   };
+
   return await safeQueueEmail(emailData, true); // Critical
 };
 
@@ -100,16 +103,18 @@ export const sendPaymentConfirmation = async (order) => {
     subject: `Payment Confirmed - ${order.orderNumber}`,
     template: 'paymentConfirmation',
     variables: {
+      site_name: settings.siteName,
       customer_name: order.shippingAddress?.name || 'Valued Customer',
       order_number: order.orderNumber,
       amount: order.total,
       payment_method: 'Paystack',
       confirmation_time: new Date(),
-      order_link: `${process.env.FRONTEND_URL}/orders/${order.orderNumber}`,
+      order_link: `${settings.siteUrl || process.env.FRONTEND_URL}/orders/${order.orderNumber}`,
     },
   };
   return await safeQueueEmail(emailData, true); // Critical
 };
+
 
 /**
  * Send payment failed email
@@ -141,20 +146,23 @@ export const sendAbandonedCartEmail = async (user, cart) => {
       return { success: false, reason: 'User unsubscribed' };
     }
 
+    const settings = await (await import('./settingsService.js')).default.getAllSettings();
     const emailData = {
       type: 'abandoned_cart',
       to_email: user.email,
-      subject: 'Your Cart is Waiting! - WigHaven',
+      subject: `Your Cart is Waiting! - ${settings.siteName}`,
       template: 'abandonedCart',
       variables: {
+        site_name: settings.siteName,
         name: user.firstName || 'Valued Customer',
         items: cart.items,
         total: cart.total,
-        cart_link: `${process.env.FRONTEND_URL}/cart`,
+        cart_link: `${settings.siteUrl || process.env.FRONTEND_URL}/cart`,
         discount_code: 'COMEBACK10',
-        unsubscribe_link: `${process.env.FRONTEND_URL}/unsubscribe?email=${encodeURIComponent(user.email)}`,
+        unsubscribe_link: `${settings.siteUrl || process.env.FRONTEND_URL}/unsubscribe?email=${encodeURIComponent(user.email)}`,
       },
     };
+
     return await safeQueueEmail(emailData, false); // Marketing
   } catch (error) {
     logger.error('Failed to prepare abandoned cart email:', error);
@@ -223,18 +231,21 @@ export const sendLowStockAlert = async (adminEmail, products) => {
  * Send email verification email
  */
 export const sendVerificationEmail = async (email, verificationToken) => {
-  const verificationLink = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
+  const settings = await (await import('./settingsService.js')).default.getAllSettings();
+  const verificationLink = `${settings.siteUrl || process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
   const emailData = {
     type: 'email_verification',
     to_email: email,
-    subject: 'Verify Your Email - WigHaven',
+    subject: `Verify Your Email - ${settings.siteName}`,
     template: 'emailVerification',
     variables: {
+      site_name: settings.siteName,
       name: 'User',
       verification_link: verificationLink,
       expiry_time: '24 hours',
     },
   };
+
   return await safeQueueEmail(emailData, true); // Critical
 };
 
@@ -242,19 +253,22 @@ export const sendVerificationEmail = async (email, verificationToken) => {
  * Send welcome email
  */
 export const sendWelcomeEmail = async (user) => {
+  const settings = await (await import('./settingsService.js')).default.getAllSettings();
   const emailData = {
     type: 'welcome',
     to_email: user.email,
-    subject: 'Welcome to WigHaven! ✨',
+    subject: `Welcome to ${settings.siteName}! ✨`,
     template: 'welcome',
     variables: {
+      site_name: settings.siteName,
       name: user.firstName,
       email: user.email,
-      shop_link: `${process.env.FRONTEND_URL}/shop`,
-      account_link: `${process.env.FRONTEND_URL}/account`,
-      support_link: `${process.env.FRONTEND_URL}/support`,
+      shop_link: `${settings.siteUrl || process.env.FRONTEND_URL}/shop`,
+      account_link: `${settings.siteUrl || process.env.FRONTEND_URL}/account`,
+      support_link: `${settings.siteUrl || process.env.FRONTEND_URL}/support`,
     },
   };
+
   return await safeQueueEmail(emailData, false); // Non-critical
 };
 
@@ -282,17 +296,20 @@ export const sendEmailChangeConfirmation = async (user, token) => {
  * Send password changed email
  */
 export const sendPasswordChangedEmail = async (email, firstName) => {
+  const settings = await (await import('./settingsService.js')).default.getAllSettings();
   const emailData = {
     type: 'password_changed',
     to_email: email,
-    subject: 'Your Password Has Been Changed - WigHaven',
+    subject: `Your Password Has Been Changed - ${settings.siteName}`,
     template: 'passwordChanged',
     variables: {
+      site_name: settings.siteName,
       name: firstName,
-      reset_link: `${process.env.FRONTEND_URL}/login`,
+      reset_link: `${settings.siteUrl || process.env.FRONTEND_URL}/login`,
       expiry_time: 'never',
     },
   };
+
   return await safeQueueEmail(emailData, true); // Critical
 };
 
@@ -505,10 +522,11 @@ export const sendReviewRejected = async (review, user, product, reason) => {
  * Send account deactivated email
  */
 export const sendAccountDeactivated = async (user, reason) => {
+  const settings = await (await import('./settingsService.js')).default.getAllSettings();
   const emailData = {
     type: 'account_deactivated',
     to_email: user.email,
-    subject: 'Account Deactivated - WigHaven',
+    subject: `Account Deactivated - ${settings.siteName}`,
     template: 'accountDeactivated',
     variables: {
       name: user.firstName || 'User',
@@ -525,10 +543,11 @@ export const sendAccountDeactivated = async (user, reason) => {
  * @param {object} user - User object with email
  */
 export const sendTicketResolved = async (ticket, user) => {
+  const settings = await (await import('./settingsService.js')).default.getAllSettings();
   const emailData = {
     type: 'ticket_resolved',
     to_email: user.email,
-    subject: `Ticket #${ticket.ticketNumber} Resolved - WigHaven`,
+    subject: `Ticket #${ticket.ticketNumber} Resolved - ${settings.siteName}`,
     template: 'ticketResolved',
     variables: {
       name: user.firstName || 'Valued Customer',
@@ -549,10 +568,11 @@ export const sendGuestTicketResolved = async (ticket) => {
     return { success: false, reason: 'No guest email' };
   }
 
+  const settings = await (await import('./settingsService.js')).default.getAllSettings();
   const emailData = {
     type: 'guest_ticket_resolved',
     to_email: ticket.guestEmail,
-    subject: `Ticket #${ticket.ticketNumber} Resolved - WigHaven`,
+    subject: `Ticket #${ticket.ticketNumber} Resolved - ${settings.siteName}`,
     template: 'guestTicketResolved',
     variables: {
       guest_name: ticket.guestName || 'Valued Customer',

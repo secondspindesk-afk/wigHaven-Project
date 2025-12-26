@@ -17,17 +17,24 @@ import logger from './logger.js';
 const CACHE_CONFIG = {
     MAX_ITEMS: 500,              // Max cached items (LRU eviction)
     MAX_SIZE_BYTES: 50_000_000,  // 50MB max total size
-    DEFAULT_TTL_MS: 5 * 60 * 1000, // 5 minutes default
+    DEFAULT_TTL_MS: 60 * 60 * 1000, // 1 hour default
 
     // TTL per cache type (in milliseconds)
+    // STRATEGY: Cache LONG - adminBroadcast.invalidateForEntity() handles invalidation on changes
+    // This maximizes cache hits and reduces DB load
     TTL: {
-        settings: 10 * 60 * 1000,   // 10 minutes (rarely changes)
-        banners: 5 * 60 * 1000,     // 5 minutes
-        categories: 30 * 60 * 1000, // 30 minutes (rarely changes)
-        productList: 2 * 60 * 1000, // 2 minutes (frequently changes)
-        product: 5 * 60 * 1000,     // 5 minutes
-        reviews: 3 * 60 * 1000,     // 3 minutes
-        currency: 6 * 60 * 60 * 1000, // 6 hours
+        settings: 24 * 60 * 60 * 1000,  // 24 hours (invalidated on admin change)
+        banners: 24 * 60 * 60 * 1000,   // 24 hours (invalidated on admin change)
+        categories: 24 * 60 * 60 * 1000, // 24 hours (invalidated on admin change)
+        productList: 60 * 60 * 1000,     // 1 hour (invalidated on admin change)
+        product: 60 * 60 * 1000,         // 1 hour (invalidated on admin change)
+        reviews: 30 * 60 * 1000,         // 30 minutes (user-generated, more volatile)
+        currency: 24 * 60 * 60 * 1000,   // 24 hours (rarely changes)
+        analytics: 60 * 60 * 1000,       // 1 hour (invalidated on admin change)
+        search: 60 * 1000,               // 1 minute (short-lived, invalidated on any change)
+        orders: 30 * 60 * 1000,          // 30 minutes
+        settings: 10 * 60 * 1000,        // 10 minutes
+        maintenance: 60 * 1000,          // 1 minute (but invalidated instantly)
     }
 };
 
@@ -126,7 +133,6 @@ const getOrFetch = async (key, fetchFn, options = {}) => {
     const isStale = remainingTtl <= 0 && cached !== undefined;
     const isFresh = remainingTtl > 0 && cached !== undefined;
 
-    // Fresh cache hit - return immediately
     if (isFresh) {
         stats.hits++;
         logger.debug(`[CACHE] Hit: ${key}`);
@@ -179,14 +185,31 @@ const refreshInBackground = (key, fetchFn, ttl) => {
     if (inFlight.has(key)) return;
 
     const refreshPromise = (async () => {
-        try {
-            const data = await fetchFn();
-            set(key, data, ttl);
-            logger.debug(`[CACHE] Background refresh complete: ${key}`);
-        } catch (error) {
-            logger.warn(`[CACHE] Background refresh failed: ${key} - ${error.message}`);
-        } finally {
-            inFlight.delete(key);
+        let retries = 2;
+        while (retries >= 0) {
+            try {
+                const data = await fetchFn();
+                set(key, data, ttl);
+                logger.debug(`[CACHE] Background refresh complete: ${key}`);
+                return;
+            } catch (error) {
+                if (retries === 0) {
+                    logger.error(`[CACHE] Background refresh failed permanently: ${key} - ${error.message}`);
+                    // Notify admins of persistent cache failure
+                    import('./adminBroadcast.js').then(m => {
+                        m.default.notifyNotificationsChanged(null, {
+                            type: 'CACHE_FAILURE',
+                            isAdminEvent: true,
+                            message: `Persistent cache failure for key: ${key}`,
+                            error: error.message
+                        });
+                    }).catch(() => { });
+                } else {
+                    logger.warn(`[CACHE] Background refresh failed: ${key}. Retrying... (${retries} left)`);
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+                retries--;
+            }
         }
     })();
 
@@ -280,6 +303,46 @@ const keys = {
 
     // Reviews for a product
     reviews: (productId, page = 1) => `reviews:${productId}:${page}`,
+
+    // Stock
+    stockMovements: (options) => `stock:movements:${JSON.stringify(options)}`,
+    stockLow: (threshold, page) => `stock:low:${threshold}:${page}`,
+    stockSummary: () => 'stock:summary',
+
+    // Discounts
+    discountsAll: () => 'discounts:all',
+
+    // Notifications
+    userNotifications: (userId, page, limit) => `notifications:${userId}:${page}:${limit}`,
+
+    // Banners
+    bannersAll: () => 'banners:all',
+    banner: (id) => `banner:${id}`,
+
+    // Categories
+    category: (id) => `category:${id}`,
+
+    // Wishlist
+    wishlist: (userId) => `wishlist:${userId}`,
+
+    // Profile
+    profile: (userId) => `profile:${userId}`,
+
+    // Support
+    supportUserTickets: (userId, page) => `support:user:${userId}:${page}`,
+    supportAllTickets: (options) => `support:all:${JSON.stringify(options)}`,
+    supportTicket: (id) => `support:ticket:${id}`,
+
+    // Dashboard
+    dashboardRecentOrders: (page, limit) => `dashboard:orders:${page}:${limit}`,
+    dashboardAdminActivity: (page, limit) => `dashboard:activity:${page}:${limit}`,
+    dashboardLowStock: (threshold) => `dashboard:low-stock:${threshold}`,
+
+    // Public Search
+    searchPublic: (query, page) => `search:public:${query}:${page}`,
+
+    // Cart
+    cartEnrichment: (variantIds) => `cart:enrich:${variantIds.sort().join(',')}`,
 };
 
 // ============================================

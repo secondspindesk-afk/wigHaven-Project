@@ -17,3 +17,14 @@ export const getErrorMessage = (error: any, defaultMessage: string = 'An error o
     }
     return defaultMessage;
 };
+
+/**
+ * Extracts stock error details if present
+ */
+export const getStockErrorDetails = (error: any): { name: string; requested: number; available: number }[] | null => {
+    const errorData = error?.response?.data?.error;
+    if (errorData?.code === 'INSUFFICIENT_STOCK' && Array.isArray(errorData.details)) {
+        return errorData.details;
+    }
+    return null;
+};

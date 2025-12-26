@@ -152,8 +152,14 @@ export default function Cart() {
 
                                 {/* Stock Warning */}
                                 {item.stock !== undefined && item.quantity > item.stock && (
-                                    <div className="mb-2 px-2 py-1 bg-red-500/10 rounded-lg">
+                                    <div className="mb-2 px-2 py-2 bg-red-500/10 rounded-lg flex items-center justify-between">
                                         <p className="text-[10px] text-red-400">Only {item.stock} in stock</p>
+                                        <button
+                                            onClick={() => handleUpdateQuantity(item.variant_id, item.stock)}
+                                            className="text-[10px] bg-red-500 text-white px-2 py-1 rounded-md font-bold uppercase"
+                                        >
+                                            Fix Now
+                                        </button>
                                     </div>
                                 )}
 
@@ -300,7 +306,15 @@ export default function Cart() {
                                     </p>
 
                                     {item.stock !== undefined && item.quantity > item.stock && (
-                                        <div className="mb-3 px-2 py-1 bg-red-500/10 border border-red-500/30 rounded-sm"><p className="text-[10px] text-red-400 font-mono">⚠️ Only {item.stock} in stock</p></div>
+                                        <div className="mb-3 px-3 py-2 bg-red-500/10 border border-red-500/30 rounded-sm flex items-center justify-between">
+                                            <p className="text-[10px] text-red-400 font-mono">⚠️ Only {item.stock} in stock</p>
+                                            <button
+                                                onClick={() => handleUpdateQuantity(item.variant_id, item.stock)}
+                                                className="text-[10px] bg-red-500 text-white px-3 py-1 rounded-sm font-bold uppercase hover:bg-red-600 transition-colors"
+                                            >
+                                                Adjust to Max
+                                            </button>
+                                        </div>
                                     )}
                                     {item.stock !== undefined && item.stock <= 3 && item.quantity <= item.stock && (
                                         <div className="mb-3 px-2 py-1 bg-yellow-500/10 border border-yellow-500/30 rounded-sm"><p className="text-[10px] text-yellow-400 font-mono">Only {item.stock} left</p></div>

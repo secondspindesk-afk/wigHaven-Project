@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ChevronLeft, Save, Calendar, Link as LinkIcon, ImageIcon, Loader2, AlertTriangle } from 'lucide-react';
 import { useCreateBanner, useUpdateBanner, useBanner } from '@/lib/hooks/useBanners';
@@ -26,15 +26,21 @@ export default function BannerForm() {
     });
     const [isUploading, setIsUploading] = useState(false);
 
+    // OPTIMIZATION: Track original data for dirty tracking
+    const originalDataRef = useRef<BannerFormData | null>(null);
+
     useEffect(() => {
         if (isEditMode && existingBanner) {
-            setFormData({
+            const bannerData: BannerFormData = {
                 title: existingBanner.title, description: existingBanner.description,
                 imageUrl: existingBanner.imageUrl, linkUrl: existingBanner.linkUrl,
                 startDate: new Date(existingBanner.startDate).toISOString().split('T')[0],
                 endDate: new Date(existingBanner.endDate).toISOString().split('T')[0],
                 priority: existingBanner.priority, isActive: existingBanner.isActive, notifyUsers: false
-            });
+            };
+            setFormData(bannerData);
+            // Store original for dirty tracking
+            originalDataRef.current = JSON.parse(JSON.stringify(bannerData));
         }
     }, [isEditMode, existingBanner]);
 
@@ -50,13 +56,48 @@ export default function BannerForm() {
         finally { setIsUploading(false); }
     };
 
+    // OPTIMIZATION: Calculate dirty fields for smart updates
+    const getDirtyPayload = useCallback(() => {
+        if (!originalDataRef.current) return formData;
+
+        const original = originalDataRef.current;
+        const dirty: Partial<BannerFormData> & { _changedFields?: string[] } = {};
+        const changedFields: string[] = [];
+
+        const fields: (keyof BannerFormData)[] = ['title', 'description', 'imageUrl', 'linkUrl', 'startDate', 'endDate', 'priority', 'isActive'];
+        for (const field of fields) {
+            if (JSON.stringify(formData[field]) !== JSON.stringify(original[field])) {
+                (dirty as any)[field] = formData[field];
+                changedFields.push(field);
+            }
+        }
+
+        dirty._changedFields = changedFields;
+        return dirty;
+    }, [formData]);
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!formData.imageUrl) { showToast('Image required', 'error'); return; }
         try {
-            const payload = { ...formData, startDate: new Date(formData.startDate).toISOString(), endDate: new Date(formData.endDate).toISOString(), priority: Number(formData.priority) };
-            if (isEditMode && id) { await updateMutation.mutateAsync({ id, data: payload }); showToast('Updated', 'success'); }
-            else { await createMutation.mutateAsync(payload); showToast('Created', 'success'); }
+            if (isEditMode && id) {
+                // OPTIMIZATION: Send only changed fields
+                const dirtyPayload = getDirtyPayload();
+
+                if (!('_changedFields' in dirtyPayload) || !dirtyPayload._changedFields || dirtyPayload._changedFields.length === 0) {
+                    showToast('No changes to save', 'info');
+                    return;
+                }
+
+                console.log('[PERF] Sending only changed fields:', dirtyPayload._changedFields);
+                const payload = { ...dirtyPayload, startDate: new Date(formData.startDate).toISOString(), endDate: new Date(formData.endDate).toISOString(), priority: Number(formData.priority) };
+                await updateMutation.mutateAsync({ id, data: payload as any });
+                showToast('Updated', 'success');
+            } else {
+                const payload = { ...formData, startDate: new Date(formData.startDate).toISOString(), endDate: new Date(formData.endDate).toISOString(), priority: Number(formData.priority) };
+                await createMutation.mutateAsync(payload);
+                showToast('Created', 'success');
+            }
             navigate('/admin/banners');
         } catch (error: any) { showToast(error.message || 'Failed', 'error'); }
     };

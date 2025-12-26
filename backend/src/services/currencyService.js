@@ -120,6 +120,10 @@ export const updateRatesInDb = async () => {
         });
 
         logger.info(`✓ Updated ${Object.keys(rates).length} currency rates in DB`);
+
+        // 🔔 Real-time: Notify all clients of currency change
+        const adminBroadcast = (await import('../utils/adminBroadcast.js')).default;
+        adminBroadcast.notifyCurrencyChanged({ rates });
     } catch (dbError) {
         // Database update failed - but we still have in-memory cache
         logger.warn(`DB update failed (using memory cache): ${dbError.message}`);

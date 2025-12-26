@@ -36,19 +36,19 @@ export const getDashboardSummary = async () => {
 
 const getOverallStats = async () => {
     const prisma = getPrisma();
-    const [totalCustomers, totalRevenue, pendingOrders] = await Promise.all([
-        prisma.user.count({ where: { role: 'customer' } }),
-        prisma.order.aggregate({
-            _sum: { total: true },
-            where: { paymentStatus: 'paid' }
-        }),
-        prisma.order.count({ where: { status: 'pending' } })
-    ]);
+
+    // OPTIMIZATION: Single raw query instead of 3 parallel queries
+    const [stats] = await prisma.$queryRaw`
+        SELECT
+            (SELECT COUNT(*) FROM users WHERE role = 'customer')::int as total_customers,
+            (SELECT COALESCE(SUM(total), 0) FROM orders WHERE payment_status = 'paid')::float as total_revenue,
+            (SELECT COUNT(*) FROM orders WHERE status = 'pending')::int as pending_orders
+    `;
 
     return {
-        total_customers: totalCustomers,
-        total_revenue_all_time: Number(totalRevenue._sum.total) || 0,
-        pending_orders: pendingOrders
+        total_customers: Number(stats.total_customers) || 0,
+        total_revenue_all_time: Number(stats.total_revenue) || 0,
+        pending_orders: Number(stats.pending_orders) || 0
     };
 };
 
@@ -129,41 +129,47 @@ export const getInventoryStatus = async () => {
  * Get Revenue By Category
  */
 export const getRevenueByCategory = async (days = 30) => {
-    const endDate = new Date();
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days);
+    return getCached(`analytics:revenue:category:${days}`, async () => {
+        const endDate = new Date();
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - days);
 
-    const data = await analyticsRepository.getRevenueByCategory(startDate, endDate);
-    return data;
+        const data = await analyticsRepository.getRevenueByCategory(startDate, endDate);
+        return data;
+    });
 };
 
 /**
  * Get Customer Analytics
  */
 export const getCustomerAnalytics = async (days = 30) => {
-    const endDate = new Date();
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days);
+    return getCached(CACHE_KEYS.CUSTOMER_ANALYTICS(days), async () => {
+        const endDate = new Date();
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - days);
 
-    const data = await analyticsRepository.getCustomerAnalytics(startDate, endDate);
-    return data;
+        const data = await analyticsRepository.getCustomerAnalytics(startDate, endDate);
+        return data;
+    });
 };
 
 /**
  * Get Email Stats
  */
 export const getEmailStats = async () => {
-    const [todayStats, allTimeStats, byType] = await Promise.all([
-        getEmailStatsForPeriod(new Date().setHours(0, 0, 0, 0)),
-        getEmailStatsForPeriod(new Date(0)),
-        getEmailStatsByType()
-    ]);
+    return getCached(CACHE_KEYS.EMAIL_STATS, async () => {
+        const [todayStats, allTimeStats, byType] = await Promise.all([
+            getEmailStatsForPeriod(new Date().setHours(0, 0, 0, 0)),
+            getEmailStatsForPeriod(new Date(0)),
+            getEmailStatsByType()
+        ]);
 
-    return {
-        today: todayStats,
-        all_time: allTimeStats,
-        by_type: byType
-    };
+        return {
+            today: todayStats,
+            all_time: allTimeStats,
+            by_type: byType
+        };
+    });
 };
 
 const getEmailStatsForPeriod = async (startDate) => {
@@ -204,35 +210,41 @@ const getEmailStatsByType = async () => {
  * Get System Health
  */
 export const getSystemHealth = async () => {
-    return await analyticsRepository.getSystemHealth();
+    return getCached(CACHE_KEYS.SYSTEM_HEALTH, async () => {
+        return await analyticsRepository.getSystemHealth();
+    });
 };
 
 /**
  * Get Cart Abandonment Stats
  */
 export const getCartAbandonmentStats = async () => {
-    const stats = await analyticsRepository.getCartAbandonmentStats();
-    return stats;
+    return getCached(CACHE_KEYS.CART_ABANDONMENT, async () => {
+        const stats = await analyticsRepository.getCartAbandonmentStats();
+        return stats;
+    });
 };
 
 /**
  * Get Payment Methods Stats
  */
 export const getPaymentMethods = async () => {
-    const prisma = getPrisma();
-    const count = await prisma.order.count({ where: { paymentStatus: 'paid' } });
-    const revenue = await prisma.order.aggregate({
-        _sum: { total: true },
-        where: { paymentStatus: 'paid' }
-    });
+    return getCached('analytics:payment-methods', async () => {
+        const prisma = getPrisma();
+        const count = await prisma.order.count({ where: { paymentStatus: 'paid' } });
+        const revenue = await prisma.order.aggregate({
+            _sum: { total: true },
+            where: { paymentStatus: 'paid' }
+        });
 
-    return {
-        paystack: {
-            count,
-            revenue: Number(revenue._sum.total) || 0,
-            percent: 100
-        }
-    };
+        return {
+            paystack: {
+                count,
+                revenue: Number(revenue._sum.total) || 0,
+                percent: 100
+            }
+        };
+    });
 };
 
 export default {

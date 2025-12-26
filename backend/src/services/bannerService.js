@@ -2,14 +2,14 @@ import { getPrisma } from '../config/database.js';
 import notificationService from './notificationService.js';
 import logger from '../utils/logger.js';
 import smartCache from '../utils/smartCache.js';
+import adminBroadcast from '../utils/adminBroadcast.js';
 
 /**
  * Invalidate banner cache
- * Call this when banners are created/updated/deleted
+ * @deprecated Use adminBroadcast.notifyBannersChanged() instead
  */
-const invalidateBannerCache = () => {
-    smartCache.del(smartCache.keys.banners());
-    logger.debug('[CACHE] Banner cache invalidated');
+const invalidateBannerCache = async () => {
+    await adminBroadcast.notifyBannersChanged();
 };
 
 /**
@@ -28,7 +28,7 @@ export const createBanner = async (bannerData, createdBy) => {
     logger.info(`Banner created: ${banner.id} by user ${createdBy}`);
 
     // Invalidate cache after creation
-    invalidateBannerCache();
+    await invalidateBannerCache();
 
     // Optionally notify all users about the sale (if requested)
     if (bannerData.notifyUsers) {
@@ -87,42 +87,52 @@ export const getActiveBanners = async () => {
  * Get all banners (admin)
  */
 export const getAllBanners = async () => {
-    const prisma = getPrisma();
-
-    return await prisma.promotionalBanner.findMany({
-        orderBy: { createdAt: 'desc' },
-        include: {
-            creator: {
-                select: {
-                    id: true,
-                    email: true,
-                    firstName: true,
-                    lastName: true
+    return smartCache.getOrFetch(
+        smartCache.keys.bannersAll(),
+        async () => {
+            const prisma = getPrisma();
+            return await prisma.promotionalBanner.findMany({
+                orderBy: { createdAt: 'desc' },
+                include: {
+                    creator: {
+                        select: {
+                            id: true,
+                            email: true,
+                            firstName: true,
+                            lastName: true
+                        }
+                    }
                 }
-            }
-        }
-    });
+            });
+        },
+        { type: 'banners', swr: true }
+    );
 };
 
 /**
  * Get single banner by ID (admin)
  */
 export const getBannerById = async (id) => {
-    const prisma = getPrisma();
-
-    return await prisma.promotionalBanner.findUnique({
-        where: { id },
-        include: {
-            creator: {
-                select: {
-                    id: true,
-                    email: true,
-                    firstName: true,
-                    lastName: true
+    return smartCache.getOrFetch(
+        smartCache.keys.banner(id),
+        async () => {
+            const prisma = getPrisma();
+            return await prisma.promotionalBanner.findUnique({
+                where: { id },
+                include: {
+                    creator: {
+                        select: {
+                            id: true,
+                            email: true,
+                            firstName: true,
+                            lastName: true
+                        }
+                    }
                 }
-            }
-        }
-    });
+            });
+        },
+        { type: 'banners', swr: true }
+    );
 };
 
 /**
@@ -131,13 +141,30 @@ export const getBannerById = async (id) => {
 export const updateBanner = async (id, bannerData) => {
     const prisma = getPrisma();
 
+    // OPTIMIZATION: Handle _changedFields directive
+    const frontendChangedFields = bannerData._changedFields;
+    delete bannerData._changedFields;
+
+    // Skip if no changes
+    if (frontendChangedFields && frontendChangedFields.length === 0) {
+        logger.info(`[PERF] No changes for banner ${id}, skipping update`);
+        return await prisma.promotionalBanner.findUnique({ where: { id } });
+    }
+
     const banner = await prisma.promotionalBanner.update({
         where: { id },
         data: bannerData
     });
 
-    // Invalidate cache after update
-    invalidateBannerCache();
+    // Conditional cache invalidation
+    const publicFields = ['title', 'description', 'imageUrl', 'linkUrl', 'isActive', 'startDate', 'endDate', 'priority'];
+    const hasPublicChanges = !frontendChangedFields || frontendChangedFields.some(f => publicFields.includes(f));
+
+    if (hasPublicChanges) {
+        await invalidateBannerCache();
+    } else {
+        logger.info(`[PERF] Skipping banner cache invalidation - no public changes`);
+    }
 
     return banner;
 };
@@ -153,7 +180,7 @@ export const deleteBanner = async (id) => {
     });
 
     // Invalidate cache after delete
-    invalidateBannerCache();
+    await invalidateBannerCache();
 
     return banner;
 };

@@ -74,22 +74,26 @@ export const uploadFile = async (req, res) => {
         });
 
         if (existingFile && !forceUpload) {
-            // Return 409 CONFLICT - let user decide whether to use existing or force new upload
-            logger.info(`Duplicate file detected, prompting user: ${existingFile.url}`);
-            return res.status(409).json({
-                success: false,
+            // AUTO-REUSE: Return existing file info as success (not 409 error)
+            // This allows seamless duplicate handling without user intervention
+            logger.info(`Duplicate file detected, auto-reusing: ${existingFile.url}`);
+            const versionedUrl = generateVersionedUrl(existingFile.url);
+
+            return res.json({
+                success: true,
                 isDuplicate: true,
-                message: 'This image already exists. Use existing URL or add ?force=true to upload anyway.',
-                existingFile: {
+                message: 'Image already exists - using existing URL.',
+                data: {
                     id: existingFile.id,
-                    url: existingFile.url,
+                    url: versionedUrl,
+                    baseUrl: existingFile.url,
                     fileId: existingFile.fileId,
                     fileName: existingFile.fileName,
                     size: existingFile.size,
                     width: existingFile.width,
                     height: existingFile.height,
                     mimetype: existingFile.mimeType,
-                    uploadedAt: existingFile.createdAt
+                    isExisting: true
                 }
             });
         }

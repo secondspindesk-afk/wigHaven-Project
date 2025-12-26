@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -36,7 +36,7 @@ export default function Profile() {
         register: registerProfile,
         handleSubmit: handleProfileSubmit,
         reset,
-        formState: { errors: profileErrors, isSubmitting: isProfileSubmitting },
+        formState: { errors: profileErrors, isSubmitting: isProfileSubmitting, dirtyFields },
     } = useForm<ProfileFormData>({
         resolver: zodResolver(profileSchema),
         defaultValues: {
@@ -45,6 +45,9 @@ export default function Profile() {
             phone: user?.phone || '',
         },
     });
+
+    // OPTIMIZATION: Track original data for _changedFields
+    const originalDataRef = useRef<ProfileFormData | null>(null);
 
     const {
         register: registerPassword,
@@ -55,9 +58,29 @@ export default function Profile() {
         resolver: zodResolver(passwordSchema),
     });
 
+    // OPTIMIZATION: Send only changed fields with _changedFields directive
     const onProfileSubmit = (data: ProfileFormData) => {
-        updateProfile.mutate(data);
+        const changedFieldNames = Object.keys(dirtyFields) as (keyof ProfileFormData)[];
+
+        // Skip if nothing changed
+        if (changedFieldNames.length === 0) {
+            showToast('No changes to save', 'info');
+            return;
+        }
+
+        // Build payload with only changed fields
+        const payload: Partial<ProfileFormData> & { _changedFields: string[] } = {
+            _changedFields: changedFieldNames
+        };
+        changedFieldNames.forEach(field => {
+            (payload as any)[field] = data[field];
+        });
+
+        console.log('[PERF] Sending only changed fields:', changedFieldNames);
+        updateProfile.mutate(payload);
     };
+
+    const { showToast } = useToast();
 
     const onPasswordSubmit = (data: PasswordFormData) => {
         changePassword.mutate(data, {
@@ -67,11 +90,14 @@ export default function Profile() {
 
     useEffect(() => {
         if (user) {
-            reset({
+            const userData = {
                 firstName: user.firstName || '',
                 lastName: user.lastName || '',
                 phone: user.phone || '',
-            });
+            };
+            reset(userData);
+            // Store original for dirty tracking
+            originalDataRef.current = userData;
         }
     }, [user, reset]);
 

@@ -357,6 +357,50 @@ export const broadcastToAdmins = (eventType, queryKeys, metadata = {}) => {
 };
 
 /**
+ * Broadcast data update to ALL connected users (for public data like products, categories, banners)
+ * Used for real-time storefront updates when admin makes changes
+ * 
+ * @param {string} eventType - Type of data that changed (e.g., 'products', 'categories', 'banners')
+ * @param {string[][]} queryKeys - React Query keys to invalidate (e.g., [['products']])
+ * @param {Object} metadata - Optional additional data about the change
+ */
+export const broadcastToAllUsers = (eventType, queryKeys, metadata = {}) => {
+    if (clients.size === 0) {
+        return 0;
+    }
+
+    const message = JSON.stringify({
+        type: 'DATA_UPDATE',
+        eventType,
+        queryKeys,
+        metadata,
+        timestamp: new Date().toISOString()
+    });
+
+    let sentCount = 0;
+
+    // Send to ALL connected clients (not just admins)
+    for (const [userId, userSockets] of clients.entries()) {
+        userSockets.forEach((ws) => {
+            if (ws.readyState === 1) { // OPEN
+                try {
+                    ws.send(message);
+                    sentCount++;
+                } catch (e) {
+                    logger.error(`Failed to send public update to ${userId}:`, e);
+                }
+            }
+        });
+    }
+
+    if (sentCount > 0) {
+        logger.info(`📡 PUBLIC DATA_UPDATE [${eventType}] sent to ${sentCount} user connections`);
+    }
+
+    return sentCount;
+};
+
+/**
  * Get count of connected admin users
  * @returns {number} Number of connected admins
  */
