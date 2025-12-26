@@ -1,11 +1,7 @@
 import { PrismaClient } from '@prisma/client';
-import { Pool, neonConfig } from '@neondatabase/serverless';
-import { PrismaNeon } from '@prisma/adapter-neon';
-import ws from 'ws';
 import logger from '../utils/logger.js';
 
-// Required for Node.js environments when using WebSockets with Neon
-neonConfig.webSocketConstructor = ws;
+
 
 let prisma = null;
 let heartbeatInterval = null;
@@ -20,16 +16,7 @@ const DB_CONFIG = {
   RETRY_BASE_DELAY_MS: 500,
 };
 
-/**
- * Detect database provider from URL
- */
-const detectProvider = (url) => {
-  if (!url) return 'unknown';
-  if (url.includes('xata.tech')) return 'xata';
-  if (url.includes('neon.tech')) return 'neon';
-  if (url.includes('supabase')) return 'supabase';
-  return 'standard';
-};
+
 
 /**
  * Check if error is a connection reset error
@@ -129,7 +116,7 @@ const stopHeartbeat = () => {
 
 /**
  * Initialize Prisma Client with error handling and logging
- * Auto-detects provider (Xata, Neon, etc.) and uses appropriate adapter
+ * Uses standard Prisma PostgreSQL driver for maximum performance
  */
 export const initializePrisma = async () => {
   try {
@@ -139,7 +126,7 @@ export const initializePrisma = async () => {
     }
 
     const databaseUrl = process.env.DATABASE_URL;
-    currentProvider = detectProvider(databaseUrl);
+    currentProvider = 'xata'; // Defaulting to Xata as requested
 
     const clientConfig = {
       log: [
@@ -154,18 +141,7 @@ export const initializePrisma = async () => {
       },
     };
 
-    // Use Neon adapter ONLY for Neon databases
-    if (currentProvider === 'neon') {
-      logger.info('[Prisma] Initializing with Neon Adapter (WebSocket Pooling)...');
-      const pool = new Pool({ connectionString: databaseUrl });
-      const adapter = new PrismaNeon(pool);
-      clientConfig.adapter = adapter;
-    } else {
-      // For Xata, Supabase, or standard PostgreSQL - use native Prisma driver
-      logger.info(`[Prisma] Initializing with standard driver for ${currentProvider.toUpperCase()}...`);
-      // No adapter needed - Prisma uses native PostgreSQL driver
-    }
-
+    logger.info(`[Prisma] Initializing with standard driver for XATA...`);
     prisma = new PrismaClient(clientConfig);
 
     // Attach listeners
@@ -189,7 +165,7 @@ export const initializePrisma = async () => {
     });
 
     await prisma.$connect();
-    logger.info(`✓ PostgreSQL connected successfully (${currentProvider.toUpperCase()})`);
+    logger.info(`✓ PostgreSQL connected successfully (XATA)`);
 
     startHeartbeat();
 

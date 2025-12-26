@@ -173,6 +173,15 @@ const createApp = () => {
         }
     });
 
+    // Gateway health check for Cloudflare Worker
+    app.get('/gateway-health', (req, res) => {
+        res.status(200).json({
+            status: 'ok',
+            timestamp: new Date().toISOString(),
+            service: 'wighaven-backend'
+        });
+    });
+
     // Root route handler - Required for Hugging Face Spaces platform health checks
     // HF sends GET / and GET /?logs=container&__sign=... for container monitoring
     app.get('/', async (req, res) => {
