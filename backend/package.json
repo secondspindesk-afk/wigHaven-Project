@@ -9,8 +9,7 @@
     "dev": "node --watch src/index.js",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",
-    "prisma:studio": "prisma studio",
-    "test": "cross-env NODE_ENV=test node --experimental-vm-modules node_modules/jest/bin/jest.js"
+    "prisma:studio": "prisma studio"
   },
   "keywords": [
     "ecommerce",
@@ -52,13 +51,7 @@
     "ws": "^8.18.3"
   },
   "devDependencies": {
-    "cross-env": "^7.0.3",
-    "jest": "^30.2.0",
-    "prisma": "^5.22.0",
-    "supertest": "^7.1.4"
-  },
-  "prisma": {
-    "seed": "node prisma/seed.js"
+    "prisma": "^5.22.0"
   },
   "engines": {
     "node": ">=18.0.0"
